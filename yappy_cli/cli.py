@@ -224,7 +224,31 @@ yappy() {
   else
     command yappy "$@"
   fi
-}""")
+}
+
+# yappy bash completions
+_yappy_completions() {
+  local cur prev words cword
+  _init_completion 2>/dev/null || { cur="${COMP_WORDS[COMP_CWORD]}"; prev="${COMP_WORDS[COMP_CWORD-1]}"; }
+
+  local top_cmds="aws db ssm kafka workflow run stop login exec logs version config workspace home init reload setup edit update ps py-purge uninstall"
+
+  case "${COMP_WORDS[1]}" in
+    aws)      COMPREPLY=($(compgen -W "session mfa" -- "$cur")) ;;
+    db)       COMPREPLY=($(compgen -W "up refresh" -- "$cur")) ;;
+    ssm)      COMPREPLY=($(compgen -W "connect producer kafdrop databricks kill" -- "$cur")) ;;
+    kafka)    COMPREPLY=($(compgen -W "up down" -- "$cur")) ;;
+    workflow)  COMPREPLY=($(compgen -W "debug-local executor" -- "$cur")) ;;
+    run)      COMPREPLY=($(compgen -W "db tunnel kafka workflow" -- "$cur")) ;;
+    stop)     COMPREPLY=($(compgen -W "kafka tunnel" -- "$cur")) ;;
+    login)    COMPREPLY=($(compgen -W "aws mfa" -- "$cur")) ;;
+    exec)     COMPREPLY=($(compgen -W "aws" -- "$cur")) ;;
+    logs)     COMPREPLY=($(compgen -W "db kafka tunnel" -- "$cur")) ;;
+    config)   COMPREPLY=($(compgen -W "$(command yappy config 2>/dev/null | grep -oP '(?<===\s)\w+' | tr '[:upper:]' '[:lower:]')" -- "$cur")) ;;
+    *)        COMPREPLY=($(compgen -W "$top_cmds" -- "$cur")) ;;
+  esac
+}
+complete -F _yappy_completions yappy""")
 
 
 @app.command()
@@ -446,11 +470,27 @@ def setup():
     info("=== Yappy Setup ===")
     print()
 
-    # 1. Shell integration
+    # 1. Ensure Python Scripts directory is on PATH
     bashrc = Path.home() / ".bashrc"
+    scripts_dir = Path(sys.executable).parent / "Scripts"
+    scripts_posix = _win_to_posix(str(scripts_dir))
+    path_export = f'export PATH="$PATH:{scripts_posix}"'
+
+    bashrc_content = bashrc.read_text() if bashrc.exists() else ""
+    if scripts_posix in bashrc_content:
+        success(f"Python Scripts PATH already in .bashrc")
+    elif scripts_dir.exists():
+        with open(bashrc, "a") as f:
+            f.write(f"\n# yappy: Python Scripts on PATH\n{path_export}\n")
+        success(f"Added Python Scripts to PATH in .bashrc")
+        bashrc_content = bashrc.read_text()
+    else:
+        warn(f"Scripts dir not found: {scripts_dir}")
+
+    # 2. Shell integration
     eval_marker = 'eval "$(yappy init bash)"'
-    has_eval = bashrc.exists() and eval_marker in bashrc.read_text()
-    has_wrapper = bashrc.exists() and "yappy() {" in bashrc.read_text()
+    has_eval = eval_marker in bashrc_content
+    has_wrapper = "yappy() {" in bashrc_content
 
     if has_eval:
         success("Shell integration already in .bashrc")
@@ -470,12 +510,12 @@ def setup():
         warn(f"No .bashrc found at {bashrc}")
         info(f"  Add manually:\n  {eval_marker}")
 
-    # 2. Config files
+    # 3. Config files
     print()
     info("Config files:")
     _setup_config(config_dir)
 
-    # 3. Dependencies
+    # 4. Dependencies
     print()
     info("Dependencies:")
 
@@ -496,7 +536,7 @@ def setup():
         else:
             warn(f"  {cmd_name} not found — install it first")
 
-    # 4. Kafka (auto-download if missing)
+    # 5. Kafka (auto-download if missing)
     print()
     info("Kafka:")
     from .kafka.setup import setup_kafka, setup_kafka_configs
@@ -508,7 +548,7 @@ def setup():
     else:
         warn("  Kafka needs manual download — see messages above")
 
-    # 5. AWS profile
+    # 6. AWS profile
     print()
     info("AWS profile:")
     result = subprocess.run(

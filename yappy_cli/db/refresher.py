@@ -1,6 +1,6 @@
 """Standalone DB token refresher.
 
-Runnable as: python -m src.db.refresher <env>
+Runnable as: python -m yappy_cli.db.refresher <env>
 
 Loops token generation + .env.local write every REFRESH_INTERVAL minutes so the
 tunnel keeps a valid token after the CLI process exits (e.g. `db up -r -d`).
@@ -35,6 +35,6 @@ def main(env: str) -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python -m src.db.refresher <env>")
+        print("Usage: python -m yappy_cli.db.refresher <env>")
         sys.exit(2)
     main(sys.argv[1])

@@ -41,3 +41,15 @@ El mensaje debe ser descriptivo: sujeto corto en español (ej: `feat: rebrand a 
 Files under `config/env.*` (without `.example`) are gitignored.
 Never commit real credentials or environment-specific values.
 Always update the `.example` templates when the config shape changes.
+
+## Dependencias compartidas (sync con bbit-release-manager)
+
+Este paquete y `bbit-release-manager` viven en el mismo entorno editable y
+comparten convenciones. Mantené el **stack común** alineado en `docs/requirements.txt`:
+
+- `typer`, `rich`, `python-dotenv` (runtime)
+- `pytest`, `coverage` (`docs/requirements-dev.txt`)
+
+El runtime distintivo (AWS/Kafka/DB en este repo; Bitbucket/CircleCI/SSM en
+bbit) puede y debe diferir — son dominios distintos. Al tocar una dep común,
+actualizala en AMBOS repos y commitealos juntos para no generar drift.

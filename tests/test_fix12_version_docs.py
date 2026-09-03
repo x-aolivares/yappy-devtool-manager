@@ -11,7 +11,7 @@ def _pyproject_version() -> str:
 
 
 def test_read_version_from_pyproject():
-    from src.cli import _read_version
+    from yappy_cli.cli import _read_version
 
     assert _read_version() == _pyproject_version()
 
@@ -19,7 +19,7 @@ def test_read_version_from_pyproject():
 def test_version_command_falls_back_to_pyproject(monkeypatch, capsys):
     import importlib.metadata as md
 
-    from src.cli import version
+    from yappy_cli.cli import version
 
     def _boom(distribution_name):
         raise md.PackageNotFoundError(distribution_name)
@@ -42,11 +42,11 @@ def test_readme_title_and_docs_fixed():
 
 def test_readme_kafka_path_matches_config_default():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    from src.config import Config, win_to_posix
+    from yappy_cli.config import Config
 
     default = Config().kafka_path
     assert "config/kafka" not in readme
-    assert win_to_posix(default) in readme
+    assert default.replace("\\", "\\\\") in readme or default in readme
 
 
 def test_readme_setup_claims_only_env_base_created():

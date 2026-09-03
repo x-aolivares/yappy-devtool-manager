@@ -118,7 +118,7 @@ def _start_detached_refresher(env: str) -> Path:
     log_dir = Path.home() / ".yappy" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"db-refresher-{env}.log"
-    cmd = [sys.executable, "-m", "src.db.refresher", env]
+    cmd = [sys.executable, "-m", "yappy_cli.db.refresher", env]
     kwargs = {
         "stdout": log_path.open("ab"),
         "stderr": subprocess.STDOUT,

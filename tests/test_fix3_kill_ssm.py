@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import src.base as base
-import src.process_tracker as process_tracker
+import yappy_cli.base as base
+import yappy_cli.process_tracker as process_tracker
 
 
 def _win_run_recorder(monkeypatch):

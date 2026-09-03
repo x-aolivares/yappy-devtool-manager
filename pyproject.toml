@@ -14,10 +14,10 @@ dependencies = {file = ["docs/requirements.txt"]}
 optional-dependencies = {dev = {file = ["docs/requirements-dev.txt"]}}
 
 [project.scripts]
-yappy = "src.cli:app"
+yappy = "yappy_cli.cli:app"
 
 [tool.setuptools.packages.find]
-include = ["src*"]
+include = ["yappy_cli*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

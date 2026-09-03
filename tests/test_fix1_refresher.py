@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import src.db.tunnel as tunnel
-import src.process_tracker as process_tracker
+import yappy_cli.db.tunnel as tunnel
+import yappy_cli.process_tracker as process_tracker
 
 
 def _fake_cfg():
@@ -63,7 +63,7 @@ def test_detach_spawns_refresher_child_process(monkeypatch, tmp_path, capsys):
 
     assert popen_calls, "expected a detached child process to be spawned"
     cmd, kwargs = popen_calls[-1]
-    assert cmd[:3] == [sys.executable, "-m", "src.db.refresher"]
+    assert cmd[:3] == [sys.executable, "-m", "yappy_cli.db.refresher"]
     assert cmd[3:] == ["dev"]
     assert "db-refresher-dev.log" in str(kwargs["stdout"])
     assert (tmp_path / ".yappy" / "logs" / "db-refresher-dev.log").exists()
@@ -95,7 +95,7 @@ def test_non_detach_still_starts_tunnel_loop(monkeypatch, capsys):
 
 
 def test_refresher_module_exposes_main():
-    import src.db.refresher as refresher
+    import yappy_cli.db.refresher as refresher
 
     assert callable(refresher.main)
     assert refresher.REFRESH_INTERVAL == 12 * 60

@@ -65,9 +65,9 @@ La herramienta la instala y mantiene el maintainer. **No clonés ni instalés na
 ```bash
 git clone git@github.com:x-aolivares/yappy-cli-manager.git
 cd yappy-cli-manager
-pip install -e .
-yappy setup               # Configura shell, verifica dependencias, crea config/env.base
+bash install.sh           # Instala + configura PATH automáticamente
 source ~/.bashrc
+yappy setup               # Configura shell, verifica dependencias, crea config/env.base
 ```
 
 Después de cada commit:

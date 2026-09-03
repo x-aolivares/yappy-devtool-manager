@@ -1,6 +1,6 @@
 import pytest
 
-import src.db.tunnel as tunnel
+import yappy_cli.db.tunnel as tunnel
 
 
 def test_up_keep_alive_detach_dies_before_side_effects(monkeypatch):
