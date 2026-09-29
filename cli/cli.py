@@ -18,6 +18,7 @@ from .verbs.stop import stop_app
 from .verbs.login import login_app
 from .verbs.exec import exec_app
 from .verbs.logs import logs_app
+from .verbs.web import web_app
 
 
 def _win_to_posix(path: str) -> str:
@@ -45,6 +46,7 @@ app.add_typer(stop_app, name="stop", help="Stop a resource")
 app.add_typer(login_app, name="login", help="Authenticate with AWS")
 app.add_typer(exec_app, name="exec", help="Execute commands in environment context")
 app.add_typer(logs_app, name="logs", help="Show logs of managed processes")
+app.add_typer(web_app, name="web", help="Run the web devtool (API + frontend)")
 
 
 _FALLBACK_VERSION = "0.11.0"

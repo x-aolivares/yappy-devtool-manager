@@ -80,6 +80,14 @@ class Config:
             return yappy_val
         return os.environ.get(key, default)
 
+    def as_dict(self) -> dict[str, str]:
+        """Public read-only snapshot of the values loaded from config files.
+
+        Does not include shell/YAPPY_* overrides — only what was read from
+        env.base / env.<name> / .env, mirroring `get()`'s file-precedence tier.
+        """
+        return dict(self._values)
+
     def require(self, key: str) -> str:
         val = self.get(key)
         if val is None:

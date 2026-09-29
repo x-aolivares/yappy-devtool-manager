@@ -17,7 +17,7 @@ optional-dependencies = {dev = {file = ["docs/requirements-dev.txt"]}}
 yappy = "cli.cli:app"
 
 [tool.setuptools.packages.find]
-include = ["library*", "cli*"]
+include = ["library*", "cli*", "web*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
