@@ -3,9 +3,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import yappy_cli.api.kafka as api_kafka
-import yappy_cli.kafka.manager as manager
-import yappy_cli.workflow.debug as debug
+import library.api.kafka as api_kafka
+import library.kafka.manager as manager
+import cli.workflow.debug as debug
 
 
 def _sentinel(*args, **kwargs):

@@ -3,11 +3,11 @@ from types import SimpleNamespace
 
 import pytest
 
-import yappy_cli.api.kafka as api_kafka
-import yappy_cli.base as base
-import yappy_cli.process_tracker as process_tracker
-import yappy_cli.verbs.logs as logs_mod
-from yappy_cli.verbs.logs import tail_log
+import library.api.kafka as api_kafka
+import library.base as base
+import library.process_tracker as process_tracker
+import cli.verbs.logs as logs_mod
+from cli.verbs.logs import tail_log
 
 
 def test_tail_log_oneshot_prints_last_n_lines(tmp_path, capsys):

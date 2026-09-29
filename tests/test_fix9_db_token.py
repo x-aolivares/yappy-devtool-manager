@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-import yappy_cli.workflow.debug as debug
+import cli.workflow.debug as debug
 
 
 def _fake_cfg():

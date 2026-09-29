@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import typer
 
-from ..logger import die
+from library.logger import die
 
 run_app = typer.Typer(help="Start a resource")
 
@@ -15,7 +15,7 @@ def run_db(
     auto_refresh: bool = typer.Option(False, "--auto-refresh", "-r", help="Auto-refresh token every 12 minutes"),
 ):
     """Start SSM tunnel to Aurora database."""
-    from ..db.tunnel import up as _old_db_up
+    from library.db.tunnel import up as _old_db_up
     _old_db_up(env, auto_refresh=auto_refresh, detach=detach, keep_alive=keep_alive, quiet_deprecation=True)
 
 
@@ -28,18 +28,18 @@ def run_tunnel(
 ):
     """Start an SSM tunnel."""
     if target == "producer":
-        from ..ssm.tunnel import producer as _old_producer
+        from library.ssm.tunnel import producer as _old_producer
         _old_producer(env, detach=detach, quiet_deprecation=True)
     elif target == "kafdrop":
-        from ..ssm.tunnel import kafdrop as _old_kafdrop
+        from library.ssm.tunnel import kafdrop as _old_kafdrop
         _old_kafdrop(env, detach=detach, quiet_deprecation=True)
     elif target == "databricks":
-        from ..ssm.tunnel import databricks as _old_databricks
+        from library.ssm.tunnel import databricks as _old_databricks
         _old_databricks(env, detach=detach, quiet_deprecation=True)
     else:
         if not cap:
             die("cap is required when target is a port number or cluster name")
-        from ..ssm.tunnel import connect as _old_connect
+        from library.ssm.tunnel import connect as _old_connect
         _old_connect(target, env, cap, detach=detach, quiet_deprecation=True)
 
 
@@ -49,7 +49,7 @@ def run_kafka(
     detach: bool = typer.Option(False, "--detach", "-d", help="Run in background"),
 ):
     """Start local Kafka (server), UI (kafdrop), or clean (reset storage)."""
-    from ..kafka.manager import up as _old_kafka_up
+    from library.kafka.manager import up as _old_kafka_up
     _old_kafka_up(target, detach=detach, quiet_deprecation=True)
 
 

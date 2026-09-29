@@ -6,12 +6,12 @@ from pathlib import Path
 
 import typer
 
-from ..api.kafka import KafkaService
-from ..base import BaseCommand, _aws_cmd
-from ..config import Config
-from ..db.tunnel import _generate_token, _write_local_env
-from ..deprecation import warn_deprecated
-from ..logger import info, success, warn, die
+from library.api.kafka import KafkaService
+from library.base import BaseCommand, _aws_cmd
+from library.config import Config
+from library.db.tunnel import _generate_token, _write_local_env
+from library.deprecation import warn_deprecated
+from library.logger import info, success, warn, die
 
 app = typer.Typer(help="Composite workflows")
 
@@ -60,7 +60,7 @@ def debug_local(
         warn("No active AWS session. Run 'yappy aws session' first.")
         yn = input("  Open AWS SSO login now? (y/N): ")
         if yn.lower() == "y":
-            from ..aws.session import session as _aws_session
+            from library.aws.session import session as _aws_session
             _aws_session()
             if not wf_cmd._check_session():
                 die("AWS SSO login failed. Aborting.")
@@ -136,7 +136,7 @@ def debug_local(
 
 
 _DEFAULT_EXECUTOR = '''\
-from yappy_cli.api import Session, DevUtils
+from library.api import Session, DevUtils
 
 
 def executor(environment: str = "dev") -> tuple:

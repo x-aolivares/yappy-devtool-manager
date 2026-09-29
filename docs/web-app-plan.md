@@ -1,0 +1,229 @@
+# Plan: App Web para yappy-cli-manager
+
+## Estructura de carpetas del repo (confirmada, implementada)
+
+```
+aws-cli-manager/
+  library/      # capa de dominio compartida: config, sesiones AWS, tunnels SSM, DB, Kafka
+    aws/
+    db/
+    ssm/
+    kafka/
+    api/
+    config.py
+    base.py
+    process_tracker.py
+    logger.py
+    deprecation.py
+  cli/          # capa delgada de comandos Typer, consume library/
+    cli.py
+    verbs/
+    workflow/
+  web/          # nuevo — app web (backend + frontend), consume library/ de solo lectura
+    api/          # backend FastAPI, arquitectura hexagonal
+    frontend/     # Angular standalone + CSS nativo
+  config/       # env.base + env.<ambiente>, leídos por library/config.py
+  devkit/       # binarios de Kafka (descargados, gitignored)
+  tests/
+```
+
+Este refactor (extraer `library/` desde el antiguo `yappy_cli/` y adelgazar `cli/`) ya se
+ejecutó y se verificó sin regresión: `pytest` da el mismo resultado antes y después
+(50 passed, 1 failed preexistente no relacionado). El comando `yappy` sigue funcionando
+igual (entry point `cli.cli:app`). Las carpetas legacy huérfanas (`yappy_cli/` antiguo tras
+la migración, `src/`, `yappy_devkit/`, `frontend/` viejo con solo `node_modules`, `build/`)
+fueron eliminadas tras confirmar que no había código fuente real en riesgo.
+
+## Principio rector: no afectar el DevTool actual
+
+Este incremento de la web es **estrictamente aditivo** sobre `library/` y `cli/`. `library/`
+sigue siendo la fuente de verdad para sesiones AWS, tunnels y Kafka; la web (`web/api/` +
+`web/frontend/`) es un consumidor adicional, no un reemplazo. Reglas de aislamiento:
+
+1. **`web/` no modifica `library/` ni `cli/`**: todo el código nuevo vive en `web/`. Se
+   importa `library` como dependencia de solo lectura (`from library.config import Config`,
+   etc.).
+2. **Process tracking separado — riesgo confirmado**: `library/process_tracker.py` guarda los
+   PIDs trackeados en `~/.yappy/tracker/*.json` de forma **global**, y `BaseCommand.kill_ssm()`
+   (sin `pid`) mata **todos** los tunnels ahí trackeados. Si la web reusa esas mismas funciones
+   tal cual, un `yappy ssm kill` ejecutado desde el CLI podría matar tunnels abiertos por la web
+   (y viceversa un cleanup de la web podría matar tunnels del CLI).
+   **Mitigación**: `web/api/` NO debe llamar a `BaseCommand.ssm_tunnel()` / `kill_ssm()`
+   directamente sobre el tracker compartido. Opciones:
+   - Trackear los procesos de la web con un `resource` distinto (ej. `"tunnel-web"`) y un
+     tracker dir separado (`~/.yappy/tracker-web/`), reimplementando el mismo patrón pero
+     aislado.
+   - O, más simple: la web abre sus propios `subprocess.Popen` de `aws ssm start-session`
+     directamente en `web/api/infrastructure/`, sin pasar por `process_tracker` de `library`
+     en absoluto.
+   Se decide en el momento de implementar `infrastructure/`, pero **queda descartado** reusar
+   `kill_ssm()` sin `pid` desde la web.
+3. **Puertos sin colisión**: ver enum centralizado (sección 5) — todo puerto nuevo del API/UI
+   web se elige fuera del rango ya usado por CLI/Kafka/DB tunnels.
+4. **Config de solo lectura**: la web lee `config/env.*` con la misma lógica que
+   `Config.known_environments()`, pero no escribe sobre `config/.env.local` (ese archivo lo
+   gestiona `library/db/tunnel.py` para sus propios refreshers del CLI). La web usa su propio
+   estado en memoria o un archivo separado si necesita persistir tokens.
+5. **Sin cambios de comportamiento en comandos existentes**: ningún comando `yappy ...` cambia
+   de firma, default o salida como resultado de este trabajo. Cualquier función que la web
+   necesite de `library` se consume por composición (import directo), sin tocar la función
+   original.
+6. **Verificación de no-regresión**: antes de considerar cerrado cada incremento, correr la
+   suite existente (`pytest`) para confirmar que sigue en verde sin cambios.
+
+## Lo que ya existe y funciona (`library/` + `cli/`)
+
+| Módulo | Qué hace |
+|---|---|
+| `library/aws/session.py` | SSO login + MFA credentials |
+| `library/ssm/tunnel.py`, `library/base.py` | Port-forwarding a cluster, bastion, producer, kafdrop, databricks; `kill_ssm`; tracking de procesos vía `process_tracker.py` |
+| `library/db/tunnel.py` | Genera token IAM de RDS (`botocore`, con fallback a awscli), abre tunnel SSM hacia Aurora, auto-refresh cada 12 min, escribe `.env.local` |
+| `library/config.py` | Lee `config/env.base` + `config/env.<nombre>` con `dotenv_values`. `known_environments()` ya lista los ambientes disponibles escaneando `config/env.*` — **reusable directo** para el combo de ambientes en la web |
+| `library/kafka/manager.py`, `library/kafka/setup.py` | up/down/clean de Kafka + Kafdrop |
+| `cli/cli.py`, `cli/verbs/`, `cli/workflow/` | Comandos Typer que orquestan `library/` (capa delgada, sin lógica de dominio propia) |
+
+---
+
+## 1. Backend web (Python + FastAPI, arquitectura hexagonal)
+
+Vive en `web/api/`, consumiendo `library/` como dependencia externa:
+
+```
+web/api/
+  domain/                    # entidades y reglas de negocio puras (sin deps externas)
+    entities.py               # Environment, Parameter, Schema, DbObject, QueryResult
+    ports.py                  # interfaces: ParameterRepository, DbRepository, SecretResolver, LocalMysqlController
+    exceptions.py              # ParameterNotFoundError, SecretResolutionError, DbConnectionError, SchemaNotFoundError, LocalMysqlUnavailableError
+  application/                # casos de uso, orquestan dominio + puertos
+    list_parameters.py
+    resolve_secret.py
+    list_environments.py
+    list_schemas.py
+    migrate_object.py          # SP/tabla/función/data desde ambiente -> local
+    run_query.py
+  infrastructure/              # adaptadores concretos
+    aws_ssm_adapter.py          # AWS SSM Parameter Store
+    aws_secrets_adapter.py       # AWS Secrets Manager
+    mysql_adapter.py             # driver MySQL (queries, DDL, introspección)
+    local_mysql_service.py        # levanta/gestiona MySQL nativo local (reemplazo de Workbench)
+    env_config_adapter.py         # reusa library.config.Config.known_environments()
+  routers/                      # FastAPI routers (capa de entrada HTTP)
+    environments.py
+    parameters.py
+    databases.py
+    query.py
+  error_handlers.py             # exception handlers centralizados
+  schemas.py                     # DTOs Pydantic
+  ports_registry.py               # enum centralizado de puertos (ver sección 5)
+  main.py                         # FastAPI app factory
+```
+
+### Manejo de excepciones (requisito explícito)
+
+- Excepciones de dominio propias definidas en `domain/exceptions.py`.
+- `error_handlers.py` con `@app.exception_handler` por tipo de excepción, mapeando a un HTTP status + payload consistente:
+  ```json
+  { "code": "SECRET_RESOLUTION_ERROR", "message": "...", "detail": "..." }
+  ```
+- Nada de excepciones sin capturar llegando al cliente.
+
+---
+
+## 2. Feature: Consulta de parámetros por ambiente
+
+- **Origen de ambientes**: leer `config/env.*` (excluyendo `.example` y `env.base`) — misma lógica que `library.config.Config.known_environments()`, reusada en `env_config_adapter.py`.
+- **Detección JSON vs valor plano**: backend intenta `json.loads` con try/except sobre el valor del parámetro.
+- **Si es valor plano**: botón "resolver en Secrets Manager" → endpoint que busca el secreto y lo resuelve usando el profile/región del ambiente seleccionado (mismo profile que usa `Config`).
+- **Para `local`**: acción de "levantar MySQL nativo" vía `LocalMysqlService` — ejecuta el comando de arranque (servicio Windows o `mysqld` standalone, a confirmar) + healthcheck. Resuelve el problema actual con DBeaver.
+- **Manejo de errores**: todo endpoint envuelto en casos de uso que lanzan excepciones de dominio, capturadas centralmente.
+
+---
+
+## 3. Feature: Exploración de bases de datos por ambiente (estilo migración)
+
+- Conexión reusa el mecanismo de `library/db/tunnel.py`: token IAM + tunnel SSM (lo abre si no existe uno activo, respetando el aislamiento de tracking de la sección "Principio rector").
+- `GET /databases/{env}/schemas` → dropdown de schemas disponibles.
+- Al seleccionar schema: listar stored procedures, tablas, funciones.
+- Acción "migrar hacia local": trae DDL y/o data del objeto elegido y lo aplica contra el MySQL local.
+- Se implementa limpio dentro de `infrastructure/mysql_adapter.py` + `application/migrate_object.py`.
+
+---
+
+## 4. Feature: Consultas SQL directas
+
+- Endpoint que recibe SQL crudo contra el ambiente + schema seleccionados (soporta SELECT con joins, etc.) y devuelve resultados tabulares.
+- **Riesgo a marcar**: ejecuta SQL arbitrario contra ambientes reales (dev/qa/uat). Mitigaciones sugeridas:
+  - Restringir por whitelist de statement (`SELECT` only) a nivel de aplicación, salvo que se quiera permitir DML explícitamente.
+  - Bind exclusivo a `127.0.0.1` (no expuesto fuera de localhost).
+
+---
+
+## 5. Enum centralizado de puertos
+
+```python
+# web/api/ports_registry.py
+from enum import IntEnum
+
+class YappyPort(IntEnum):
+    WEB_API = 8300          # nuevo, sin choque con lo existente
+    WEB_UI_DEV = 4300        # ng serve
+    DB_TUNNEL = 8100         # ya usado en env.dev (DB_PORT)
+    KAFDROP = 9001
+    DATABRICKS = 4433
+    AWS_SSM_LOCAL = 53360    # AWS_PORT
+    KAFKA_BROKER = 9092      # confirmar contra library/kafka/setup.py
+    KAFKA_UI = 9000          # confirmar
+```
+
+Pendiente: revisar `library/kafka/setup.py` para confirmar los puertos reales de Kafka antes de fijar el enum definitivo. Regla general: cualquier puerto nuevo del API/UI web se elige fuera del rango ya usado (propuesta: 8300 API / 4300 UI dev).
+
+---
+
+## 6. Frontend (Angular standalone + CSS nativo, paleta GitHub-like)
+
+Vive en `web/frontend/`:
+
+```
+web/frontend/src/app/
+  layout/
+    shell/                 # home + sidebar layout
+    sidebar/               # listado de features a la izquierda
+  features/
+    parameters/
+    database-explorer/
+    query-console/
+  core/
+    services/               # ApiService por feature, http client
+    models/
+  shared/
+    components/              # botón, tabla, dropdown, badge json/plain
+styles/
+  _variables.css             # paleta GitHub
+  _base.css
+```
+
+- Componentes **standalone** de Angular (sin NgModules).
+- CSS nativo por componente (`:host` + variables CSS globales para la paleta).
+- Sidebar fijo con navegación a Home + las 3 features.
+
+### Paleta de colores (estilo GitHub)
+
+| Uso | Dark | Light |
+|---|---|---|
+| Fondo | `#0d1117` | `#ffffff` |
+| Superficie/cards | `#161b22` | `#f6f8fa` |
+| Bordes | `#30363d` | `#d0d7de` |
+| Texto | `#c9d1d9` | `#24292f` |
+| Acento (links/botones) | `#2f81f7` | `#0969da` |
+| Éxito | `#2ea043` | `#1a7f37` |
+| Error/peligro | `#f85149` | `#cf222e` |
+| Advertencia | `#d29922` | `#9a6700` |
+
+---
+
+## Preguntas abiertas antes de implementar
+
+1. **MySQL local**: ¿es un servicio Windows instalado (XAMPP/MySQL Installer) o corre standalone? Se necesita el comando exacto usado hoy para levantarlo manualmente.
+2. **Secrets Manager**: ¿la resolución es por *nombre* de secreto (convención conocida) o por *búsqueda de coincidencia de valor* entre todos los secretos del ambiente (más costoso, requiere listar y decodificar todos)?
+3. **Alcance de "migración" de DB**: ¿solo estructura (DDL) o también data? Si incluye data, ¿con límite de filas o completa?
+4. ¿Arrancar ya con el scaffold (`web/api/` + `web/frontend/` con primer endpoint funcionando) o cerrar antes estas dudas?

@@ -6,12 +6,12 @@ from pathlib import Path
 
 import typer
 
-from .logger import console, info, success, warn, raw, die
-from .config import Config
-from .aws.session import app as aws_app
-from .db.tunnel import app as db_app
-from .ssm.tunnel import CLUSTER_ALIASES, app as ssm_app
-from .kafka.manager import app as kafka_app
+from library.logger import console, info, success, warn, raw, die
+from library.config import Config
+from library.aws.session import app as aws_app
+from library.db.tunnel import app as db_app
+from library.ssm.tunnel import CLUSTER_ALIASES, app as ssm_app
+from library.kafka.manager import app as kafka_app
 from .workflow.debug import app as workflow_app
 from .verbs.run import run_app
 from .verbs.stop import stop_app
@@ -458,7 +458,7 @@ def setup():
     # 5. Kafka (auto-download if missing)
     print()
     info("Kafka:")
-    from .kafka.setup import setup_kafka, setup_kafka_configs
+    from library.kafka.setup import setup_kafka, setup_kafka_configs
     cfg = Config()
     setup_kafka_configs(cfg)
     kafka_ready = setup_kafka(cfg)

@@ -10,7 +10,7 @@ def login_aws(
     profile: str | None = typer.Option(None, "--profile", "-p", help="AWS Profile"),
 ):
     """Login to AWS SSO via browser (replaces 'aws sso login')."""
-    from ..aws.session import session as _old_session
+    from library.aws.session import session as _old_session
     _old_session(profile, quiet_deprecation=True)
 
 
@@ -20,5 +20,5 @@ def login_mfa(
     token: str = typer.Argument(..., help="MFA token code"),
 ):
     """Generate temporary AWS credentials via MFA."""
-    from ..aws.session import mfa as _old_mfa
+    from library.aws.session import mfa as _old_mfa
     _old_mfa(user, token, quiet_deprecation=True)

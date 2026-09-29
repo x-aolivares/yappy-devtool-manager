@@ -5,7 +5,7 @@ from pathlib import Path
 
 import typer
 
-from ..logger import info, console
+from library.logger import info, console
 
 logs_app = typer.Typer(help="Show logs of managed processes")
 
@@ -83,7 +83,7 @@ def logs_tunnel(
 
 
 def _show_logs(resource: str, target: str, follow: bool, lines: int):
-    from ..process_tracker import get_tracked_processes
+    from library.process_tracker import get_tracked_processes
     processes = get_tracked_processes(resource=resource, target=target)
 
     if not processes:

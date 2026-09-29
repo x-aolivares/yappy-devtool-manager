@@ -1,5 +1,5 @@
 def test_init_powershell_uses_command_type_application(capsys):
-    from yappy_cli.cli import init
+    from cli.cli import init
 
     init("powershell")
 

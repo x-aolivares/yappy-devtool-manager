@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import yappy_cli.cli as cli
+import cli.cli as cli
 
 
 def _ok(*args, **kwargs):

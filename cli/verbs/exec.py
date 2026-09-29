@@ -5,7 +5,7 @@ import sys
 
 import typer
 
-from ..logger import info, die
+from library.logger import info, die
 
 exec_app = typer.Typer(help="Execute commands in environment context")
 
@@ -18,8 +18,8 @@ def exec_aws(
     ),
 ):
     """Execute AWS CLI using the profile and region of the environment."""
-    from ..base import _aws_cmd
-    from ..config import Config
+    from library.base import _aws_cmd
+    from library.config import Config
     cfg = Config.with_env(env)
     profile = cfg.profile
     region = cfg.region
