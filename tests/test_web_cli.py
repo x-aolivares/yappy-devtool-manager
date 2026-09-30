@@ -36,9 +36,9 @@ def tracked(monkeypatch, tmp_path):
 def live():
     """A genuinely running child process.
 
-    `get_tracked_processes` probes liveness with `os.kill(pid, 0)`, so a made-up
-    PID is reported as `alive=False` and `stop web` treats it as a stale entry
-    instead of killing it. Tests about killing need a real process.
+    `get_tracked_processes` probes liveness (`_pid_alive`), so a made-up PID is
+    reported as `alive=False` and `stop web` treats it as a stale entry instead
+    of killing it. Tests about killing need a real process.
 
     Spawned in its own session, exactly like `_spawn` does, so exercising the
     real `os.killpg()` path doesn't kill pytest along with it.

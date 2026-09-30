@@ -72,6 +72,73 @@ def _ui_port() -> int:
         die(str(e))
 
 
+def _parse_netstat_listeners(output: str, port: int) -> int | None:
+    """Pull the PID LISTENING on `port` out of `netstat -ano -p TCP` output.
+
+    Split out from the subprocess call so the parsing — which is the part that
+    can quietly get a column wrong — is testable without a Windows box.
+    """
+    for line in output.splitlines():
+        parts = line.split()
+        # TCP  <local>  <remote>  LISTENING  <pid>
+        if len(parts) < 5 or parts[0].upper() != "TCP":
+            continue
+        if parts[3].upper() != "LISTENING":
+            continue
+        if parts[1].rsplit(":", 1)[-1] != str(port) or not parts[4].isdigit():
+            continue
+        return int(parts[4])
+    return None
+
+
+def _pid_listening_on(port: int) -> int | None:
+    """Which PID is LISTENING on this TCP port, if the OS will tell us.
+
+    Best effort by design: this only feeds a better error message, so any
+    failure returns None instead of getting in the way of the actual startup.
+    """
+    if sys.platform != "win32":
+        return None
+    try:
+        out = subprocess.run(
+            ["netstat", "-ano", "-p", "TCP"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return _parse_netstat_listeners(out, port)
+
+
+def _process_name(pid: int) -> str:
+    try:
+        out = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return "?"
+    # "python.exe","12345","Console","1","123.456 K"
+    for line in out.splitlines():
+        cells = [c.strip('" ') for c in line.split('","')]
+        if len(cells) >= 2 and cells[1] == str(pid):
+            return cells[0]
+    return "?"
+
+
+def _tracked_web_pids() -> set[int]:
+    """PIDs yappy recorded for resource="web" that are still alive."""
+    try:
+        from library import process_tracker
+
+        return {
+            p["pid"]
+            for p in process_tracker.get_tracked_processes(resource="web")
+            if p.get("alive")
+        }
+    except Exception:  # noqa: BLE001 - only used to enrich an error message
+        return set()
+
+
 def check_port_free(port: int, label: str, override_var: str) -> None:
     """Fail before spawning if the port can't be bound, with the real reason.
 
@@ -99,6 +166,10 @@ def _port_error(port: int, label: str, override_var: str, e: OSError) -> str:
     # has no such attribute and reading it would break the error handler.
     code = getattr(e, "winerror", None) or e.errno
     head = f"Cannot bind 127.0.0.1:{port} for {label} ({e})."
+    escape = (
+        f"Or move this one out of the way:\n"
+        f"  {override_var}=<otro> yappy web"
+    )
 
     if sys.platform == "win32" and code == 10013:
         return (
@@ -110,20 +181,43 @@ def _port_error(port: int, label: str, override_var: str, e: OSError) -> str:
             f"Easiest way out — pick a free port for this run:\n"
             f"  {override_var}=<otro> yappy web"
         )
+
     if code in (10048, 98):  # WSAEADDRINUSE / EADDRINUSE
+        owner = _describe_owner(port)
+        if owner is None:
+            return (
+                f"{head}\n"
+                f"Another process is already listening on that port.\n"
+                f"  yappy stop web        # if it is a leftover of yours\n"
+                f"  netstat -ano | findstr :{port}\n"
+                f"{escape}"
+            )
+        pid, name, ours = owner
+        if ours:
+            return (
+                f"{head}\n"
+                f"Port {port} is held by a leftover of yours: {name} (PID {pid}).\n"
+                f"  yappy stop web        # cleans it up, children included\n"
+                f"{escape}"
+            )
         return (
             f"{head}\n"
-            f"Another process is already listening on that port.\n"
-            f"  yappy stop web        # if it is a leftover of yours\n"
-            f"  netstat -ano | findstr :{port}\n"
-            f"Or move this one out of the way:\n"
-            f"  {override_var}=<otro> yappy web"
+            f"Port {port} is held by {name} (PID {pid}), which is not a tracked\n"
+            f"yappy process — so 'yappy stop web' will not touch it. If it is a\n"
+            f"previous session of yours, kill it with:\n"
+            f"  taskkill /PID {pid} /T /F\n"
+            f"{escape}"
         )
-    return (
-        f"{head}\n"
-        f"Or move this one out of the way:\n"
-        f"  {override_var}=<otro> yappy web"
-    )
+
+    return f"{head}\n{escape}"
+
+
+def _describe_owner(port: int) -> tuple[int, str, bool] | None:
+    """(pid, image name, is-ours) for whatever holds the port, or None."""
+    pid = _pid_listening_on(port)
+    if pid is None:
+        return None
+    return pid, _process_name(pid), pid in _tracked_web_pids()
 
 
 def _api_command(reload: bool) -> list[str]:
