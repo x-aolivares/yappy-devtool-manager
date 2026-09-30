@@ -6,10 +6,13 @@ from fastapi.responses import JSONResponse
 
 from .domain.exceptions import (
     AwsCredentialsError,
+    ConfigKeyMissingError,
     DbConnectionError,
     DomainError,
     EnvironmentNotFoundError,
     LocalMysqlUnavailableError,
+    MigrationError,
+    ObjectNotFoundError,
     ParameterNotFoundError,
     SchemaNotFoundError,
     SecretNotFoundError,
@@ -21,11 +24,14 @@ _STATUS_BY_EXCEPTION = {
     EnvironmentNotFoundError: 404,
     ParameterNotFoundError: 404,
     SchemaNotFoundError: 404,
+    ObjectNotFoundError: 404,
     SecretNotFoundError: 404,
     AwsCredentialsError: 401,
+    ConfigKeyMissingError: 500,
     SecretResolutionError: 502,
     DbConnectionError: 502,
     LocalMysqlUnavailableError: 503,
+    MigrationError: 500,
     UnsafeQueryError: 400,
 }
 

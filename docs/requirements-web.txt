@@ -1,3 +1,11 @@
+# Dependencias del backend web (web/api).
+# El frontend Angular tiene sus propias dependencias en web/frontend/package.json.
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 pydantic>=2.9.0
+# Driver MySQL: puro Python, no necesita compilador en Windows.
+# Soporta IAM auth de RDS (plugin mysql_clear_password) y CA bundles para TLS.
+pymysql>=1.1.1
+# Para Secrets Manager y generate_db_auth_token. botocore alcanza: no hace
+# falta boto3, y es lo que ya usa el resto del toolkit.
+botocore>=1.34.0

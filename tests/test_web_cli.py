@@ -5,15 +5,11 @@ tunnels del CLI: si el web trackeara como resource="tunnel", un
 `yappy ssm kill` mataria los procesos del web (y al reves).
 """
 import json
-import os
 import subprocess
 import sys
-import time
-from pathlib import Path
 
 import pytest
 
-import cli.verbs.stop as stop
 import cli.verbs.web as web
 
 

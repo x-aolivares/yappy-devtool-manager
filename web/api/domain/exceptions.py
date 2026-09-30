@@ -64,3 +64,30 @@ class LocalMysqlUnavailableError(DomainError):
 
 class UnsafeQueryError(DomainError):
     code = "UNSAFE_QUERY"
+
+
+class MigrationError(DomainError):
+    code = "MIGRATION_ERROR"
+
+
+class ObjectNotFoundError(DomainError):
+    code = "OBJECT_NOT_FOUND"
+
+    def __init__(self, kind: str, name: str, schema: str):
+        self.kind = kind
+        self.name = name
+        self.schema = schema
+        super().__init__(f"{kind} '{name}' not found in schema '{schema}'")
+
+
+class ConfigKeyMissingError(DomainError):
+    code = "CONFIG_KEY_MISSING"
+
+    def __init__(self, key: str, env: str = ""):
+        self.key = key
+        self.env = env
+        where = f"config/env.{env}" if env else "config/env.base"
+        super().__init__(
+            f"Missing config key '{key}' — add it to {where} "
+            f"or set YAPPY_{key}"
+        )

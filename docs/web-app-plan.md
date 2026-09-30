@@ -267,22 +267,56 @@ styles/
 | `routers/environments.py`, `routers/parameters.py` | Hecho |
 | `cli/verbs/web.py` (`yappy web` = API + UI) | Hecho |
 | `cli/verbs/stop.py` (`yappy stop web`) | Hecho |
-| Tests de `web/api` (23) y de la CLI web (16) | Hecho |
-| `infrastructure/mysql_adapter.py` | Pendiente |
-| `infrastructure/local_mysql_service.py` | Pendiente |
-| `infrastructure/tunnel_manager.py` (proceso hijo) | Pendiente |
-| `application/list_schemas.py` / `list_objects.py` | Pendiente |
-| `application/migrate_object.py` (DDL) | Pendiente |
-| `application/run_query.py` | Pendiente |
-| `routers/databases.py`, `routers/query.py` | Pendiente |
+| `infrastructure/mysql_connection.py` (CA, token IAM, mapeo de errores) | Hecho |
+| `infrastructure/mysql_adapter.py` (introspección, queries, DDL) | Hecho |
+| `infrastructure/local_mysql_service.py` | Hecho |
+| `application/list_schemas.py` / `list_objects.py` | Hecho |
+| `application/migrate_object.py` (DDL) | Hecho |
+| `application/run_query.py` (solo lectura) | Hecho |
+| `application/local_mysql.py` | Hecho |
+| `routers/databases.py`, `routers/query.py`, `routers/migrate.py`, `routers/local_mysql.py` | Hecho |
+| `domain/sql_guard.py` (whitelist de solo lectura) | Hecho |
+| Tests de `web/api` (102) y de la CLI web (16) | Hecho |
 | `web/frontend/` (Angular) | Pendiente — `yappy web` ya degrada a solo API hasta que exista |
+
+### Decisiones tomadas al implementar
+
+- **PyMySQL sí soporta IAM auth de RDS.** El plugin `mysql_clear_password` está
+  implementado en `_process_auth` (auth-switch path) de PyMySQL 2.2.8, así que
+  `pymysql.connect(password=<token>)` funciona contra RDS sin hacks. `auth_plugin`
+  no es un kwarg de conexión y `defer_connect` no sirve como seam, porque
+  `_auth_plugin_name` solo se setea desde el greeting del server.
+- **TLS es obligatorio con RDS** aunque el túnel termine en 127.0.0.1: el token
+  IAM *es* una contraseña, y mandarla en claro filtraría acceso a IAM. Se usa
+  `ssl_ca` + `ssl_verify_cert=True`, y el bundle se busca en
+  `RDS_CA_PATH` o `~/.aws/rds-ca-*.pem`.
+- **El probe del puerto va antes de resolver el CA.** Un puerto cerrado es el
+  fallo más común, y reportarlo (con el comando `yappy run db <env> -d`)
+  importa más que el CA faltante; si no, el segundo error tapa al primero.
+- **El guard de solo lectura vive en el use case, no solo en el adapter.** Es
+  una regla de dominio: si solo el adapter la aplicara, cambiar de adapter
+  eliminaría la garantía en silencio. El adapter mantiene su copia como
+  defensa en profundidad. Además el driver va con multi-statement deshabilitado.
+- **`tunnel_manager.py` queda descartado.** `mysql_adapter` es agnóstico al
+  túnel: se conecta a `127.0.0.1:DB_PORT` y un healthcheck TCP devuelve
+  `DbConnectionError` con la instrucción de levantarlo. Así el web nunca toca
+  el process tracker de la library y `kill_ssm()` no puede ver procesos del web.
+- **El target schema por defecto es `<env>_<schema>`**, salvo que se configure
+  `LOCAL_DB_NAME`: sin el prefijo, migrar dev y qa al mismo schema local
+  colisionaría.
 
 ---
 
 ## Preguntas abiertas (restantes)
 
 1. **MySQL local**: falta el comando exacto que se usa hoy a mano para
-   levantarlo (¿servicio de Windows? ¿`mysqld` standalone? ¿XAMPP?). Mientras
-   tanto se resuelve por `LOCAL_MYSQL_START_CMD` en config.
-2. **Data migration**: qué columna de fecha se usa por tabla. ¿Se infiere
-   (`created_at` / `updated_at`) o el usuario la elige por tabla en el UI?
+   levantarlo (¿servicio de Windows? ¿`mysqld` standalone? ¿XAMPP?). Ya no es
+   bloqueante: el web lee `LOCAL_MYSQL_START_CMD` de `config/env.base` y, si no
+   está, dice qué clave configurar. Falta completarlo con el valor real.
+2. **RDS CA bundle**: confirmar si existe `~/.aws/rds-ca-rsa2048-g1.pem` en la
+   máquina, o si hay que definir `RDS_CA_PATH`. Si no está, la conexión a
+   ambientes falla con un mensaje explícito.
+3. **Data migration**: qué columna de fecha se usa por tabla. ¿Se infiere
+   (`created_at` / `updated_at`) o el usuario la elige por tabla en el UI? El
+   contrato (`MigrateRequest.date_column` / `date_from` / `date_to`) ya está
+   definido, así que esto no bloquea la implementación.

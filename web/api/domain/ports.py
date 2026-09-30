@@ -3,7 +3,18 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from .entities import DbObject, Environment, Parameter, QueryResult, ResolvedSecret, Schema
+from .entities import (
+    DbConnectionInfo,
+    DbObject,
+    Environment,
+    LocalMysqlStatus,
+    MigrateObject,
+    MigrateResult,
+    Parameter,
+    QueryResult,
+    ResolvedSecret,
+    Schema,
+)
 
 
 class EnvironmentRepository(Protocol):
@@ -29,3 +40,26 @@ class DbRepository(Protocol):
 class LocalMysqlController(Protocol):
     def start(self) -> bool: ...
     def is_running(self) -> bool: ...
+
+
+class MigrateRepository(Protocol):
+    """Reads DDL out of an environment and writes it into local MySQL."""
+
+    def extract_ddl(
+        self, env: str, schema: str, objects: tuple[tuple[str, str], ...]
+    ) -> list[MigrateObject]: ...
+    def apply_ddl(
+        self, ddl_objects: list[MigrateObject], target_schema: str
+    ) -> MigrateResult: ...
+
+
+class DbProbe(Protocol):
+    """Liveness probe for a tunneled environment database."""
+
+    def probe(self, env: str) -> DbConnectionInfo: ...
+
+
+class LocalMysqlService(Protocol):
+    def status(self) -> LocalMysqlStatus: ...
+    def start(self) -> LocalMysqlStatus: ...
+    def stop(self) -> LocalMysqlStatus: ...

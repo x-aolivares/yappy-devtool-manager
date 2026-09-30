@@ -75,9 +75,7 @@ def test_resolve_uses_secret_name_verbatim(patched):
 
 
 def test_resolve_flags_json_payload(patched):
-    client = patched(
-        FakeSecretsClient(response={"SecretString": '{"user":"root","pass":"s3cr3t"}'})
-    )
+    patched(FakeSecretsClient(response={"SecretString": '{"user":"root","pass":"s3cr3t"}'}))
 
     resolved = AwsSecretsAdapter().resolve("dev", "prod/db/creds")
 
@@ -89,7 +87,7 @@ def test_resolve_decodes_binary_secret(patched):
     import base64
 
     encoded = base64.b64encode(b"plain-text-secret").decode()
-    client = patched(FakeSecretsClient(response={"SecretBinary": encoded}))
+    patched(FakeSecretsClient(response={"SecretBinary": encoded}))
 
     assert AwsSecretsAdapter().resolve("dev", "s").value == "plain-text-secret"
 

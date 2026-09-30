@@ -8,16 +8,27 @@ from __future__ import annotations
 
 from .infrastructure.aws_secrets_adapter import AwsSecretsAdapter
 from .infrastructure.env_config_adapter import EnvConfigAdapter
+from .infrastructure.local_mysql_service import LocalMysqlService
+from .infrastructure.mysql_adapter import MysqlAdapter
+from .infrastructure.mysql_connection import RdsTokenProvider
 from .infrastructure.param_config_adapter import EnvFileParameterAdapter
 
 
 class Container:
-    """Holds de adapters concretos. Todos son stateless y seguros de compartir."""
+    """Holds of adapters concretos.
+
+    `RdsTokenProvider` is shared on purpose: one token cache across all
+    endpoints instead of a fresh IAM call per request.
+    """
 
     def __init__(self) -> None:
         self.environments = EnvConfigAdapter()
         self.parameters = EnvFileParameterAdapter()
         self.secrets = AwsSecretsAdapter()
+        self.tokens = RdsTokenProvider()
+        self.mysql = MysqlAdapter(self.tokens)
+        self.migrate = self.mysql
+        self.local_mysql = LocalMysqlService()
 
 
 _container: Container | None = None
