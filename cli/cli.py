@@ -152,7 +152,7 @@ _yappy_completions() {
   local cur prev words cword
   _init_completion 2>/dev/null || { cur="${COMP_WORDS[COMP_CWORD]}"; prev="${COMP_WORDS[COMP_CWORD-1]}"; }
 
-  local top_cmds="aws db ssm kafka workflow run stop login exec logs version config workspace home init reload setup edit update ps py-purge uninstall"
+  local top_cmds="aws db ssm kafka workflow run stop login exec logs web version config workspace home init reload setup edit update ps py-purge uninstall"
 
   case "${COMP_WORDS[1]}" in
     aws)      COMPREPLY=($(compgen -W "session mfa" -- "$cur")) ;;
@@ -165,6 +165,7 @@ _yappy_completions() {
     login)    COMPREPLY=($(compgen -W "aws mfa" -- "$cur")) ;;
     exec)     COMPREPLY=($(compgen -W "aws" -- "$cur")) ;;
     logs)     COMPREPLY=($(compgen -W "db kafka tunnel" -- "$cur")) ;;
+    web)      COMPREPLY=($(compgen -W "api ui" -- "$cur")) ;;
     config)   COMPREPLY=($(compgen -W "$(command yappy config 2>/dev/null | grep -oP '(?<===\s)\w+' | tr '[:upper:]' '[:lower:]')" -- "$cur")) ;;
     *)        COMPREPLY=($(compgen -W "$top_cmds" -- "$cur")) ;;
   esac

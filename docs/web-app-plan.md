@@ -265,7 +265,9 @@ styles/
 | `application/list_parameters.py` | Hecho |
 | `application/resolve_secret.py` | Hecho |
 | `routers/environments.py`, `routers/parameters.py` | Hecho |
-| Tests de `web/api` (23) | Hecho |
+| `cli/verbs/web.py` (`yappy web` = API + UI) | Hecho |
+| `cli/verbs/stop.py` (`yappy stop web`) | Hecho |
+| Tests de `web/api` (23) y de la CLI web (16) | Hecho |
 | `infrastructure/mysql_adapter.py` | Pendiente |
 | `infrastructure/local_mysql_service.py` | Pendiente |
 | `infrastructure/tunnel_manager.py` (proceso hijo) | Pendiente |
@@ -273,8 +275,7 @@ styles/
 | `application/migrate_object.py` (DDL) | Pendiente |
 | `application/run_query.py` | Pendiente |
 | `routers/databases.py`, `routers/query.py` | Pendiente |
-| `web/frontend/` (Angular) | Pendiente |
-| `yappy web ui` / `yappy stop web` | Pendiente |
+| `web/frontend/` (Angular) | Pendiente — `yappy web` ya degrada a solo API hasta que exista |
 
 ---
 

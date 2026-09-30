@@ -160,8 +160,15 @@ yappy py-purge                       # Limpiar cache pip
 ```bash
 pip install -r docs/requirements-web.txt
 
-yappy web api                        # Backend FastAPI en 127.0.0.1:8300
+yappy web                             # API + UI juntos (lo normal)
+yappy web api                         # Solo el backend
+yappy web ui                          # Solo el frontend
+yappy stop web                        # Limpiar procesos web si la terminal murió
 ```
+
+`yappy web` levanta el backend FastAPI en `127.0.0.1:8300` y el dev server de
+Angular en `127.0.0.1:4300`, y baja ambos con un solo Ctrl+C. Los puertos salen
+del enum centralizado `web/api/ports_registry.py`, no están hardcodeados.
 
 El API está **bound a `127.0.0.1` únicamente y sin autenticación**: es una
 herramienta interna de desarrollo, no lo expongas en `0.0.0.0` sin agregar
