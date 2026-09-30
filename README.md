@@ -239,9 +239,17 @@ curl -X POST http://127.0.0.1:8300/query/dev \
 curl http://127.0.0.1:8300/local-mysql
 ```
 
-Conectar a RDS requiere el CA bundle en `~/.aws/rds-ca-*.pem` o `RDS_CA_PATH` en
-`config/env.<ambiente>`. No es opcional: el token de IAM *es* una contraseña, y
-mandarlo sin cifrar filtraría acceso a IAM.
+El TLS con RDS no es opcional: el token de IAM *es* una contraseña, y mandarlo sin
+cifrar filtraría acceso a IAM. Para poder además *verificar* que del otro lado esté
+RDS hace falta el bundle de CA:
+
+```bash
+yappy web ca          # descarga el bundle oficial a ~/.aws/rds-combined-ca-bundle.pem
+```
+
+Sin el bundle la conexión funciona igual (cifrada, pero sin validar el server) y la
+UI te avisa. Solo configurá `RDS_CA_PATH` en `config/env.<ambiente>` si lo guardás
+en otro lado.
 
 Los ambientes salen de `config/env.*` (los `.example` se ignoran). Si la lista
 viene vacía, creá `config/env.<ambiente>` copiando `config/env.environment.example`.

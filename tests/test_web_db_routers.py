@@ -224,6 +224,7 @@ def test_connection_probe_reports_reachable(client):
         "user": "app",
         "reachable": True,
         "detail": "",
+        "tls_verified": True,
     }
 
 

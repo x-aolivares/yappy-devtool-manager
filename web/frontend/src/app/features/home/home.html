@@ -66,6 +66,19 @@
               </div>
             </div>
           }
+          @if (conn.reachable && conn.tlsVerified === false) {
+            <div class="alert alert-warning" style="margin-top: 14px">
+              <div>
+                <strong>Conexión cifrada, pero sin verificar el servidor</strong>
+                <div style="margin-top: 4px">
+                  Falta el bundle de CA de RDS. El canal sigue encriptado —el
+                  token IAM no viaja en claro— pero no se puede confirmar que
+                  del otro lado esté RDS. Descargalo con:
+                </div>
+                <pre>yappy web ca</pre>
+              </div>
+            </div>
+          }
         } @else {
           <p class="hint">
             Todavía no se verificó. Presioná “Verificar” para comprobar que el

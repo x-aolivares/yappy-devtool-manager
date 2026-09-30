@@ -288,9 +288,19 @@ styles/
   no es un kwarg de conexión y `defer_connect` no sirve como seam, porque
   `_auth_plugin_name` solo se setea desde el greeting del server.
 - **TLS es obligatorio con RDS** aunque el túnel termine en 127.0.0.1: el token
-  IAM *es* una contraseña, y mandarla en claro filtraría acceso a IAM. Se usa
-  `ssl_ca` + `ssl_verify_cert=True`, y el bundle se busca en
-  `RDS_CA_PATH` o `~/.aws/rds-ca-*.pem`.
+  IAM *es* una contraseña, y mandarla en claro filtraría acceso a IAM.
+- **El dict de `ssl` es el flag, no el contenido.** En `connections.py:301`,
+  `if ssl:` decide si el TLS es obligatorio. Si no se pasa nada, PyMySQL cae en
+  `elif SSL_ENABLED:` → `_ssl_required = False`, que **degrada en silencio a
+  texto claro** si el server rechaza SSL. Por eso `tls_options()` siempre devuelve
+  un dict no vacío: con CA (`{"ca": ..., "check_hostname": False}`) o sin
+  (`{"verify_mode": "none"}`). Verificado empíricamente.
+- **La CA es opcional, el cifrado no.** Sin bundle se conecta igual, cifrado pero
+  sin validar la identidad del server — riesgo acotado (alguien ya dentro de la
+  VPC) y estrictamente mejor que negarse a conectar. `yappy web ca` lo arregla.
+- **`check_hostname` siempre False**: nos conectamos a 127.0.0.1 (el túnel) pero
+  el certificado es del endpoint RDS, así que validar el hostname fallaría
+  siempre. La cadena sí se valida contra la CA.
 - **El probe del puerto va antes de resolver el CA.** Un puerto cerrado es el
   fallo más común, y reportarlo (con el comando `yappy run db <env> -d`)
   importa más que el CA faltante; si no, el segundo error tapa al primero.
@@ -343,9 +353,10 @@ Decisiones:
    levantarlo (¿servicio de Windows? ¿`mysqld` standalone? ¿XAMPP?). Ya no es
    bloqueante: el web lee `LOCAL_MYSQL_START_CMD` de `config/env.base` y, si no
    está, dice qué clave configurar. Falta completarlo con el valor real.
-2. **RDS CA bundle**: confirmar si existe `~/.aws/rds-ca-rsa2048-g1.pem` en la
-   máquina, o si hay que definir `RDS_CA_PATH`. Si no está, la conexión a
-   ambientes falla con un mensaje explícito.
+2. ~~**RDS CA bundle**~~ — resuelto: `yappy web ca` descarga el bundle oficial
+   (30 CAs de todas las regiones) a `~/.aws/rds-combined-ca-bundle.pem` y lo valida
+   con `load_verify_locations` antes de escribirlo. Sin CA la conexión funciona
+   igual, cifrada sin verificar, y la UI avisa.
 3. **Data migration**: qué columna de fecha se usa por tabla. ¿Se infiere
    (`created_at` / `updated_at`) o el usuario la elige por tabla en el UI? El
    contrato (`MigrateRequest.date_column` / `date_from` / `date_to`) ya está

@@ -74,6 +74,10 @@ class MysqlAdapter:
         spec = self._env_conn(env)
         host, port = spec.host(), spec.port()
         reachable, detail = mysql_connection.tcp_probe(host, port)
+        # Report whether cert validation is possible *before* connecting, so the
+        # UI can warn on a reachable-but-unverified tunnel instead of only after
+        # someone runs a query.
+        _, verified = _safe_tls_options()
         return DbConnectionInfo(
             target=spec.label,
             host=host,
@@ -81,6 +85,7 @@ class MysqlAdapter:
             user=_safe(spec.user, ""),
             reachable=reachable,
             detail="" if reachable else detail,
+            tls_verified=verified,
         )
 
     # --- introspection ---------------------------------------------------
@@ -327,3 +332,9 @@ def _safe(fn, default):
         return fn()
     except Exception:  # noqa: BLE001 - probing must never raise
         return default
+
+
+def _safe_tls_options():
+    """`tls_options` without the config errors. A probe never raises, so a bad
+    `RDS_CA_PATH` must not break the connection banner."""
+    return _safe(lambda: mysql_connection.tls_options(), ({}, False))

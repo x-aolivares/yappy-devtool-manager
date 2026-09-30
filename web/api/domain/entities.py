@@ -59,6 +59,10 @@ class DbConnectionInfo:
     user: str
     reachable: bool
     detail: str = ""
+    #: True when the server certificate was validated against the RDS CA bundle.
+    #: False means the channel is still encrypted, but a MITM on the network
+    #: path would go undetected. The UI warns; `yappy web ca` fixes it.
+    tls_verified: bool = True
 
 
 @dataclass(frozen=True)

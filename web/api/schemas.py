@@ -70,6 +70,7 @@ class ConnectionInfoDTO(BaseModel):
     user: str
     reachable: bool
     detail: str = ""
+    tls_verified: bool = True
 
 
 class LocalMysqlStatusDTO(BaseModel):

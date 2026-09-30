@@ -5,6 +5,7 @@ verifica aqui es la logica pura que hace que un DDL de Aurora sea aplicable en
 una maquina de desarrollo: es donde se rompen las migraciones.
 """
 import pytest
+from pathlib import Path
 
 from web.api.domain.entities import MigrateObject
 from web.api.domain.exceptions import DbConnectionError, SchemaNotFoundError
@@ -189,7 +190,7 @@ def test_cannot_connect_hints_at_the_tunnel_command(monkeypatch):
     monkeypatch.setattr(conn_mod, "Connection", boom)
     # Port looks open, so the failure surfaces from the driver, not the probe.
     monkeypatch.setattr(conn_mod, "tcp_probe", lambda *a, **kw: (True, ""))
-    monkeypatch.setattr(conn_mod, "resolve_ca_path", lambda: "/tmp/ca.pem")
+    monkeypatch.setattr(conn_mod, "resolve_ca_path", lambda cfg=None: "/tmp/ca.pem")
 
     with pytest.raises(DbConnectionError) as info:
         connect(spec)
@@ -227,7 +228,7 @@ def test_access_denied_points_at_iam_and_expiry(monkeypatch):
 
     monkeypatch.setattr(conn_mod, "Connection", boom)
     monkeypatch.setattr(conn_mod, "tcp_probe", lambda *a, **kw: (True, ""))
-    monkeypatch.setattr(conn_mod, "resolve_ca_path", lambda: "/tmp/ca.pem")
+    monkeypatch.setattr(conn_mod, "resolve_ca_path", lambda cfg=None: "/tmp/ca.pem")
 
     with pytest.raises(DbConnectionError) as info:
         connect(spec)
@@ -235,8 +236,8 @@ def test_access_denied_points_at_iam_and_expiry(monkeypatch):
     assert "IAM" in str(info.value) or "expired" in str(info.value)
 
 
-def test_environment_connection_passes_ca_and_disables_multi_statement(monkeypatch):
-    """Two guarantees in one place: TLS is on, stacked statements are off."""
+def test_environment_connection_verifies_cert_and_disables_multi_statement(monkeypatch):
+    """Two guarantees in one place: TLS is verified, stacked statements are off."""
     captured = {}
 
     class FakeConn:
@@ -244,7 +245,7 @@ def test_environment_connection_passes_ca_and_disables_multi_statement(monkeypat
             captured.update(kwargs)
 
     monkeypatch.setattr(conn_mod, "Connection", FakeConn)
-    monkeypatch.setattr(conn_mod, "resolve_ca_path", lambda: "/tmp/ca.pem")
+    monkeypatch.setattr(conn_mod, "resolve_ca_path", lambda cfg=None: "/tmp/ca.pem")
     # The port must look open, otherwise connect() short-circuits before TLS.
     monkeypatch.setattr(conn_mod, "tcp_probe", lambda *a, **kw: (True, ""))
 
@@ -252,25 +253,74 @@ def test_environment_connection_passes_ca_and_disables_multi_statement(monkeypat
 
     connect(spec)
 
-    assert captured["ssl_ca"] == "/tmp/ca.pem"
-    assert captured["ssl_verify_cert"] is True
+    # A dict, not the legacy ssl_ca/ssl_verify_cert pair: an empty dict is what
+    # leaves PyMySQL's `_ssl_required` False and lets it fall back to cleartext.
+    assert captured["ssl"] == {"ca": "/tmp/ca.pem", "check_hostname": False}
     assert captured["client_flag"] == 0, "multi-statement must stay disabled"
     assert captured["password"] == "tok"
 
 
-def test_missing_ca_is_a_domain_error_not_a_crash(monkeypatch):
+def test_without_a_ca_tls_is_still_required_just_unverified(monkeypatch):
+    """The whole point: no CA must degrade verification, never drop encryption.
+
+    The IAM token is the password. PyMySQL's no-options path sets
+    `_ssl_required = False` and silently continues in cleartext if the server
+    declines SSL, which would leak IAM access on the connection we are trying to
+    protect.
+    """
+    captured = {}
+
+    class FakeConn:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(conn_mod, "Connection", FakeConn)
+    monkeypatch.setattr(conn_mod, "resolve_ca_path", lambda cfg=None: None)
+    monkeypatch.setattr(conn_mod, "tcp_probe", lambda *a, **kw: (True, ""))
+
+    connect(make_env_spec())
+
+    ssl_kwargs = captured["ssl"]
+    # Non-empty, which is what flips connections.py:301 `_ssl_required = True`.
+    assert ssl_kwargs == {"verify_mode": "none"}
+
+
+def test_tls_options_reports_whether_the_cert_was_verifiable(monkeypatch):
+    monkeypatch.setattr(conn_mod, "resolve_ca_path", lambda cfg=None: "/tmp/ca.pem")
+    kwargs, verified = conn_mod.tls_options()
+    assert verified is True
+    assert kwargs["ssl"]["ca"] == "/tmp/ca.pem"
+
+    monkeypatch.setattr(conn_mod, "resolve_ca_path", lambda cfg=None: None)
+    kwargs, verified = conn_mod.tls_options()
+    assert verified is False, "the UI needs to know it cannot validate the server"
+    assert kwargs["ssl"] == {"verify_mode": "none"}
+
+
+def test_a_configured_but_missing_ca_path_is_still_an_error(monkeypatch):
+    """Silence here would hide a typo'd path and quietly downgrade TLS."""
     from web.api.domain.exceptions import ConfigKeyMissingError
 
-    monkeypatch.delenv("YAPPY_RDS_CA_PATH", raising=False)
+    with pytest.raises(ConfigKeyMissingError):
+        conn_mod.resolve_ca_path(FakeConfig({"RDS_CA_PATH": "/nonexistent/ca.pem"}))
+
+
+def test_missing_ca_is_not_an_error(monkeypatch):
+    """No CA anywhere degrades verification; it must not block the connection."""
     monkeypatch.setattr(conn_mod.Path, "home", staticmethod(lambda: _EmptyHome()))
 
-    with pytest.raises((ConfigKeyMissingError, DbConnectionError)):
-        conn_mod.resolve_ca_path(FakeConfig({}))
+    assert conn_mod.resolve_ca_path(FakeConfig({})) is None
 
 
 class _EmptyHome:
+    """Stands in for a home directory with no `.aws` certs in it.
+
+    Diverges to real `Path`s so `.exists()` behaves like production — the CA
+    search calls it on the way to deciding a bundle is absent.
+    """
+
     def __truediv__(self, other):
-        return self
+        return Path("/nonexistent-home") / other
 
     def __str__(self):
         return "/nonexistent-home"

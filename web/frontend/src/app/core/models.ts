@@ -59,6 +59,8 @@ export interface ConnectionInfo {
   user: string;
   reachable: boolean;
   detail: string;
+  /** Encrypted either way; false means the server cert could not be validated. */
+  tlsVerified?: boolean;
 }
 
 export interface LocalMysqlStatus {

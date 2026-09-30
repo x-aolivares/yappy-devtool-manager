@@ -44,4 +44,5 @@ def get_connection(env: str, c: Container = Depends(get_container)) -> Connectio
         user=info.user,
         reachable=info.reachable,
         detail=info.detail,
+        tls_verified=info.tls_verified,
     )

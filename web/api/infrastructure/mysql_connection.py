@@ -1,14 +1,24 @@
-"""Establishing MySQL connections: CA resolution, RDS IAM tokens, error mapping.
+"""Establishing MySQL connections: TLS setup, RDS IAM tokens, error mapping.
 
 Design constraints, all verified against the installed drivers:
 
 * **IAM auth.** RDS IAM users authenticate with the `mysql_clear_password` plugin.
   PyMySQL implements it inline in `_process_auth` (the auth-switch path), so a
   plain `pymysql.connect(password=<token>)` works against RDS — no plugin hack
-  needed. What PyMySQL does *not* do is verify TLS by default, hence the CA.
+  needed.
 * **TLS is mandatory.** Even through the SSM tunnel (which lands on 127.0.0.1),
   RDS sees the bastion's IP and requires encryption. The token is a password;
   sending it in the clear would leak IAM access.
+* **TLS must be REQUIRED, never PREFERRED.** PyMySQL's no-options path
+  (`connections.py:301`) sets `self._ssl_required = False` and falls back to
+  cleartext if the server declines SSL — which would leak the token on exactly
+  the connection we are trying to protect. So an ssl dict is always passed, even
+  when it carries no CA: a non-empty dict is what flips `_ssl_required = True`.
+* **The CA is optional, the encryption is not.** Without a CA bundle we still
+  encrypt, we just cannot verify the server's identity, so a MITM inside the VPC
+  could impersonate RDS. That is a real but narrow risk (it requires an attacker
+  already on the network path), and it is strictly better than the alternative:
+  refusing to connect at all. `yappy web ca` fetches the bundle to close it.
 * **`die()` isolation.** `library/db/tunnel.py::_generate_token` calls `die()` →
   `sys.exit()`. Calling it from a request handler would kill the uvicorn worker,
   so the token is generated here with botocore directly and failures are raised
@@ -39,27 +49,46 @@ TOKEN_TTL_SECONDS = 15 * 60
 #: Regenerate a bit early so a token never dies mid-query.
 TOKEN_REFRESH_MARGIN = 60
 
+#: Where `yappy web ca` puts the bundle.
+CA_FILENAME = "rds-combined-ca-bundle.pem"
+#: Official AWS download for the RDS root CAs (all regions in one file).
+CA_URL = "https://s3.amazonaws.com/rds-downloads/rds-combined-ca-bundle.pem"
 
-def resolve_ca_path(cfg: Config | None = None) -> str:
-    """Locate the RDS CA bundle. Raises if it can't be found.
 
-    Search order: explicit `RDS_CA_PATH` config, then `~/.aws/rds-ca-*.pem`.
+def ca_install_path() -> Path:
+    return Path.home() / ".aws" / CA_FILENAME
+
+
+def resolve_ca_path(cfg: Config | None = None) -> str | None:
+    """Locate the RDS CA bundle, or None if there isn't one.
+
+    Search order: explicit `RDS_CA_PATH` config, then the bundle installed by
+    `yappy web ca`, then any per-region `rds-ca-*.pem` dropped in `~/.aws`.
+
+    Returns None rather than raising: a missing CA degrades verification, it
+    does not break the connection. An explicit `RDS_CA_PATH` that points nowhere
+    *is* an error, because it means the config is wrong and silently falling back
+    would hide it.
+
+    `cfg=None` falls back to the base config rather than skipping the lookup.
+    The connect path calls this with no argument, and reading `RDS_CA_PATH` only
+    when a Config was injected would document a key that does nothing.
     """
-    explicit = cfg.get("RDS_CA_PATH") if cfg is not None else None
+    if cfg is None:
+        cfg = Config()
+
+    explicit = cfg.get("RDS_CA_PATH")
     if explicit:
         if not Path(explicit).exists():
             raise ConfigKeyMissingError("RDS_CA_PATH")
         return explicit
 
+    installed = ca_install_path()
+    if installed.exists():
+        return str(installed)
+
     candidates = sorted(glob.glob(str(Path.home() / ".aws" / "rds-ca-*.pem")))
-    if not candidates:
-        raise DbConnectionError(
-            "RDS CA bundle not found. Expected ~/.aws/rds-ca-rsa2048-g1.pem.\n"
-            "Download it from "
-            "https://trust.amazon.com/ or set RDS_CA_PATH in config/env.base. "
-            "TLS is required: without it the IAM token would be sent in clear."
-        )
-    return candidates[0]
+    return candidates[0] if candidates else None
 
 
 class RdsTokenProvider:
@@ -239,6 +268,34 @@ def tcp_probe(host: str, port: int, timeout: float = 2.0) -> tuple[bool, str]:
         return False, str(e)
 
 
+def tls_options(cfg: Config | None = None) -> tuple[dict, bool]:
+    """Build the PyMySQL kwargs for a **required** TLS session.
+
+    Returns ``(kwargs, verified)``. ``verified`` is False when the channel is
+    encrypted but the server's identity was not checked.
+
+    Why the dict is built by hand instead of using ``ssl_ca``/``ssl_verify_cert``:
+    both routes end at ``connections.py:301``, where ``if ssl:`` decides whether
+    TLS is mandatory. Pass nothing and PyMySQL takes the ``elif SSL_ENABLED:``
+    branch, which sets ``_ssl_required = False`` and **silently falls back to
+    cleartext** if the server declines SSL. On a connection whose password is an
+    RDS IAM token, that fallback is the exact leak we are guarding against, so
+    the dict is always non-empty — it is the flag, not the content.
+
+    ``check_hostname`` is always False. We connect to 127.0.0.1 (the SSM tunnel)
+    while the certificate belongs to the RDS endpoint, so a hostname check would
+    fail every time. Chain validation still happens via the CA.
+    """
+    ca = resolve_ca_path(cfg)
+    if ca:
+        return {"ssl": {"ca": ca, "check_hostname": False}}, True
+    # No CA: still REQUIRED TLS, but the chain cannot be validated. "none" is a
+    # non-empty dict, so `_ssl_required` stays True; `_create_ssl_ctx` maps it to
+    # CERT_NONE while keeping ssl.create_default_context's sane floor (TLS 1.2+,
+    # no legacy ciphers).
+    return {"ssl": {"verify_mode": "none"}}, False
+
+
 def connect(spec, connect_timeout: int = 10) -> Connection:
     """Open a MySQL connection, translating every failure into a domain error."""
     kwargs: dict = {
@@ -260,12 +317,11 @@ def connect(spec, connect_timeout: int = 10) -> Connection:
     if spec.requires_tls and spec.require_tls():
         # Probe before resolving the CA. A closed tunnel port is by far the most
         # common failure, and "run yappy run db <env> -d" is a far more useful
-        # message than "no CA bundle found" — which would otherwise mask it.
+        # message than anything about certificates — which would otherwise mask it.
         reachable, detail = tcp_probe(spec.host(), spec.port(), timeout=2.0)
         if not reachable:
             raise DbConnectionError(_closed_port_message(spec, detail))
-        kwargs["ssl_ca"] = resolve_ca_path()
-        kwargs["ssl_verify_cert"] = True
+        kwargs.update(tls_options()[0])
 
     try:
         return Connection(**kwargs)

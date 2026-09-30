@@ -3,6 +3,7 @@
 `yappy web`      -> levanta API + UI juntos (lo normal)
 `yappy web api`  -> solo backend
 `yappy web ui`   -> solo frontend
+`yappy web ca`   -> descarga el bundle de CA de RDS (verificación del server)
 
 La UI se lanza con `node node_modules/@angular/cli/bin/ng.js` en vez de `npx`
 o `npm start`: `npx`/`npm` son shims `.cmd` en Windows y su resolución a través
@@ -15,9 +16,11 @@ from __future__ import annotations
 import os
 import shutil
 import signal
+import ssl
 import subprocess
 import sys
 import time
+import urllib.request
 from pathlib import Path
 
 import typer
@@ -236,3 +239,45 @@ def web_ui(
     except KeyboardInterrupt:
         console.print()
         success("Web UI stopped")
+
+
+@web_app.command(name="ca")
+def web_ca():
+    """Download the RDS CA bundle so connections can verify the server cert.
+
+    RDS requires TLS for IAM auth (the token is the password), but the
+    certificate is not publicly verifiable — it chains to a private Amazon root.
+    Without the bundle the web still connects, encrypted but unverified; this
+    command is what upgrades it to full validation.
+    """
+    from web.api.infrastructure import mysql_connection as mc
+
+    target = mc.ca_install_path()
+    console.print(f"[dim]Downloading AWS RDS root CAs...[/dim]")
+    try:
+        with urllib.request.urlopen(mc.CA_URL, timeout=30) as resp:
+            data = resp.read()
+    except Exception as e:  # noqa: BLE001 - network failure, any source
+        die(f"Could not download the RDS CA bundle from {mc.CA_URL}: {e}")
+
+    # Trust anchor material: if this file were malformed, every subsequent
+    # connection would fail in a way that looks like a server fault. Parse it
+    # before writing it.
+    if not data or b"BEGIN CERTIFICATE" not in data:
+        die("The downloaded file does not look like a PEM bundle. Aborting.")
+    try:
+        # A bare context, NOT create_default_context(): that one also loads the
+        # system trust store, so the count below would include the OS's CAs and
+        # report a bundle we never downloaded.
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.load_verify_locations(cadata=data.decode())
+        count = len(ctx.get_ca_certs())
+    except (ssl.SSLError, ValueError, UnicodeDecodeError) as e:
+        die(f"The downloaded bundle is not valid PEM: {e}")
+    if count == 0:
+        die("The downloaded bundle parsed to zero certificates. Aborting.")
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    success(f"RDS CA bundle saved to {target} ({count} certificates)")
+    info("Environment connections will now verify the RDS certificate.")
