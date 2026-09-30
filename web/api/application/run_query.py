@@ -23,11 +23,21 @@ def run_query(
     known = [e.name for e in env_repo.list_environments()]
     if env not in known:
         raise EnvironmentNotFoundError(env, known)
-    require_schema(env_repo, db_repo, env, schema)
-    # The guard belongs here, not only in the adapter: it is a domain rule, and
-    # enforcing it at the port boundary means it holds for every adapter. The
-    # adapter keeps its own copy as defence in depth.
+
+    # Order matters, and it is not cosmetic.
+    #
+    # The guard belongs here rather than only in the adapter: it is a domain
+    # rule, so enforcing it at the port boundary makes it hold for every
+    # adapter. The adapter keeps its own copy as defence in depth.
+    #
+    # It also has to run *before* `require_schema`, because that validates
+    # against the live database. Checking the environment and the SQL first
+    # means a malformed request fails locally, without minting an IAM token or
+    # opening a connection — otherwise a DROP TABLE comes back as an AWS
+    # credentials error, which sends the user off to debug the wrong thing.
     assert_read_only(sql)
+
+    require_schema(env_repo, db_repo, env, schema)
     return db_repo.run_query(env, schema, sql)
 
 

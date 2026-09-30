@@ -11,7 +11,7 @@ from web.api.application.migrate_object import (
     migrate_ddl,
     preview_ddl,
 )
-from web.api.application.run_query import run_query
+from web.api.application.run_query import run_local_query, run_query
 from web.api.domain.entities import (
     Environment,
     MigrateObject,
@@ -253,3 +253,47 @@ def test_query_is_forwarded_to_the_repo():
 
     assert repo.queried == [("dev", "sales", "SELECT 1")]
     assert result.row_count == 1
+
+
+def test_unsafe_sql_is_rejected_without_touching_the_database():
+    """Ordering regression.
+
+    The guard used to run after the schema check, which reaches the database —
+    and minting the RDS IAM token. A DROP TABLE therefore came back as an AWS
+    credentials error, which points the user at the wrong problem entirely. A
+    bad request must fail locally, before any connection is attempted.
+    """
+    from web.api.domain.exceptions import AwsCredentialsError
+
+    class UnreachableDb:
+        def list_schemas(self, env):
+            raise AwsCredentialsError("could not mint an RDS token")
+
+        def list_objects(self, env, schema):
+            raise AssertionError("must not reach the database")
+
+        def run_query(self, env, schema, sql):
+            raise AssertionError("must not reach the database")
+
+    with pytest.raises(UnsafeQueryError) as info:
+        run_query(FakeEnvRepo(), UnreachableDb(), "dev", "sales", "DROP TABLE orders")
+
+    assert "not allowed" in str(info.value)
+
+
+def test_unsafe_sql_is_rejected_even_with_an_unknown_schema():
+    """The SQL check does not depend on the schema being valid, so a dangerous
+    statement is never worth a round trip."""
+    with pytest.raises(UnsafeQueryError):
+        run_query(FakeEnvRepo(), FakeDbRepo(), "dev", "ghost", "DELETE FROM orders")
+
+
+def test_unsafe_local_sql_is_rejected_without_touching_the_database():
+    from web.api.domain.exceptions import AwsCredentialsError
+
+    class UnreachableLocal:
+        def run_local_query(self, sql, schema=None):
+            raise AwsCredentialsError("local connection failed")
+
+    with pytest.raises(UnsafeQueryError):
+        run_local_query(UnreachableLocal(), "TRUNCATE orders")
