@@ -169,7 +169,21 @@ yappy stop web                        # Limpiar procesos web si la terminal muri
 
 `yappy web` levanta el backend FastAPI en `127.0.0.1:8300` y el dev server de
 Angular en `127.0.0.1:4300`, y baja ambos con un solo Ctrl+C. Los puertos salen
-del enum centralizado `web/api/ports_registry.py`, no están hardcodeados.
+del enum centralizado `web/api/ports_registry.py`, no están hardcodeados, y
+aceptan override sin tocar código:
+
+```bash
+YAPPY_WEB_API_PORT=8399 yappy web    # si el 8300 está tomado o reservado
+YAPPY_WEB_UI_PORT=4399  yappy web
+```
+
+Si un puerto no se puede abrir, `yappy web` lo dice antes de lanzar nada y da el
+comando que lo arregla. En Windows un puerto reservado por Hyper-V/WSL2/Docker
+falla con `WinError 10013`, que parece de permisos pero no lo es:
+
+```bash
+netsh interface ipv4 show excludedportrange protocol=tcp
+```
 
 El API está **bound a `127.0.0.1` únicamente y sin autenticación**: es una
 herramienta interna de desarrollo, no lo expongas en `0.0.0.0` sin agregar

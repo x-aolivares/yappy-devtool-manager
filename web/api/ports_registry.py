@@ -6,6 +6,7 @@ debe declararse aquí para evitar colisiones con lo que ya usa `library/` /
 """
 from __future__ import annotations
 
+import os
 from enum import IntEnum
 
 
@@ -26,3 +27,48 @@ class YappyPort(IntEnum):
     KAFKA_BROKER_LOCAL = 9092  # library/kafka: broker KRaft local
     DATABRICKS_DEV = 4433     # config/env.dev.DATABRICKS_PORT
     DATABRICKS_OTHER = 4434   # otros ambientes
+
+
+# --- overrides ------------------------------------------------------------
+#
+# Windows reserva rangos de puertos para Hyper-V / WSL2 / Docker / VPN, y un
+# bind() sobre un puerto reservado falla con WinError 10013 (WSAEACCES), que no
+# parece un problema de puertos. Para no editar código, cada puerto de la web
+# acepta un override por variable de entorno. El enum sigue siendo la fuente de
+# verdad: esto solo corre el valor default.
+
+#: Puerto overrideable de la API (default `YappyPort.WEB_API`).
+ENV_WEB_API_PORT = "YAPPY_WEB_API_PORT"
+#: Puerto overrideable de la UI (default `YappyPort.WEB_UI_DEV`).
+ENV_WEB_UI_PORT = "YAPPY_WEB_UI_PORT"
+
+
+def _override(var: str) -> int | None:
+    """Read a port override from the environment.
+
+    Raises ValueError on a set-but-unusable value: silently ignoring
+    `YAPPY_WEB_API_PORT=abc` would bind the default and leave the user staring
+    at a port they explicitly asked to change.
+    """
+    raw = os.environ.get(var, "").strip()
+    if not raw:
+        return None
+    try:
+        port = int(raw)
+    except ValueError:
+        raise ValueError(f"{var}='{raw}' is not a port number") from None
+    if not (1024 <= port <= 65535):
+        raise ValueError(f"{var}={port} is out of range (1024-65535)")
+    return port
+
+
+def web_api_port() -> int:
+    """Port for the FastAPI backend, honouring `YAPPY_WEB_API_PORT`."""
+    override = _override(ENV_WEB_API_PORT)
+    return override if override is not None else int(YappyPort.WEB_API)
+
+
+def web_ui_port() -> int:
+    """Port for the Angular dev server, honouring `YAPPY_WEB_UI_PORT`."""
+    override = _override(ENV_WEB_UI_PORT)
+    return override if override is not None else int(YappyPort.WEB_UI_DEV)

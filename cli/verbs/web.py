@@ -5,6 +5,17 @@
 `yappy web ui`   -> solo frontend
 `yappy web ca`   -> descarga el bundle de CA de RDS (verificación del server)
 
+Los puertos salen de `web/api/ports_registry.py` y se pueden mover por variable
+de entorno sin tocar código, por si el default está tomado o reservado:
+
+    YAPPY_WEB_API_PORT=8399 yappy web
+    YAPPY_WEB_UI_PORT=4399  yappy web
+
+Antes de spawnear se hace un bind de prueba. En Windows eso importa: un puerto
+reservado por Hyper-V/WSL2/Docker falla con `WinError 10013` (WSAEACCES), que
+parece un problema de permisos y no de puertos, y uvicorn no da ninguna pista de
+qué hacer al respecto.
+
 La UI se lanza con `node node_modules/@angular/cli/bin/ng.js` en vez de `npx`
 o `npm start`: `npx`/`npm` son shims `.cmd` en Windows y su resolución a través
 de subprocess es poco fiable, mientras que `ng.js` es un path determinista que
@@ -16,6 +27,7 @@ from __future__ import annotations
 import os
 import shutil
 import signal
+import socket
 import ssl
 import subprocess
 import sys
@@ -41,14 +53,81 @@ _NG_BIN = _FRONTEND_DIR / "node_modules" / "@angular" / "cli" / "bin" / "ng.js"
 # --- helpers -------------------------------------------------------------
 
 
-def _ports():
-    from web.api.ports_registry import YappyPort
+def _api_port() -> int:
+    """Port for the API, honouring the override. Dies on a bad override."""
+    from web.api.ports_registry import web_api_port
 
-    return YappyPort
+    try:
+        return web_api_port()
+    except ValueError as e:
+        die(str(e))
+
+
+def _ui_port() -> int:
+    from web.api.ports_registry import web_ui_port
+
+    try:
+        return web_ui_port()
+    except ValueError as e:
+        die(str(e))
+
+
+def check_port_free(port: int, label: str, override_var: str) -> None:
+    """Fail before spawning if the port can't be bound, with the real reason.
+
+    uvicorn's own failure is one line of errno with no fix, and the Windows
+    numbers actively mislead: a port reserved by Hyper-V/WSL2/Docker surfaces as
+    10013 WSAEACCES ("access denied"), which reads like a permissions problem
+    rather than a port collision.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        if sys.platform == "win32":
+            # Without this, a port held by another process can still look
+            # bindable while the server is actually listening.
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        sock.bind(("127.0.0.1", port))
+    except OSError as e:
+        die(_port_error(port, label, override_var, e))
+    finally:
+        sock.close()
+
+
+def _port_error(port: int, label: str, override_var: str, e: OSError) -> str:
+    """Translate a bind failure into the command that actually fixes it."""
+    # `winerror` only exists on Windows sockets; on other platforms the OSError
+    # has no such attribute and reading it would break the error handler.
+    code = getattr(e, "winerror", None) or e.errno
+    head = f"Cannot bind 127.0.0.1:{port} for {label} ({e})."
+
+    if sys.platform == "win32" and code == 10013:
+        return (
+            f"{head}\n"
+            f"On Windows this is almost never a permissions problem: the port is\n"
+            f"reserved by Hyper-V / WSL2 / Docker, or blocked by the firewall.\n"
+            f"See the reserved ranges with:\n"
+            f"  netsh interface ipv4 show excludedportrange protocol=tcp\n"
+            f"Easiest way out — pick a free port for this run:\n"
+            f"  {override_var}=<otro> yappy web"
+        )
+    if code in (10048, 98):  # WSAEADDRINUSE / EADDRINUSE
+        return (
+            f"{head}\n"
+            f"Another process is already listening on that port.\n"
+            f"  yappy stop web        # if it is a leftover of yours\n"
+            f"  netstat -ano | findstr :{port}\n"
+            f"Or move this one out of the way:\n"
+            f"  {override_var}=<otro> yappy web"
+        )
+    return (
+        f"{head}\n"
+        f"Or move this one out of the way:\n"
+        f"  {override_var}=<otro> yappy web"
+    )
 
 
 def _api_command(reload: bool) -> list[str]:
-    port = _ports().WEB_API
+    port = _api_port()
     cmd = [
         sys.executable, "-m", "uvicorn", "web.api.main:app",
         "--host", "127.0.0.1",
@@ -72,14 +151,14 @@ def _ui_command() -> list[str]:
             f"Angular CLI not installed at {_NG_BIN}.\n"
             f"Run 'cd {_FRONTEND_DIR} && npm install' first."
         )
-    port = _ports().WEB_UI_DEV
+    port = _ui_port()
 
-    # El proxy se genera acá, desde el enum de puertos, en vez de ser un JSON
+    # El proxy se genera acá, desde el puerto resuelto, en vez de ser un JSON
     # commiteado: un puerto hardcodeado en dos lugares se desincroniza y el
     # síntoma es un 404 en la UI sin explicación.
     from web.api import proxy_config
 
-    proxy_file = proxy_config.write(_FRONTEND_DIR, int(_ports().WEB_API))
+    proxy_file = proxy_config.write(_FRONTEND_DIR, _api_port())
 
     return [
         _node_executable(), str(_NG_BIN),
@@ -157,7 +236,6 @@ def web(
     if ctx.invoked_subcommand is not None:
         return
 
-    ports = _ports()
     if no_api and no_ui:
         die("Nothing to start: --no-api and --no-ui are mutually exclusive")
 
@@ -167,16 +245,22 @@ def web(
         warn("See docs/web-app-plan.md; run 'yappy web api' for the API on its own.")
 
     start_ui = not no_ui and frontend_ready
+    api_port, ui_port = _api_port(), _ui_port()
+    if not no_api:
+        check_port_free(api_port, "the API", "YAPPY_WEB_API_PORT")
+    if start_ui:
+        check_port_free(ui_port, "the UI", "YAPPY_WEB_UI_PORT")
+
     if not no_api and start_ui:
         info("")
-        info("  API  ->  http://127.0.0.1:%d" % ports.WEB_API)
-        info("  Docs ->  http://127.0.0.1:%d/docs" % ports.WEB_API)
-        info("  UI   ->  http://127.0.0.1:%d" % ports.WEB_UI_DEV)
+        info("  API  ->  http://127.0.0.1:%d" % api_port)
+        info("  Docs ->  http://127.0.0.1:%d/docs" % api_port)
+        info("  UI   ->  http://127.0.0.1:%d" % ui_port)
         info("")
     elif not no_api:
         info("")
-        info("  API  ->  http://127.0.0.1:%d" % ports.WEB_API)
-        info("  Docs ->  http://127.0.0.1:%d/docs" % ports.WEB_API)
+        info("  API  ->  http://127.0.0.1:%d" % api_port)
+        info("  Docs ->  http://127.0.0.1:%d/docs" % api_port)
         info("")
 
     procs: list[tuple[str, subprocess.Popen]] = []
@@ -208,7 +292,8 @@ def web_api(
     reload: bool = typer.Option(True, "--reload/--no-reload", help="Auto-reload on code changes"),
 ):
     """Start the FastAPI backend on 127.0.0.1 (localhost only, no auth)."""
-    port = _ports().WEB_API
+    port = _api_port()
+    check_port_free(port, "the API", "YAPPY_WEB_API_PORT")
     info(f"Starting Yappy Web API on http://127.0.0.1:{port} (localhost only)...")
     info(f"Docs at http://127.0.0.1:{port}/docs")
     try:
@@ -225,9 +310,10 @@ def web_ui(
     open_browser: bool = typer.Option(False, "--open", help="Open the browser on start"),
 ):
     """Start the Angular dev server on 127.0.0.1 (localhost only)."""
-    port = _ports().WEB_UI_DEV
+    port = _ui_port()
     if not _FRONTEND_DIR.exists():
         die(f"Frontend not scaffolded yet: {_FRONTEND_DIR} does not exist")
+    check_port_free(port, "the UI", "YAPPY_WEB_UI_PORT")
     info(f"Starting Yappy Web UI on http://127.0.0.1:{port}...")
     cmd = _ui_command()
     if open_browser:
