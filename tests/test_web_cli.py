@@ -61,7 +61,7 @@ def live():
 def test_web_uses_centralized_ports(monkeypatch, tmp_path):
     from web.api.ports_registry import YappyPort
 
-    cmd = web._api_command(reload=False)
+    cmd = web._api_command(int(YappyPort.WEB_API), reload=False)
     assert str(YappyPort.WEB_API) in cmd
     assert cmd[cmd.index("--host") + 1] == "127.0.0.1", "must never bind 0.0.0.0"
 
@@ -69,16 +69,17 @@ def test_web_uses_centralized_ports(monkeypatch, tmp_path):
     ng.write_text("//")
     monkeypatch.setattr(web, "_NG_BIN", ng)
     monkeypatch.setattr(web, "_node_executable", lambda: "node")
+    monkeypatch.setattr(web, "_FRONTEND_DIR", tmp_path)
 
-    ui = web._ui_command()
+    ui = web._ui_command(int(YappyPort.WEB_API), int(YappyPort.WEB_UI_DEV))
     assert str(YappyPort.WEB_UI_DEV) in ui
     assert ui[ui.index("--host") + 1] == "127.0.0.1"
     assert ui[1] == str(ng), "must invoke ng.js directly, not via npx/npm"
 
 
 def test_reload_flag_is_passed_through():
-    assert "--reload" in web._api_command(reload=True)
-    assert "--reload" not in web._api_command(reload=False)
+    assert "--reload" in web._api_command(8300, reload=True)
+    assert "--reload" not in web._api_command(8300, reload=False)
 
 
 # --- tracking isolation --------------------------------------------------
@@ -294,7 +295,7 @@ def test_ui_command_refuses_without_angular_installed(monkeypatch, tmp_path):
     monkeypatch.setattr(web, "_NG_BIN", tmp_path / "missing" / "ng.js")
 
     with pytest.raises(SystemExit):
-        web._ui_command()
+        web._ui_command(8300, 4300)
 
 
 def test_kill_tree_on_posix_kills_the_process_group(monkeypatch):

@@ -5,16 +5,23 @@
 `yappy web ui`   -> solo frontend
 `yappy web ca`   -> descarga el bundle de CA de RDS (verificación del server)
 
-Los puertos salen de `web/api/ports_registry.py` y se pueden mover por variable
-de entorno sin tocar código, por si el default está tomado o reservado:
+Los puertos salen de `web/api/ports_registry.py`. Si el que corresponde está
+tomado o reservado, `yappy web` **no falla**: busca el siguiente libre, lo usa y
+avisa cuál tomó y quién tenía el anterior. La variable de entorno no es un
+requisito — es de dónde arranca la búsqueda:
 
     YAPPY_WEB_API_PORT=8399 yappy web
     YAPPY_WEB_UI_PORT=4399  yappy web
 
+Los puertos de DB son lo contrario: están pinneados en `config/env.*` porque
+DBeaver se conecta a ellos explícitamente, así que moverlos sería un bug y no
+una comodidad. Por eso esta tolerancia vive acá y no en `ports_registry`.
+
 Antes de spawnear se hace un bind de prueba. En Windows eso importa: un puerto
 reservado por Hyper-V/WSL2/Docker falla con `WinError 10013` (WSAEACCES), que
 parece un problema de permisos y no de puertos, y uvicorn no da ninguna pista de
-qué hacer al respecto.
+qué hacer al respecto. Al buscar el siguiente libre, esos rangos reservados se
+saltan solos: el bind falla igual y el escaneo sigue.
 
 La UI se lanza con `node node_modules/@angular/cli/bin/ng.js` en vez de `npx`
 o `npm start`: `npx`/`npm` son shims `.cmd` en Windows y su resolución a través
@@ -40,6 +47,15 @@ import typer
 from library import process_tracker
 from library.logger import console, die, info, success, warn
 
+# `ports_registry` is stdlib-only, so the top-level import costs nothing and
+# keeps the env var names in one place instead of duplicated string literals.
+from web.api.ports_registry import (
+    ENV_WEB_API_PORT,
+    ENV_WEB_UI_PORT,
+    web_api_port,
+    web_ui_port,
+)
+
 web_app = typer.Typer(
     help="Run the web devtool (API + frontend)",
     invoke_without_command=True,
@@ -53,19 +69,21 @@ _NG_BIN = _FRONTEND_DIR / "node_modules" / "@angular" / "cli" / "bin" / "ng.js"
 # --- helpers -------------------------------------------------------------
 
 
-def _api_port() -> int:
-    """Port for the API, honouring the override. Dies on a bad override."""
-    from web.api.ports_registry import web_api_port
+def _preferred_api_port() -> int:
+    """API port to aim for (override or enum default).
 
+    "Preferred" and not "the port": `_resolve_port` may move it if it is taken.
+    Dies on a bad override — silently using the default would bind a port the
+    user explicitly asked to change.
+    """
     try:
         return web_api_port()
     except ValueError as e:
         die(str(e))
 
 
-def _ui_port() -> int:
-    from web.api.ports_registry import web_ui_port
-
+def _preferred_ui_port() -> int:
+    """UI port to aim for. See `_preferred_api_port`."""
     try:
         return web_ui_port()
     except ValueError as e:
@@ -139,14 +157,8 @@ def _tracked_web_pids() -> set[int]:
         return set()
 
 
-def check_port_free(port: int, label: str, override_var: str) -> None:
-    """Fail before spawning if the port can't be bound, with the real reason.
-
-    uvicorn's own failure is one line of errno with no fix, and the Windows
-    numbers actively mislead: a port reserved by Hyper-V/WSL2/Docker surfaces as
-    10013 WSAEACCES ("access denied"), which reads like a permissions problem
-    rather than a port collision.
-    """
+def _try_bind(port: int) -> OSError | None:
+    """Try to bind 127.0.0.1:`port`. Returns the OSError, or None on success."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         if sys.platform == "win32":
@@ -155,9 +167,67 @@ def check_port_free(port: int, label: str, override_var: str) -> None:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         sock.bind(("127.0.0.1", port))
     except OSError as e:
-        die(_port_error(port, label, override_var, e))
+        return e
     finally:
         sock.close()
+    return None
+
+
+def _port_is_free(port: int) -> bool:
+    """Whether 127.0.0.1:`port` can be bound right now. Never raises."""
+    return _try_bind(port) is None
+
+
+#: How many ports to try past the preferred one before giving up. A collision is
+#: normally a port or two away; scanning hundreds would only delay the error.
+_PORT_SCAN_LIMIT = 50
+
+
+def _find_free_port(start: int) -> int | None:
+    """First bindable port at or after `start`, or None if the scan runs out."""
+    last = min(start + _PORT_SCAN_LIMIT, 65535)
+    for port in range(max(start, 1), last + 1):
+        if _port_is_free(port):
+            return port
+    return None
+
+
+def _owner_phrase(port: int) -> str:
+    """Who holds the port, phrased to fit inside a sentence."""
+    owner = _describe_owner(port)
+    if owner is None:
+        return "held by another process"
+    pid, name, ours = owner
+    if ours:
+        return f"a leftover of yours: {name} (PID {pid}) — 'yappy stop web' cleans it up"
+    return f"held by {name} (PID {pid}), which is not a yappy process"
+
+
+def _resolve_port(preferred: int, label: str, override_var: str) -> int:
+    """The port to actually use: `preferred`, or the next free one.
+
+    `yappy web` must not be blocked by whatever sits on the port — the classic
+    case being the child of a dead `uvicorn --reload`, which keeps the listening
+    socket after its parent is gone. That leniency lives here and only here: DB
+    ports stay pinned to `config/env.*` because DBeaver connects to them
+    explicitly, so moving one behind the user's back would be a bug.
+
+    A collision is never silent — the owner is named, so it is obvious whether
+    it is a leftover of yours or something foreign.
+    """
+    error = _try_bind(preferred)
+    if error is None:
+        return preferred
+
+    chosen = _find_free_port(preferred + 1)
+    if chosen is None:
+        # Nothing nearby either: this is a real failure, so report why the
+        # preferred port could not be taken (10013 and 10048 need different fixes).
+        die(_port_error(preferred, label, override_var, error))
+
+    warn(f"Port {preferred} for {label} is taken — {_owner_phrase(preferred)}.")
+    warn(f"Using {chosen} instead.")
+    return chosen
 
 
 def _port_error(port: int, label: str, override_var: str, e: OSError) -> str:
@@ -167,7 +237,7 @@ def _port_error(port: int, label: str, override_var: str, e: OSError) -> str:
     code = getattr(e, "winerror", None) or e.errno
     head = f"Cannot bind 127.0.0.1:{port} for {label} ({e})."
     escape = (
-        f"Or move this one out of the way:\n"
+        f"Or start the port search somewhere else:\n"
         f"  {override_var}=<otro> yappy web"
     )
 
@@ -220,8 +290,12 @@ def _describe_owner(port: int) -> tuple[int, str, bool] | None:
     return pid, _process_name(pid), pid in _tracked_web_pids()
 
 
-def _api_command(reload: bool) -> list[str]:
-    port = _api_port()
+def _api_command(port: int, reload: bool) -> list[str]:
+    """The uvicorn command for an already-resolved port.
+
+    The port is a parameter, not read from the env here, so that the value
+    uvicorn binds and the value the UI proxy points at can never drift apart.
+    """
     cmd = [
         sys.executable, "-m", "uvicorn", "web.api.main:app",
         "--host", "127.0.0.1",
@@ -239,26 +313,26 @@ def _node_executable() -> str:
     return node
 
 
-def _ui_command() -> list[str]:
+def _ui_command(api_port: int, ui_port: int) -> list[str]:
+    """The `ng serve` command. Both ports arrive already resolved."""
     if not _NG_BIN.exists():
         die(
             f"Angular CLI not installed at {_NG_BIN}.\n"
             f"Run 'cd {_FRONTEND_DIR} && npm install' first."
         )
-    port = _ui_port()
 
     # El proxy se genera acá, desde el puerto resuelto, en vez de ser un JSON
     # commiteado: un puerto hardcodeado en dos lugares se desincroniza y el
     # síntoma es un 404 en la UI sin explicación.
     from web.api import proxy_config
 
-    proxy_file = proxy_config.write(_FRONTEND_DIR, _api_port())
+    proxy_file = proxy_config.write(_FRONTEND_DIR, api_port)
 
     return [
         _node_executable(), str(_NG_BIN),
         "serve",
         "--host", "127.0.0.1",
-        "--port", str(port),
+        "--port", str(ui_port),
         "--proxy-config", str(proxy_file),
     ]
 
@@ -339,11 +413,20 @@ def web(
         warn("See docs/web-app-plan.md; run 'yappy web api' for the API on its own.")
 
     start_ui = not no_ui and frontend_ready
-    api_port, ui_port = _api_port(), _ui_port()
-    if not no_api:
-        check_port_free(api_port, "the API", "YAPPY_WEB_API_PORT")
-    if start_ui:
-        check_port_free(ui_port, "the UI", "YAPPY_WEB_UI_PORT")
+
+    # La API se resuelve siempre, incluso con --no-api: el proxy de la UI tiene
+    # que apuntarle, y si la API no la levanta este comando es porque el usuario
+    # la corre aparte (`yappy web api`) apuntando al puerto preferido.
+    api_port = (
+        _resolve_port(_preferred_api_port(), "the API", ENV_WEB_API_PORT)
+        if not no_api
+        else _preferred_api_port()
+    )
+    ui_port = (
+        _resolve_port(_preferred_ui_port(), "the UI", ENV_WEB_UI_PORT)
+        if start_ui
+        else _preferred_ui_port()
+    )
 
     if not no_api and start_ui:
         info("")
@@ -360,9 +443,9 @@ def web(
     procs: list[tuple[str, subprocess.Popen]] = []
     try:
         if not no_api:
-            procs.append(("API", _spawn(_api_command(reload), "API")))
+            procs.append(("API", _spawn(_api_command(api_port, reload), "API")))
         if start_ui:
-            procs.append(("UI", _spawn(_ui_command(), "UI", cwd=_FRONTEND_DIR)))
+            procs.append(("UI", _spawn(_ui_command(api_port, ui_port), "UI", cwd=_FRONTEND_DIR)))
         if not procs:
             die("Nothing to start")
 
@@ -386,12 +469,11 @@ def web_api(
     reload: bool = typer.Option(True, "--reload/--no-reload", help="Auto-reload on code changes"),
 ):
     """Start the FastAPI backend on 127.0.0.1 (localhost only, no auth)."""
-    port = _api_port()
-    check_port_free(port, "the API", "YAPPY_WEB_API_PORT")
+    port = _resolve_port(_preferred_api_port(), "the API", ENV_WEB_API_PORT)
     info(f"Starting Yappy Web API on http://127.0.0.1:{port} (localhost only)...")
     info(f"Docs at http://127.0.0.1:{port}/docs")
     try:
-        subprocess.run(_api_command(reload), check=False)
+        subprocess.run(_api_command(port, reload), check=False)
     except FileNotFoundError:
         die("uvicorn not found. Install with: pip install -r docs/requirements-web.txt")
     except KeyboardInterrupt:
@@ -404,12 +486,11 @@ def web_ui(
     open_browser: bool = typer.Option(False, "--open", help="Open the browser on start"),
 ):
     """Start the Angular dev server on 127.0.0.1 (localhost only)."""
-    port = _ui_port()
     if not _FRONTEND_DIR.exists():
         die(f"Frontend not scaffolded yet: {_FRONTEND_DIR} does not exist")
-    check_port_free(port, "the UI", "YAPPY_WEB_UI_PORT")
-    info(f"Starting Yappy Web UI on http://127.0.0.1:{port}...")
-    cmd = _ui_command()
+    ui_port = _resolve_port(_preferred_ui_port(), "the UI", ENV_WEB_UI_PORT)
+    info(f"Starting Yappy Web UI on http://127.0.0.1:{ui_port}...")
+    cmd = _ui_command(_preferred_api_port(), ui_port)
     if open_browser:
         cmd.append("--open")
     try:

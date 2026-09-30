@@ -5,6 +5,7 @@ Hyper-V/WSL2/Docker fails with 10013 WSAEACCES, which reads like a permissions
 problem and sends people looking at the wrong thing.
 """
 import os
+import socket
 import sys
 
 import pytest
@@ -44,20 +45,21 @@ def test_unusable_override_raises_instead_of_silently_using_the_default(monkeypa
         web_api_port()
 
 
-def test_the_api_cli_command_uses_the_resolved_port(monkeypatch):
+def test_the_api_command_uses_the_port_it_is_given():
+    """The port is a parameter, not re-read from the env: that is what keeps the
+    port uvicorn binds and the port the UI proxy points at the same one."""
     from cli.verbs.web import _api_command
 
-    monkeypatch.setenv(ENV_WEB_API_PORT, "8399")
-    cmd = _api_command(reload=False)
+    cmd = _api_command(8399, reload=False)
     assert cmd[cmd.index("--port") + 1] == "8399"
+    assert "--reload" not in cmd
 
 
-def test_the_generated_proxy_follows_the_api_override(monkeypatch, tmp_path):
-    """The proxy is generated, not committed. If it used the enum while uvicorn
-    used the override, the UI would 404 with no explanation."""
+def test_the_generated_proxy_follows_the_resolved_api_port(monkeypatch, tmp_path):
+    """The proxy is generated, not committed. If it pointed at one port while
+    uvicorn bound another, the UI would 404 with no explanation."""
     from cli.verbs import web as web_verb
 
-    monkeypatch.setenv(ENV_WEB_API_PORT, "8399")
     monkeypatch.setattr(web_verb, "_FRONTEND_DIR", tmp_path)
     monkeypatch.setattr(web_verb, "_node_executable", lambda: "node")
     written = {}
@@ -72,33 +74,107 @@ def test_the_generated_proxy_follows_the_api_override(monkeypatch, tmp_path):
         lambda frontend, port: written.setdefault("port", port) or tmp_path / "p.json",
     )
 
-    web_verb._ui_command()
+    web_verb._ui_command(8399, 4300)
     assert written["port"] == 8399
 
 
-# --- preflight ------------------------------------------------------------
+# --- dynamic port selection -----------------------------------------------
+#
+# `yappy web` takes a free port instead of dying. The classic collision is the
+# child of a dead `uvicorn --reload`, which keeps the listening socket after its
+# parent is gone — being unable to start because of a process you cannot see is
+# worse than starting on another port. DB ports are the opposite case (pinned in
+# `config/env.*` for DBeaver), so this leniency is confined to the web verb.
 
 
-def test_free_port_passes(monkeypatch):
-    from cli.verbs.web import check_port_free
-
-    check_port_free(0, "the API", ENV_WEB_API_PORT)  # port 0 = ask the OS
-
-
-def test_busy_port_dies_with_the_command_to_find_the_owner(monkeypatch):
-    import socket as socket_mod
-
-    from cli.verbs import web as web_verb
-
-    held = socket_mod.socket()
+def _hold_port() -> tuple[socket.socket, int]:
+    """A socket LISTENING on some free port, to make that port busy."""
+    held = socket.socket()
     held.bind(("127.0.0.1", 0))
     held.listen(1)
-    port = held.getsockname()[1]
+    return held, held.getsockname()[1]
+
+
+def test_a_free_port_is_used_as_is():
+    from cli.verbs import web as web_verb
+
+    free = web_verb._find_free_port(int(YappyPort.WEB_API))
+    assert free is not None
+    assert web_verb._resolve_port(free, "the API", ENV_WEB_API_PORT) == free
+
+
+def test_a_busy_port_is_stepped_over_instead_of_failing():
+    from cli.verbs import web as web_verb
+
+    held, port = _hold_port()
     try:
-        with pytest.raises(SystemExit):
-            web_verb.check_port_free(port, "the API", ENV_WEB_API_PORT)
+        chosen = web_verb._resolve_port(port, "the API", ENV_WEB_API_PORT)
     finally:
         held.close()
+
+    assert chosen != port
+    assert web_verb._port_is_free(chosen), "the chosen port has to be bindable"
+
+
+def test_the_move_is_announced_with_who_held_the_port(monkeypatch):
+    """Silently starting elsewhere would leave the user staring at a port they
+    did not ask for, or missing that an old instance of theirs is still up."""
+    from cli.verbs import web as web_verb
+
+    held, port = _hold_port()
+    said: list[str] = []
+    monkeypatch.setattr(web_verb, "warn", lambda msg: said.append(str(msg)))
+    monkeypatch.setattr(web_verb, "_describe_owner", lambda p: (22852, "python.exe", True))
+    try:
+        chosen = web_verb._resolve_port(port, "the API", ENV_WEB_API_PORT)
+    finally:
+        held.close()
+
+    joined = " ".join(said)
+    assert str(port) in joined and str(chosen) in joined
+    assert "python.exe" in joined and "22852" in joined
+    assert "yappy stop web" in joined
+
+
+def test_the_override_is_a_starting_point_not_a_dead_end(monkeypatch):
+    """`YAPPY_WEB_API_PORT` says where to look. Pinning it is the escape hatch
+    from a busy default, so failing there would defeat its own purpose."""
+    from cli.verbs import web as web_verb
+
+    busy = OSError("address already in use")
+    busy.errno = 10048
+    monkeypatch.setattr(web_verb, "_try_bind", lambda port: busy if port == 8399 else None)
+    monkeypatch.setattr(web_verb, "warn", lambda msg: None)
+
+    assert web_verb._resolve_port(8399, "the API", ENV_WEB_API_PORT) == 8400
+
+
+def test_the_scan_finds_the_first_free_port(monkeypatch):
+    from cli.verbs import web as web_verb
+
+    monkeypatch.setattr(web_verb, "_port_is_free", lambda port: port == 8302)
+    assert web_verb._find_free_port(8301) == 8302
+
+
+def test_the_scan_is_bounded(monkeypatch):
+    """If everything nearby is taken it has to give up, not scan to 65535."""
+    from cli.verbs import web as web_verb
+
+    monkeypatch.setattr(web_verb, "_port_is_free", lambda port: False)
+    assert web_verb._find_free_port(8301) is None
+
+
+def test_nothing_free_in_range_dies_with_the_real_reason(monkeypatch):
+    from cli.verbs import web as web_verb
+
+    err = OSError("address already in use")
+    err.errno = 10048
+    monkeypatch.setattr(web_verb, "_try_bind", lambda port: err)
+    monkeypatch.setattr(web_verb, "_port_is_free", lambda port: False)
+    monkeypatch.setattr(web_verb, "_describe_owner", lambda port: None)
+
+    with pytest.raises(SystemExit):
+        web_verb._resolve_port(8300, "the API", ENV_WEB_API_PORT)
 
 
 def test_windows_10013_is_explained_as_a_reserved_range(monkeypatch):

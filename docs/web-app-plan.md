@@ -319,6 +319,14 @@ styles/
   JSON. Un puerto escrito en dos lugares se desincroniza en el primer cambio, y
   el síntoma es un 404 en la UI sin explicación. Sin proxy (`npm start` a pelo)
   la UI funciona igual vía CORS, que acepta `localhost` y `127.0.0.1`.
+- **El puerto del web es dinámico; el de DB es estricto.** Si 8300/4300 está
+  tomado, `yappy web` busca el siguiente libre, lo usa y avisa cuál tomó y quién
+  tenía el anterior — el caso típico es el hijo de un `uvicorn --reload` muerto,
+  que deja el socket abierto. `YAPPY_WEB_API_PORT`/`YAPPY_WEB_UI_PORT` pasan a ser
+  de dónde arranca esa búsqueda, no un requisito. Los puertos de DB siguen
+  pinneados en `config/env.*` porque DBeaver se conecta a ellos explícitamente:
+  moverlos sería un bug y no una comodidad, así que la tolerancia vive en
+  `cli/verbs/web.py` y no en `ports_registry`.
 
 ## Frontend
 
