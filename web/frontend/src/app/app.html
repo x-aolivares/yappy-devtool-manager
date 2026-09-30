@@ -1,0 +1,102 @@
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">Y</span>
+      <div>
+        <div class="brand-name">Yappy Devtool</div>
+        <div class="brand-sub">localhost</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      @for (item of nav; track item.path) {
+        <a
+          class="nav-item"
+          [routerLink]="item.path"
+          routerLinkActive="active"
+          [routerLinkActiveOptions]="{ exact: item.path === '/' }"
+        >
+          <span class="nav-icon" aria-hidden="true">{{ item.icon }}</span>
+          <span class="nav-text">
+            <span class="nav-label">{{ item.label }}</span>
+            <span class="nav-hint">{{ item.hint }}</span>
+          </span>
+        </a>
+      }
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="foot-row">
+        <span class="foot-label">Tema</span>
+        <button
+          class="btn btn-sm"
+          type="button"
+          (click)="toggleTheme()"
+          [attr.aria-label]="'Cambiar a tema ' + (theme() === 'dark' ? 'claro' : 'oscuro')"
+        >
+          {{ theme() === 'dark' ? '☀ Claro' : '☾ Oscuro' }}
+        </button>
+      </div>
+      <p class="foot-note">
+        Herramienta interna. Se bindea solo a 127.0.0.1 y no tiene autenticación:
+        no la expongas fuera de tu máquina.
+      </p>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="env-picker">
+        <label class="env-label" for="env-select">Ambiente</label>
+        @if (loadingEnvs()) {
+          <span class="spinner" aria-label="Cargando ambientes"></span>
+        } @else if (envs().length === 0) {
+          <span class="env-empty">Sin ambientes</span>
+        } @else {
+          <select
+            id="env-select"
+            class="select env-select"
+            [value]="selected()"
+            (change)="selectEnv($event)"
+          >
+            @for (env of envs(); track env.name) {
+              <option [value]="env.name">{{ env.name }}</option>
+            }
+          </select>
+        }
+      </div>
+
+      <div class="spacer"></div>
+      <span class="topbar-status">{{ statusLine() }}</span>
+    </header>
+
+    <main class="content">
+      @if (envError()) {
+        <div class="alert alert-error" role="alert">
+          <div>
+            <strong>No se pudieron cargar los ambientes</strong>
+            <div style="margin-top: 4px">{{ envError() }}</div>
+            <div class="hint" style="margin-top: 6px">
+              Verificá que la API esté corriendo (<code>yappy web api</code>) y que
+              existan archivos <code>config/env.*</code>.
+            </div>
+          </div>
+        </div>
+      } @else if (noEnvs()) {
+        <div class="alert alert-warning">
+          <div>
+            <strong>No hay ambientes configurados</strong>
+            <div style="margin-top: 4px">
+              Los ambientes se leen de <code>config/env.&lt;nombre&gt;</code>. El
+              repositorio solo versiona los <code>.example</code>, así que en un
+              clone nuevo hay que crear el tuyo:
+            </div>
+            <pre>cp config/env.environment.example config/env.dev</pre>
+          </div>
+        </div>
+      }
+
+      <router-outlet />
+    </main>
+  </div>
+</div>

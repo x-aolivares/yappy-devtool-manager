@@ -30,3 +30,9 @@ backups/
 
 # uv lockfile (no se usa uv en este repo)
 uv.lock
+
+# --- Angular frontend (web/frontend) ---
+# node_modules, dist, .angular y el resto lo cubre web/frontend/.gitignore
+# (que es donde Angular espera que estén). Acá solo lo que ese archivo no sabe:
+# el proxy config se genera desde YappyPort en cada `yappy web`.
+web/frontend/.proxy.generated.json

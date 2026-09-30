@@ -159,6 +159,7 @@ yappy py-purge                       # Limpiar cache pip
 
 ```bash
 pip install -r docs/requirements-web.txt
+cd web/frontend && npm install && cd ../..   # una sola vez
 
 yappy web                             # API + UI juntos (lo normal)
 yappy web api                         # Solo el backend
@@ -174,6 +175,35 @@ El API está **bound a `127.0.0.1` únicamente y sin autenticación**: es una
 herramienta interna de desarrollo, no lo expongas en `0.0.0.0` sin agregar
 autenticación primero.
 
+La UI tiene cuatro secciones:
+
+- **Parámetros** — busca en `config/env.*` y resuelve un valor contra Secrets
+  Manager. El valor crudo del parámetro *es* el nombre del secreto: no hay
+  prefijos, ni búsqueda, ni listing.
+- **Bases de datos** — lista schemas y objetos (tablas, vistas, SPs, funciones,
+  triggers) y migra el DDL de un ambiente a tu MySQL local. Solo estructura; la
+  migración de datos todavía no está.
+- **Consultas SQL** — solo lectura: `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN` y
+  `WITH`, una sentencia por vez. El driver además va sin multi-statement, así
+  que apilar dos consultas no es una vía para esquivarlo.
+- **Inicio** — diagnóstico: si el túnel de BD está abierto, si tu MySQL local
+  responde, y qué config falta cuando algo no va.
+
+**El túnel de base de datos lo levanta la CLI, no la web.** Antes de explorar o
+consultar un ambiente:
+
+```bash
+yappy run db dev -d      # en otra terminal
+```
+
+La web solo se conecta a `127.0.0.1:$DB_PORT`. Si el puerto está cerrado lo dice
+con el comando exacto, en vez de un error de conexión.
+
+Para migrar a MySQL local definí en `config/env.base` las credenciales
+(`LOCAL_DB_USER` / `LOCAL_DB_PASSWORD`) y, si querés que la web arranque el
+servidor por vos, `LOCAL_MYSQL_START_CMD`. Sin ese comando el backend no adivina
+un nombre de servicio: dice qué clave configurar.
+
 Endpoints disponibles:
 
 ```bash
@@ -186,7 +216,32 @@ curl http://127.0.0.1:8300/parameters/dev
 curl -X POST http://127.0.0.1:8300/parameters/dev/resolve \
   -H 'Content-Type: application/json' \
   -d '{"key":"DB_SECRET"}'
+
+# Explorador de bases
+curl http://127.0.0.1:8300/databases/dev/schemas
+curl http://127.0.0.1:8300/databases/dev/schemas/sales/objects
+curl http://127.0.0.1:8300/databases/dev/connection   # ¿túnel abierto?
+
+# Migración: preview primero, después apply
+curl -X POST http://127.0.0.1:8300/databases/dev/migrate/preview \
+  -H 'Content-Type: application/json' \
+  -d '{"schema":"sales","tables":["orders"]}'
+curl -X POST http://127.0.0.1:8300/databases/dev/migrate \
+  -H 'Content-Type: application/json' \
+  -d '{"schema":"sales","tables":["orders"]}'
+
+# Consulta de solo lectura
+curl -X POST http://127.0.0.1:8300/query/dev \
+  -H 'Content-Type: application/json' \
+  -d '{"sql":"SELECT COUNT(*) FROM orders","schema":"sales"}'
+
+# MySQL local
+curl http://127.0.0.1:8300/local-mysql
 ```
+
+Conectar a RDS requiere el CA bundle en `~/.aws/rds-ca-*.pem` o `RDS_CA_PATH` en
+`config/env.<ambiente>`. No es opcional: el token de IAM *es* una contraseña, y
+mandarlo sin cifrar filtraría acceso a IAM.
 
 Los ambientes salen de `config/env.*` (los `.example` se ignoran). Si la lista
 viene vacía, creá `config/env.<ambiente>` copiando `config/env.environment.example`.

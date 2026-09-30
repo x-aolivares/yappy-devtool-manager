@@ -1,0 +1,98 @@
+.page-head {
+  margin-bottom: 20px;
+}
+
+.page-sub {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  max-width: 80ch;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1000px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.search {
+  flex: 1;
+  min-width: 140px;
+}
+
+/* --- tabla --------------------------------------------------------------- */
+
+.pickable {
+  cursor: pointer;
+}
+
+.pickable.picked {
+  background: var(--accent-subtle);
+}
+
+.pickable.picked td {
+  border-bottom-color: var(--accent);
+}
+
+.key-cell {
+  white-space: nowrap;
+  font-weight: 600;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.value-cell {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+/* --- detalle ------------------------------------------------------------- */
+
+.detail-card {
+  position: sticky;
+  top: 76px;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.kv dt {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.kv dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.break {
+  word-break: break-all;
+}
+
+.code-block {
+  margin: 0;
+  padding: 12px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-height: 340px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

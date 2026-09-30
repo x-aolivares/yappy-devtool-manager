@@ -1,0 +1,262 @@
+<div class="page">
+  <div class="page-head">
+    <h1>Bases de datos</h1>
+    <p class="page-sub">
+      Explorá los schemas de <strong>{{ env() }}</strong> y migrá el DDL a tu MySQL
+      local. Solo se migra estructura: los datos todavía no.
+    </p>
+  </div>
+
+  <app-alert
+    [message]="schemasError()?.message ?? null"
+    [code]="schemasError()?.code ?? ''"
+    [detail]="schemasError()?.detail ?? null"
+    title="No se pudieron listar los schemas"
+  />
+
+  <section class="card">
+    <div class="card-header">
+      <div class="row" style="flex: 1">
+        <div class="field" style="margin: 0; min-width: 220px">
+          <label class="label" for="schema-select">Schema</label>
+          @if (loadingSchemas()) {
+            <span class="spinner"></span>
+          } @else {
+            <select
+              id="schema-select"
+              class="select"
+              [value]="schema()"
+              (change)="onSchemaChange($event)"
+            >
+              @if (schemas().length === 0) {
+                <option value="">(sin schemas)</option>
+              }
+              @for (s of schemas(); track s.name) {
+                <option [value]="s.name">{{ s.name }}</option>
+              }
+            </select>
+          }
+        </div>
+
+        <div class="field" style="margin: 0; min-width: 180px">
+          <label class="label" for="target-schema">
+            Schema destino en local
+          </label>
+          <input
+            id="target-schema"
+            class="input mono"
+            type="text"
+            [placeholder]="effectiveTarget()"
+            [value]="targetSchema()"
+            (input)="onTargetChange($event)"
+          />
+        </div>
+
+        <div class="spacer"></div>
+        <button
+          class="btn btn-sm"
+          type="button"
+          (click)="loadSchemas()"
+          [disabled]="loadingSchemas() || !hasEnv()"
+        >
+          Recargar schemas
+        </button>
+      </div>
+    </div>
+
+    <div class="card-body tight">
+      <app-alert
+        [message]="objectsError()?.message ?? null"
+        [code]="objectsError()?.code ?? ''"
+        [detail]="objectsError()?.detail ?? null"
+        title="No se pudieron listar los objetos"
+      />
+
+      @if (!hasEnv()) {
+        <div class="empty">Elegí un ambiente.</div>
+      } @else if (!schema()) {
+        <div class="empty">Elegí un schema para ver sus objetos.</div>
+      } @else if (loadingObjects()) {
+        <div class="empty">Cargando objetos…</div>
+      } @else if (objects().length === 0) {
+        <div class="empty">Este schema no tiene objetos.</div>
+      } @else {
+        <div class="toolbar">
+          <select
+            class="select kind-filter"
+            aria-label="Filtrar por tipo"
+            [value]="kindFilter()"
+            (change)="setKindFilter($event)"
+          >
+            <option value="">Todos los tipos ({{ objects().length }})</option>
+            @for (k of kinds; track k) {
+              @if (counts().get(k)) {
+                <option [value]="k">
+                  {{ kindLabels[k] }} ({{ counts().get(k) }})
+                </option>
+              }
+            }
+          </select>
+          <button class="btn btn-sm" type="button" (click)="selectAllVisible()">
+            Seleccionar visibles
+          </button>
+          <button class="btn btn-sm" type="button" (click)="clearSelection()">
+            Limpiar
+          </button>
+          <div class="spacer"></div>
+          <span class="badge badge-accent">
+            {{ selectionCount() }} seleccionados
+          </span>
+        </div>
+
+        @for (group of grouped(); track group.kind) {
+          <div class="group">
+            <h3 class="group-title">
+              {{ kindLabels[group.kind] }}
+              <span class="badge badge-neutral">{{ group.items.length }}</span>
+            </h3>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th style="width: 34px"></th>
+                  <th>Nombre</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (o of group.items; track o.kind + ':' + o.name) {
+                  <tr class="pickable" (click)="toggle(o)">
+                    <td>
+                      <input
+                        type="checkbox"
+                        [checked]="isSelected(o)"
+                        (click)="$event.stopPropagation()"
+                        (change)="toggle(o)"
+                        [attr.aria-label]="'Seleccionar ' + o.name"
+                      />
+                    </td>
+                    <td class="mono">{{ o.name }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      }
+    </div>
+  </section>
+
+  @if (schema()) {
+    <section class="card" style="margin-top: 16px">
+      <div class="card-header">
+        <h2>Migrar a <span class="mono">{{ effectiveTarget() }}</span></h2>
+        <div class="row">
+          <button
+            class="btn"
+            type="button"
+            (click)="runPreview()"
+            [disabled]="selectionCount() === 0 || previewing()"
+          >
+            @if (previewing()) {
+              <span class="spinner"></span>
+            } @else {
+              Previsualizar DDL
+            }
+          </button>
+          <button
+            class="btn btn-primary"
+            type="button"
+            (click)="runMigrate()"
+            [disabled]="selectionCount() === 0 || migrating()"
+          >
+            @if (migrating()) {
+              <span class="spinner"></span>
+            } @else {
+              Aplicar ({{ selectionCount() }})
+            }
+          </button>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <app-alert
+          [message]="previewError()?.message ?? null"
+          [code]="previewError()?.code ?? ''"
+          [detail]="previewError()?.detail ?? null"
+          title="No se pudo generar el DDL"
+        />
+        <app-alert
+          [message]="migrateError()?.message ?? null"
+          [code]="migrateError()?.code ?? ''"
+          [detail]="migrateError()?.detail ?? null"
+          title="La migración falló"
+        />
+
+        @if (result(); as res) {
+          <div
+            class="alert"
+            [class.alert-success]="res.statements_failed === 0"
+            [class.alert-warning]="res.statements_failed > 0"
+          >
+            <div>
+              <strong>
+                {{ res.statements_executed }} aplicado(s) en
+                <span class="mono">{{ res.target_schema }}</span>
+              </strong>
+              @if (res.statements_failed > 0) {
+                <div style="margin-top: 4px">
+                  {{ res.statements_failed }} fallaron. Un objeto que falla no
+                  corta el resto del lote.
+                </div>
+                <pre>@for (f of res.failures; track f[0]) {
+{{ f[0] }}: {{ f[1] }}
+}</pre>
+              }
+            </div>
+          </div>
+        } @else if (selectionCount() === 0) {
+          <p class="hint">
+            Elegí al menos un objeto arriba. El destino por defecto es
+            <code>&lt;ambiente&gt;_&lt;schema&gt;</code> para que dev y qa no
+            colisionen en la misma base local; podés overridearlo a la izquierda.
+          </p>
+        } @else if (preview().length > 0) {
+          <div class="alert alert-info">
+            <div>
+              <strong
+                >DDL a aplicar — revisalo antes de ejecutar. Aurora y tu MySQL
+                local no son idénticos.</strong
+              >
+              <div style="margin-top: 4px">
+                El backend ya strips los <code>DEFINER</code> (esa cuenta no
+                existe localmente), los contadores <code>AUTO_INCREMENT</code>
+                congelados y el preámbulo de <code>sql_mode</code>.
+              </div>
+            </div>
+          </div>
+
+          @for (o of preview(); track o.kind + ':' + o.name) {
+            <div class="ddl">
+              <div class="row" style="margin-bottom: 6px">
+                <span class="badge badge-neutral">{{ o.kind }}</span>
+                <strong class="mono">{{ o.name }}</strong>
+                <div class="spacer"></div>
+                <button class="btn btn-sm" type="button" (click)="copyDdl(o.ddl)">
+                  Copiar
+                </button>
+              </div>
+              @for (w of o.warnings; track w) {
+                <div class="warning-line">⚠ {{ w }}</div>
+              }
+              <pre class="code-block">{{ o.ddl }}</pre>
+            </div>
+          }
+        } @else {
+          <p class="hint">
+            Podés previsualizar el DDL antes de aplicarlo. Aplicar sin
+            previsualizar está bien si ya sabés qué esperás.
+          </p>
+        }
+      </div>
+    </section>
+  }
+</div>

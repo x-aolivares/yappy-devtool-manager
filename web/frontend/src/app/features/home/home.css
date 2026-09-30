@@ -1,0 +1,68 @@
+.page-head {
+  margin-bottom: 20px;
+}
+
+.page-sub {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  max-width: 70ch;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+/* --- definición / valor -------------------------------------------------- */
+
+.kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.kv dt {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.kv dd {
+  margin: 0;
+  min-width: 0;
+  word-break: break-all;
+}
+
+/* --- accesos directos ---------------------------------------------------- */
+
+.shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shortcut {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.shortcut:hover {
+  border-color: var(--accent);
+  background: var(--surface-sunken);
+  text-decoration: none;
+}
+
+.shortcut span {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}

@@ -70,11 +70,20 @@ def _ui_command() -> list[str]:
             f"Run 'cd {_FRONTEND_DIR} && npm install' first."
         )
     port = _ports().WEB_UI_DEV
+
+    # El proxy se genera acá, desde el enum de puertos, en vez de ser un JSON
+    # commiteado: un puerto hardcodeado en dos lugares se desincroniza y el
+    # síntoma es un 404 en la UI sin explicación.
+    from web.api import proxy_config
+
+    proxy_file = proxy_config.write(_FRONTEND_DIR, int(_ports().WEB_API))
+
     return [
         _node_executable(), str(_NG_BIN),
         "serve",
         "--host", "127.0.0.1",
         "--port", str(port),
+        "--proxy-config", str(proxy_file),
     ]
 
 

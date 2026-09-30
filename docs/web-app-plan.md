@@ -276,8 +276,9 @@ styles/
 | `application/local_mysql.py` | Hecho |
 | `routers/databases.py`, `routers/query.py`, `routers/migrate.py`, `routers/local_mysql.py` | Hecho |
 | `domain/sql_guard.py` (whitelist de solo lectura) | Hecho |
-| Tests de `web/api` (102) y de la CLI web (16) | Hecho |
-| `web/frontend/` (Angular) | Pendiente — `yappy web` ya degrada a solo API hasta que exista |
+| `proxy_config.py` (proxy generado desde el enum) | Hecho |
+| Tests de `web/api` (111) y de la CLI web (16) | Hecho |
+| `web/frontend/` (Angular 22, standalone + signals) | Hecho |
 
 ### Decisiones tomadas al implementar
 
@@ -304,6 +305,35 @@ styles/
 - **El target schema por defecto es `<env>_<schema>`**, salvo que se configure
   `LOCAL_DB_NAME`: sin el prefijo, migrar dev y qa al mismo schema local
   colisionaría.
+- **El proxy del dev server se genera desde `YappyPort`**, no se commitea como
+  JSON. Un puerto escrito en dos lugares se desincroniza en el primer cambio, y
+  el síntoma es un 404 en la UI sin explicación. Sin proxy (`npm start` a pelo)
+  la UI funciona igual vía CORS, que acepta `localhost` y `127.0.0.1`.
+
+## Frontend
+
+Angular 22, componentes standalone, signals, CSS nativo. Estructura:
+
+```
+web/frontend/src/app/
+  core/        models.ts (espejo de los DTOs), api.ts, env-context.ts
+  shared/      alert.ts (render del payload de error)
+  features/    home, parameters, databases, query
+```
+
+Decisiones:
+
+- **Los tipos se replican a mano** desde `web/api/schemas.py` en vez de generarse
+  del OpenAPI: evita una dependencia de build y deja explícito qué espera la UI.
+- **Cada feature es un `loadComponent` diferido.** El shell y el core se Bajan
+  siempre; entrar a Inicio no arrastra el editor de SQL.
+- **Los bindings de los templates se validan en build.** Un typo en un template
+  rompe `ng build`, no la app en runtime.
+- **El ambiente es un signal global** con persistencia en localStorage. Cambiar
+  de ambiente no debe reiniciar la vista actual, porque comparar dev contra qa
+  es el flujo principal.
+- **El historial de consultas se guarda en localStorage** y solo lo que la
+  persona escribió, nunca los resultados. No va a ningún servidor.
 
 ---
 

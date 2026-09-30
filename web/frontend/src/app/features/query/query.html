@@ -1,0 +1,181 @@
+<div class="page">
+  <div class="page-head">
+    <h1>Consultas SQL</h1>
+    <p class="page-sub">
+      Solo lectura. Se aceptan <code>SELECT</code>, <code>SHOW</code>,
+      <code>DESCRIBE</code>, <code>EXPLAIN</code> y <code>WITH</code>; una
+      sentencia por vez. El driver además corre sin multi-statement, así que
+      apilar dos consultas no es una vía para esquivarlo.
+    </p>
+  </div>
+
+  <app-alert
+    [message]="error()?.message ?? null"
+    [code]="error()?.code ?? ''"
+    [detail]="error()?.detail ?? null"
+    title="La consulta no se pudo ejecutar"
+  />
+
+  <section class="card">
+    <div class="card-body">
+      <div class="row" style="margin-bottom: 12px; align-items: flex-end">
+        <div class="field" style="margin: 0">
+          <label class="label" for="target">Ejecutar contra</label>
+          <select
+            id="target"
+            class="select"
+            [value]="target()"
+            (change)="onTargetChange($event)"
+          >
+            <option value="env">Ambiente {{ env() }}</option>
+            <option value="local">MySQL local</option>
+          </select>
+        </div>
+
+        @if (needsSchema()) {
+          <div class="field" style="margin: 0; min-width: 200px">
+            <label class="label" for="query-schema">Schema</label>
+            <select
+              id="query-schema"
+              class="select"
+              [value]="schema()"
+              (change)="onSchemaChange($event)"
+            >
+              @if (schemas().length === 0) {
+                <option value="">(cargá los schemas)</option>
+              }
+              @for (s of schemas(); track s.name) {
+                <option [value]="s.name">{{ s.name }}</option>
+              }
+            </select>
+          </div>
+          <button
+            class="btn btn-sm"
+            type="button"
+            (click)="loadSchemas()"
+            [disabled]="!hasEnv()"
+          >
+            Cargar schemas
+          </button>
+        }
+      </div>
+
+      <div class="field" style="margin-bottom: 12px">
+        <label class="label" for="sql">Consulta</label>
+        <textarea
+          id="sql"
+          class="textarea mono"
+          rows="7"
+          spellcheck="false"
+          placeholder="SELECT * FROM orders LIMIT 100;"
+          [value]="sql()"
+          (input)="onSqlChange($event)"
+          (keydown.control.enter)="run()"
+          (keydown.meta.enter)="run()"
+        ></textarea>
+        <span class="hint">Ctrl+Enter (Cmd+Enter en Mac) para ejecutar.</span>
+      </div>
+
+      <div class="row">
+        <button
+          class="btn btn-primary"
+          type="button"
+          (click)="run()"
+          [disabled]="!canRun()"
+        >
+          @if (running()) {
+            <span class="spinner"></span>
+          } @else {
+            Ejecutar
+          }
+        </button>
+        <button
+          class="btn"
+          type="button"
+          (click)="sql.set('')"
+          [disabled]="sql() === ''"
+        >
+          Limpiar
+        </button>
+        @if (result(); as r) {
+          <div class="spacer"></div>
+          <span class="badge badge-neutral">
+            {{ r.row_count }} fila{{ r.row_count === 1 ? '' : 's' }}
+          </span>
+          <span class="badge badge-neutral">{{ r.elapsed_ms }} ms</span>
+          @if (r.truncated) {
+            <span class="badge badge-warning">resultado truncado</span>
+          }
+        }
+      </div>
+    </div>
+  </section>
+
+  @if (result(); as r) {
+    <section class="card" style="margin-top: 16px">
+      <div class="card-header">
+        <h2>Resultado</h2>
+        @if (r.truncated) {
+          <span class="badge badge-warning">
+            se muestran las primeras filas
+          </span>
+        }
+      </div>
+      <div class="card-body tight">
+        @if (r.rows.length === 0) {
+          <div class="empty">La consulta no devolvió filas.</div>
+        } @else {
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th class="rownum">#</th>
+                  @for (col of r.columns; track col) {
+                    <th>{{ col }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of r.rows; track $index) {
+                  <tr>
+                    <td class="rownum">{{ $index + 1 }}</td>
+                    @for (cell of row; track $index) {
+                      <td class="mono" [class.null]="cellIsNull(cell)">
+                        {{ formatCell(cell) }}
+                      </td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+    </section>
+  }
+
+  @if (history().length > 0) {
+    <section class="card" style="margin-top: 16px">
+      <div class="card-header">
+        <h2>Historial</h2>
+        <div class="row">
+          <span class="hint">Guardado solo en este navegador.</span>
+          <button class="btn btn-sm" type="button" (click)="clearHistory()">
+            Borrar
+          </button>
+        </div>
+      </div>
+      <div class="card-body tight">
+        <ul class="history">
+          @for (entry of history(); track entry) {
+            <li>
+              <button class="history-item mono" type="button" (click)="use(entry)">
+                {{ entry }}
+              </button>
+            </li>
+          }
+        </ul>
+      </div>
+    </section>
+  }
+</div>

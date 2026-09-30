@@ -1,0 +1,170 @@
+<div class="page">
+  <div class="page-head">
+    <h1>Parámetros</h1>
+    <p class="page-sub">
+      Valores effective del ambiente <strong>{{ env() }}</strong>, leídos de
+      <code>config/env.{{ env() }}</code> y <code>config/env.base</code>. Las
+      variables <code>YAPPY_*</code> del entorno tienen precedencia.
+    </p>
+  </div>
+
+  <app-alert
+    [message]="error()?.message ?? null"
+    [code]="error()?.code ?? ''"
+    [detail]="error()?.detail ?? null"
+    title="No se pudieron cargar los parámetros"
+  />
+
+  <div class="layout">
+    <section class="card list-card">
+      <div class="card-header">
+        <div class="row" style="flex: 1">
+          <input
+            class="input search"
+            type="search"
+            placeholder="Filtrar por clave o valor…"
+            [value]="filter()"
+            (input)="setFilter($event)"
+            aria-label="Filtrar parámetros"
+          />
+          <span class="badge badge-neutral">{{ visible().length }}</span>
+          @if (jsonCount() > 0) {
+            <span class="badge badge-accent">{{ jsonCount() }} JSON</span>
+          }
+        </div>
+        <button
+          class="btn btn-sm"
+          type="button"
+          (click)="load()"
+          [disabled]="loading() || !hasEnv()"
+        >
+          @if (loading()) {
+            <span class="spinner"></span>
+          } @else {
+            Recargar
+          }
+        </button>
+      </div>
+
+      <div class="card-body tight">
+        @if (!hasEnv()) {
+          <div class="empty">Elegí un ambiente.</div>
+        } @else if (loading() && parameters().length === 0) {
+          <div class="empty">Cargando…</div>
+        } @else if (visible().length === 0) {
+          <div class="empty">
+            @if (parameters().length === 0) {
+              No hay parámetros definidos para este ambiente.
+            } @else {
+              Ningún parámetro coincide con el filtro.
+            }
+          </div>
+        } @else {
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Clave</th>
+                  <th>Valor</th>
+                  <th>Tipo</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (p of visible(); track trackKey($index, p)) {
+                  <tr
+                    class="pickable"
+                    [class.picked]="selectedKey() === p.key"
+                    (click)="select(p.key)"
+                  >
+                    <td class="mono key-cell">{{ p.key }}</td>
+                    <td class="mono value-cell">{{ p.value }}</td>
+                    <td>
+                      <span
+                        class="badge"
+                        [class.badge-accent]="p.is_json"
+                        [class.badge-neutral]="!p.is_json"
+                      >
+                        {{ p.is_json ? 'JSON' : 'texto' }}
+                      </span>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+    </section>
+
+    <section class="card detail-card">
+      <div class="card-header">
+        <h2>Resolver en Secrets Manager</h2>
+      </div>
+      <div class="card-body">
+        @if (!selectedKey()) {
+          <p class="hint">
+            Elegí un parámetro de la lista. El valor del parámetro se usa tal cual
+            como nombre del secreto: no hay prefijos ni convenciones.
+          </p>
+        } @else {
+          <dl class="kv">
+            <dt>Parámetro</dt>
+            <dd class="mono">{{ selectedKey() }}</dd>
+            <dt>Nombre del secreto</dt>
+            <dd class="mono break">{{ secretName() }}</dd>
+          </dl>
+
+          <div class="row" style="margin: 16px 0">
+            <button
+              class="btn btn-accent"
+              type="button"
+              (click)="resolve()"
+              [disabled]="resolving()"
+            >
+              @if (resolving()) {
+                <span class="spinner"></span>
+              } @else {
+                Resolver
+              }
+            </button>
+            @if (secret() || secretError()) {
+              <button class="btn btn-sm" type="button" (click)="clearSecret()">
+                Limpiar
+              </button>
+            }
+          </div>
+
+          <app-alert
+            [message]="secretError()?.message ?? null"
+            [code]="secretError()?.code ?? ''"
+            [detail]="secretError()?.detail ?? null"
+            title="No se pudo resolver el secreto"
+          />
+
+          @if (secret(); as s) {
+            @if (s.is_json) {
+              <div class="row" style="margin-bottom: 8px">
+                <span class="badge badge-accent">JSON</span>
+                <span class="hint">Interpretado como objeto</span>
+                <div class="spacer"></div>
+                <button class="btn btn-sm" type="button" (click)="copy(s.value)">
+                  Copiar
+                </button>
+              </div>
+              <pre class="code-block">{{ pretty(s.value) }}</pre>
+            } @else {
+              <div class="row" style="margin-bottom: 8px">
+                <span class="badge badge-neutral">texto plano</span>
+                <div class="spacer"></div>
+                <button class="btn btn-sm" type="button" (click)="copy(s.value)">
+                  Copiar
+                </button>
+              </div>
+              <pre class="code-block">{{ s.value }}</pre>
+            }
+          }
+        }
+      </div>
+    </section>
+  </div>
+</div>

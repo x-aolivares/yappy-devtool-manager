@@ -1,0 +1,174 @@
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1>Yappy Devtool</h1>
+      <p class="page-sub">
+        Herramienta interna para consultar parámetros, explorar bases de datos y
+        correr consultas de solo lectura contra los ambientes.
+      </p>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- Estado del túnel del ambiente -->
+    <section class="card">
+      <div class="card-header">
+        <h2>Conexión al ambiente</h2>
+        <button
+          class="btn btn-sm"
+          type="button"
+          (click)="refreshConnection()"
+          [disabled]="!hasEnv() || checkingConnection()"
+        >
+          @if (checkingConnection()) {
+            <span class="spinner"></span>
+          } @else {
+            Verificar
+          }
+        </button>
+      </div>
+      <div class="card-body">
+        @if (!hasEnv()) {
+          <p class="hint">Elegí un ambiente en la barra superior.</p>
+        } @else if (connectionError(); as err) {
+          <app-alert
+            [message]="err.message"
+            [code]="err.code"
+            [detail]="err.detail"
+            title="No se pudo verificar la conexión"
+          />
+        } @else if (connection(); as conn) {
+          <dl class="kv">
+            <dt>Destino</dt>
+            <dd class="mono">{{ conn.target }}</dd>
+            <dt>Host</dt>
+            <dd class="mono">{{ conn.host }}:{{ conn.port }}</dd>
+            <dt>Usuario</dt>
+            <dd class="mono">{{ conn.user }}</dd>
+            <dt>Estado</dt>
+            <dd>
+              @if (conn.reachable) {
+                <span class="badge badge-success">Túnel abierto</span>
+              } @else {
+                <span class="badge badge-warning">Puerto cerrado</span>
+              }
+            </dd>
+          </dl>
+          @if (!conn.reachable) {
+            <div class="alert alert-warning" style="margin-top: 14px">
+              <div>
+                <strong>El túnel de base de datos no está abierto</strong>
+                <div style="margin-top: 4px">
+                  El explorador y la consola SQL no van a poder conectarse hasta
+                  que lo levantes:
+                </div>
+                <pre>yappy run db {{ selected() }} -d</pre>
+              </div>
+            </div>
+          }
+        } @else {
+          <p class="hint">
+            Todavía no se verificó. Presioná “Verificar” para comprobar que el
+            puerto de la base de datos esté escuchando.
+          </p>
+        }
+      </div>
+    </section>
+
+    <!-- MySQL local -->
+    <section class="card">
+      <div class="card-header">
+        <h2>MySQL local</h2>
+        <div class="row">
+          <button class="btn btn-sm" type="button" (click)="refreshLocal()">
+            Actualizar
+          </button>
+          <button
+            class="btn btn-sm btn-primary"
+            type="button"
+            (click)="startLocal()"
+            [disabled]="busyLocal() || local()?.running"
+          >
+            @if (busyLocal()) {
+              <span class="spinner"></span>
+            } @else {
+              Iniciar
+            }
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (localError(); as err) {
+          <app-alert [message]="err" title="No se pudo iniciar MySQL" />
+        }
+        @if (local(); as status) {
+          <dl class="kv">
+            <dt>Estado</dt>
+            <dd>
+              @if (status.running) {
+                <span class="badge badge-success">Corriendo</span>
+              } @else {
+                <span class="badge badge-neutral">Detenido</span>
+              }
+            </dd>
+            <dt>Host</dt>
+            <dd class="mono">{{ status.host }}:{{ status.port }}</dd>
+            <dt>Usuario</dt>
+            <dd class="mono">{{ status.user }}</dd>
+          </dl>
+          @if (!status.running) {
+            <p class="hint" style="margin-top: 12px">
+              El botón “Iniciar” corre el comando configurado en
+              <code>LOCAL_MYSQL_START_CMD</code>. Si no hay ninguno, el backend lo
+              dice con el nombre exacto de la clave que falta.
+            </p>
+          }
+        } @else if (!localError()) {
+          <p class="hint">Consultando estado…</p>
+        }
+      </div>
+    </section>
+
+    <!-- Ambiente activo -->
+    <section class="card">
+      <div class="card-header">
+        <h2>Ambiente activo</h2>
+      </div>
+      <div class="card-body">
+        @if (details(); as env) {
+          <dl class="kv">
+            <dt>Nombre</dt>
+            <dd class="mono">{{ env.name }}</dd>
+            <dt>Perfil AWS</dt>
+            <dd class="mono">{{ env.aws_profile ?? '—' }}</dd>
+            <dt>Región</dt>
+            <dd class="mono">{{ env.aws_region ?? '—' }}</dd>
+          </dl>
+        } @else {
+          <p class="hint">Sin ambiente seleccionado.</p>
+        }
+      </div>
+    </section>
+
+    <!-- Atajos -->
+    <section class="card">
+      <div class="card-header">
+        <h2>Ir a</h2>
+      </div>
+      <div class="card-body shortcuts">
+        <a class="shortcut" [routerLink]="['/parameters']">
+          <strong>Parámetros</strong>
+          <span>Buscá una clave y resolvé su valor en Secrets Manager.</span>
+        </a>
+        <a class="shortcut" [routerLink]="['/databases']">
+          <strong>Bases de datos</strong>
+          <span>Listá schemas y objetos, y migrá el DDL a tu MySQL local.</span>
+        </a>
+        <a class="shortcut" [routerLink]="['/query']">
+          <strong>Consultas SQL</strong>
+          <span>Ejecutá SELECT contra un ambiente o contra el local.</span>
+        </a>
+      </div>
+    </section>
+  </div>
+</div>
