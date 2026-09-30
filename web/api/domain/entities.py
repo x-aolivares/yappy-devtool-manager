@@ -24,6 +24,7 @@ class ResolvedSecret:
     secret_name: str
     value: str
     environment: str
+    is_json: bool = False
 
 
 @dataclass(frozen=True)

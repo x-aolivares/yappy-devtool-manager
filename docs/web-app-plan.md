@@ -221,9 +221,67 @@ styles/
 
 ---
 
-## Preguntas abiertas antes de implementar
+## Decisiones tomadas (cerradas con el maintainer)
 
-1. **MySQL local**: ¿es un servicio Windows instalado (XAMPP/MySQL Installer) o corre standalone? Se necesita el comando exacto usado hoy para levantarlo manualmente.
-2. **Secrets Manager**: ¿la resolución es por *nombre* de secreto (convención conocida) o por *búsqueda de coincidencia de valor* entre todos los secretos del ambiente (más costoso, requiere listar y decodificar todos)?
-3. **Alcance de "migración" de DB**: ¿solo estructura (DDL) o también data? Si incluye data, ¿con límite de filas o completa?
-4. ¿Arrancar ya con el scaffold (`web/api/` + `web/frontend/` con primer endpoint funcionando) o cerrar antes estas dudas?
+1. **Parámetros = `config/env.*`**. No hay Parameter Store de por medio. El
+   placeholder `EnvFileParameterAdapter` no era un placeholder: era la
+   implementación correcta. Los ambientes se leen de la misma fuente.
+2. **Resolver secreto = el valor del parámetro ES el nombre del secreto**. Sin
+   prefijos, sin convención, sin listar nada. `GetSecretValue(SecretId=<valor
+   crudo del parámetro>)` y nada más. Solo se llama cuando el usuario aprieta
+   el botón — el listado de parámetros jamás toca AWS. **No** hay búsqueda por
+   coincidencia de valor (imposible: no vas a obtener todos los secretos).
+3. **Migración: DDL primero, data después.** La segunda etapa migra data de
+   varias tablas en un rango de fechas, así que el contrato de migración se
+   diseña desde el inicio con `mode`, lista de tablas, columna de fecha y rango
+   (`date_from` / `date_to`), aunque la primera versión solo implemente DDL.
+4. **Query console: solo lectura** (`SELECT` / `SHOW` / `DESCRIBE`). Whitelist
+   en la capa de aplicación; cualquier otra cosa levanta `UnsafeQueryError`.
+   DML (`INSERT`/`UPDATE`/`DELETE`) queda para un toggle explícito más adelante.
+5. **El API nunca puede morir.** `library/` usa `die()` → `sys.exit()` en todos
+   lados; llamar eso desde un handler de FastAPI mata el worker de uvicorn.
+   Regla: **el API no llama directo a nada de `library/` que pueda hacer
+   `sys.exit()`** — lo que pueda morir (token RDS, túnel SSM) corre en un
+   proceso hijo propio y el API solo lee su exit code. Un `die()` se muere el
+   hijo, nunca el API.
+6. **Entorno de desarrollo: Windows con Git Bash.** El comando MySQL local
+   concreto sigue sin definirse; hasta entonces `LOCAL_MYSQL_START_CMD` queda
+   configurable por config en vez de hardcodear Windows/Mac/Docker.
+
+---
+
+## Estado de implementación
+
+| Pieza | Estado |
+|---|---|
+| `domain/` (entities, ports, exceptions) | Hecho |
+| `ports_registry.py` (enum centralizado) | Hecho (incluye `LOCAL_MYSQL`) |
+| `error_handlers.py` + payload `{code, message, detail}` | Hecho |
+| `container.py` (composición de dependencias) | Hecho |
+| `infrastructure/env_config_adapter.py` | Hecho |
+| `infrastructure/param_config_adapter.py` | Hecho |
+| `infrastructure/aws_secrets_adapter.py` | Hecho |
+| `application/list_environments.py` | Hecho |
+| `application/list_parameters.py` | Hecho |
+| `application/resolve_secret.py` | Hecho |
+| `routers/environments.py`, `routers/parameters.py` | Hecho |
+| Tests de `web/api` (23) | Hecho |
+| `infrastructure/mysql_adapter.py` | Pendiente |
+| `infrastructure/local_mysql_service.py` | Pendiente |
+| `infrastructure/tunnel_manager.py` (proceso hijo) | Pendiente |
+| `application/list_schemas.py` / `list_objects.py` | Pendiente |
+| `application/migrate_object.py` (DDL) | Pendiente |
+| `application/run_query.py` | Pendiente |
+| `routers/databases.py`, `routers/query.py` | Pendiente |
+| `web/frontend/` (Angular) | Pendiente |
+| `yappy web ui` / `yappy stop web` | Pendiente |
+
+---
+
+## Preguntas abiertas (restantes)
+
+1. **MySQL local**: falta el comando exacto que se usa hoy a mano para
+   levantarlo (¿servicio de Windows? ¿`mysqld` standalone? ¿XAMPP?). Mientras
+   tanto se resuelve por `LOCAL_MYSQL_START_CMD` en config.
+2. **Data migration**: qué columna de fecha se usa por tabla. ¿Se infiere
+   (`created_at` / `updated_at`) o el usuario la elige por tabla en el UI?

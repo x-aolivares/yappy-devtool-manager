@@ -17,6 +17,17 @@ class ParameterDTO(BaseModel):
     environment: str
 
 
+class ResolvedSecretDTO(BaseModel):
+    secret_name: str
+    value: str
+    is_json: bool
+    environment: str
+
+
+class ResolveSecretRequest(BaseModel):
+    key: str
+
+
 class ErrorResponse(BaseModel):
     code: str
     message: str

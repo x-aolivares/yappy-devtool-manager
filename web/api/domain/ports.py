@@ -13,6 +13,7 @@ class EnvironmentRepository(Protocol):
 
 class ParameterRepository(Protocol):
     def list_parameters(self, env: str) -> list[Parameter]: ...
+    def get_parameter(self, env: str, key: str) -> Parameter: ...
 
 
 class SecretResolver(Protocol):

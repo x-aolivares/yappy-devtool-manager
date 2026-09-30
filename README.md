@@ -155,6 +155,37 @@ yappy edit                           # Abrir proyecto en VS Code
 yappy py-purge                       # Limpiar cache pip
 ```
 
+### Web app
+
+```bash
+pip install -r docs/requirements-web.txt
+
+yappy web api                        # Backend FastAPI en 127.0.0.1:8300
+```
+
+El API está **bound a `127.0.0.1` únicamente y sin autenticación**: es una
+herramienta interna de desarrollo, no lo expongas en `0.0.0.0` sin agregar
+autenticación primero.
+
+Endpoints disponibles:
+
+```bash
+curl http://127.0.0.1:8300/health
+curl http://127.0.0.1:8300/environments
+curl http://127.0.0.1:8300/parameters/dev
+
+# Resolver en Secrets Manager el valor de un parámetro.
+# El valor crudo del parámetro ES el nombre del secreto.
+curl -X POST http://127.0.0.1:8300/parameters/dev/resolve \
+  -H 'Content-Type: application/json' \
+  -d '{"key":"DB_SECRET"}'
+```
+
+Los ambientes salen de `config/env.*` (los `.example` se ignoran). Si la lista
+viene vacía, creá `config/env.<ambiente>` copiando `config/env.environment.example`.
+
+Errores siempre en el mismo formato: `{"code": "...", "message": "...", "detail": "..."}`.
+
 ---
 
 ## Nueva sintaxis (Docker-like)

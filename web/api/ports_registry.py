@@ -14,6 +14,9 @@ class YappyPort(IntEnum):
     WEB_API = 8300
     WEB_UI_DEV = 4300
 
+    # MySQL nativo local (destino de las migraciones desde los ambientes)
+    LOCAL_MYSQL = 3306
+
     # Ya usados por library/ (CLI) — documentados aquí para evitar colisión
     DB_TUNNEL = 8100          # config/env.*.DB_PORT
     AWS_SSM_LOCAL = 53360     # config/env.base.AWS_PORT

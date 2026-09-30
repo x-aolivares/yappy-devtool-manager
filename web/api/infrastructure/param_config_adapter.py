@@ -1,9 +1,8 @@
-"""Adapter placeholder para ParameterRepository.
+"""Adapter de ParameterRepository sobre `config/env.*`.
 
-Lee las variables definidas en config/env.<env> como "parámetros", detectando
-si el valor es JSON o un valor plano. Es un placeholder hasta confirmar la
-fuente real de parámetros (SSM Parameter Store u otra) — ver preguntas
-abiertas en docs/web-app-plan.md.
+Los "parámetros" de la web son las variables definidas en `config/env.base` +
+`config/env.<ambiente>` (misma fuente que usa el CLI), detectando si el valor es
+JSON o un valor plano. Solo lectura: nunca escribe en config/.
 """
 from __future__ import annotations
 
@@ -12,6 +11,7 @@ import json
 from library.config import Config
 
 from ..domain.entities import Parameter
+from ..domain.exceptions import ParameterNotFoundError
 
 
 class EnvFileParameterAdapter:
@@ -23,11 +23,21 @@ class EnvFileParameterAdapter:
         for key, value in cfg.as_dict().items():
             if value is None:
                 continue
-            is_json = self._looks_like_json(value)
             params.append(
-                Parameter(key=key, value=value, is_json=is_json, environment=env)
+                Parameter(
+                    key=key,
+                    value=value,
+                    is_json=self._looks_like_json(value),
+                    environment=env,
+                )
             )
         return sorted(params, key=lambda p: p.key)
+
+    def get_parameter(self, env: str, key: str) -> Parameter:
+        for p in self.list_parameters(env):
+            if p.key == key:
+                return p
+        raise ParameterNotFoundError(key, env)
 
     @staticmethod
     def _looks_like_json(value: str) -> bool:

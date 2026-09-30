@@ -31,6 +31,25 @@ class SecretResolutionError(DomainError):
     code = "SECRET_RESOLUTION_ERROR"
 
 
+class SecretNotFoundError(SecretResolutionError):
+    """El secreto existe en el nombre pero no está en Secrets Manager del ambiente."""
+
+    code = "SECRET_NOT_FOUND"
+
+    def __init__(self, secret_name: str, env: str):
+        self.secret_name = secret_name
+        self.env = env
+        super().__init__(
+            f"Secret '{secret_name}' not found in Secrets Manager for environment '{env}'"
+        )
+
+
+class AwsCredentialsError(SecretResolutionError):
+    """El profile/región del ambiente no permite hablar con AWS (SSO vencido, etc.)."""
+
+    code = "AWS_CREDENTIALS_ERROR"
+
+
 class DbConnectionError(DomainError):
     code = "DB_CONNECTION_ERROR"
 

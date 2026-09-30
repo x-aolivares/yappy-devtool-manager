@@ -5,12 +5,14 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .domain.exceptions import (
+    AwsCredentialsError,
     DbConnectionError,
     DomainError,
     EnvironmentNotFoundError,
     LocalMysqlUnavailableError,
     ParameterNotFoundError,
     SchemaNotFoundError,
+    SecretNotFoundError,
     SecretResolutionError,
     UnsafeQueryError,
 )
@@ -19,6 +21,8 @@ _STATUS_BY_EXCEPTION = {
     EnvironmentNotFoundError: 404,
     ParameterNotFoundError: 404,
     SchemaNotFoundError: 404,
+    SecretNotFoundError: 404,
+    AwsCredentialsError: 401,
     SecretResolutionError: 502,
     DbConnectionError: 502,
     LocalMysqlUnavailableError: 503,
