@@ -3,13 +3,13 @@ import { EnvironmentInfo, ExecuteSqlResponse, StatementResultInfo } from '../api
 import { EnvironmentService } from '../core/services/environment.service';
 import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
-import { EnvSelectComponent } from '../shared/env-select';
+import { EnvPickerComponent } from '../shared/env-picker';
 import { SchemaSelectComponent } from '../shared/schema-select';
 import { StatusBadge } from '../shared/status-badge';
 
 @Component({
   selector: 'app-compile-page',
-  imports: [EnvSelectComponent, SchemaSelectComponent, StatusBadge],
+  imports: [EnvPickerComponent, SchemaSelectComponent, StatusBadge],
   template: `
     <h1>Compilar / Ejecutar SQL</h1>
     <p class="muted">
@@ -22,7 +22,13 @@ import { StatusBadge } from '../shared/status-badge';
       <div class="form-grid">
         <div>
           <label for="env">Ambiente</label>
-          <app-env-select [environments]="environments()" [(value)]="env" />
+          <app-env-picker
+            id="env"
+            [environments]="environments()"
+            [selected]="envSelection()"
+            [max]="1"
+            (selectedChange)="onEnvSelection($event)"
+          />
         </div>
         <div>
           <label>Tipo de objeto</label>
@@ -139,6 +145,13 @@ export class CompilePage {
   readonly result = signal<ExecuteSqlResponse | null>(null);
 
   readonly confirmEnv = computed(() => this.env() || '…');
+
+  /** El panel es multi-select; con `[max]="1"` refleja el único ambiente elegido. */
+  readonly envSelection = computed(() => (this.env() ? [this.env()] : []));
+
+  onEnvSelection(sel: string[]): void {
+    this.env.set(sel[0] ?? '');
+  }
 
   constructor() {
     this.envService.list().then(

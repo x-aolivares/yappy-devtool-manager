@@ -284,6 +284,108 @@ h2 {
   margin-top: 0.375rem;
 }
 
+/* Selector de ambientes: paneles apilados, uno debajo del otro. Cada panel es
+   un botón conmutable, no un checkbox. Sobrescribe el `button` global para no
+   heredar el estilo de acción primaria (fondo azul, negrita, altura de control). */
+.env-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3125rem;
+  margin-top: 0.375rem;
+  max-width: 26rem;
+}
+
+.env-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  min-height: 0;
+  padding: 0.4375rem 0.625rem;
+  text-align: left;
+  font-weight: 400;
+  color: var(--text);
+  background: var(--panel);
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--bb-radius-md);
+
+  &:hover:not(:disabled) {
+    background: var(--bb-hover-bg);
+    border-color: var(--bb-blue-hover);
+  }
+
+  &.selected {
+    color: var(--bb-blue);
+    background: var(--bb-selected-bg);
+    border-color: var(--bb-blue);
+  }
+
+  /* Al llegar al límite los no seleccionados se apagan, pero los que ya están
+     elegidos siguen siendo accionables para poder deseleccionarlos. */
+  &:disabled:not(.selected) {
+    opacity: 0.45;
+  }
+}
+
+.env-check {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--bb-border-radius);
+  background: var(--bb-elevated);
+  color: var(--bb-blue);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.env-item.selected .env-check {
+  border-color: var(--bb-blue);
+}
+
+.env-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.0625rem;
+  font-size: var(--text-sm);
+}
+
+.env-name {
+  font-weight: 600;
+}
+
+.env-meta {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.env-item.selected .env-meta {
+  color: var(--bb-blue-hover);
+}
+
+.env-error {
+  font-size: var(--text-xs);
+  color: var(--err);
+}
+
+.env-role {
+  flex: none;
+  padding: 0.0625rem 0.4375rem;
+  border: 0.0625rem solid var(--bb-blue);
+  border-radius: var(--bb-radius-pill);
+  color: var(--bb-blue);
+  font-size: var(--text-xxs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .env-check {
   display: flex;
   align-items: flex-start;

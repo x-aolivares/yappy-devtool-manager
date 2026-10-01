@@ -182,6 +182,26 @@ Para compilar el frontend hace falta **Node.js >= 24.15**:
 cd frontend && npm install && npm run build
 ```
 
+#### Modo desarrollo: recargar sin reiniciar la API
+
+`yappy web` sirve los archivos de `frontend/dist/browser` leyendo del disco en
+cada request, así que **no hace falta reiniciar la API cuando cambia el
+frontend**: alcanza con recompilar y recargar el navegador.
+
+```bash
+# Terminal 1 — recompila solo, ~0.5s por cambio
+cd frontend && npm run watch
+
+# Terminal 2 — sirve la API (--no-build evita recompilar, ya lo hace el watch)
+yappy web --no-build
+```
+
+`npm run watch` escribe en el mismo `dist/browser` que sirve la API, en
+configuración `development` (sin hash de nombre ni minificación). Guardás el
+archivo, esperás el "Bundle generation complete" y recargás el navegador.
+
+Sólo hay que reiniciar `yappy web` cuando cambia el **backend** (Python).
+
 ---
 
 ## Nueva sintaxis (Docker-like)

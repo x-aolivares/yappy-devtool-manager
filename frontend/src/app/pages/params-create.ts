@@ -5,10 +5,11 @@ import { ParamsService } from '../core/services/params.service';
 import { toApiError } from '../core/services/api-error';
 import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
+import { EnvPickerComponent } from '../shared/env-picker';
 
 @Component({
   selector: 'app-params-create-page',
-  imports: [StatusBadge, CopyButton],
+  imports: [StatusBadge, CopyButton, EnvPickerComponent],
   template: `
     <h1>Crear / Actualizar en múltiples regiones</h1>
     <p class="muted">
@@ -20,22 +21,11 @@ import { CopyButton } from '../shared/copy-button';
 
     <div class="panel">
       <label style="margin-top:0;">Regiones destino</label>
-      <div class="env-checks">
-        @for (e of environments() ?? []; track e.env) {
-          <label class="env-check">
-            <input
-              type="checkbox"
-              [checked]="envsSelected()[e.env]"
-              (change)="toggleEnv(e.env, $any($event.target).checked)"
-            />
-            <span>
-              <strong>{{ e.env }}</strong>
-              — {{ e.region || '' }}
-              <span class="muted">({{ e.profile || '' }})</span>
-            </span>
-          </label>
-        }
-      </div>
+      <app-env-picker
+        [environments]="environments()"
+        [(selected)]="selectedEnvs"
+        label="Regiones destino"
+      />
       @if (envLoadError()) {
         <span class="muted">No se pudieron cargar los ambientes: {{ envLoadError() }}</span>
       }
@@ -225,7 +215,7 @@ export class ParamsCreatePage {
   readonly secretValue = signal('');
   readonly valueType = signal<string>('String');
   readonly createSecret = signal(false);
-  readonly envsSelected = signal<Record<string, boolean>>({});
+  readonly selectedEnvs = signal<string[]>([]);
 
   readonly busy = signal(false);
   readonly dryRun = signal(false);
@@ -239,10 +229,6 @@ export class ParamsCreatePage {
       (envs) => this.environments.set(envs.environments),
       (err) => this.envLoadError.set(toApiError(err).message),
     );
-  }
-
-  toggleEnv(env: string, checked: boolean) {
-    this.envsSelected.update((sel) => ({ ...sel, [env]: checked }));
   }
 
   private bundle(dryRun: boolean) {
@@ -262,9 +248,7 @@ export class ParamsCreatePage {
       service: effectiveService,
       secret_name: pairedMode || mode === 'secretsmanager' ? secretName : '',
       secret_value: pairedMode || mode === 'secretsmanager' ? secretValue : '',
-      envs: Object.entries(this.envsSelected())
-        .filter(([, on]) => on)
-        .map(([env]) => env),
+      envs: this.selectedEnvs(),
       create_secret: createSecret,
       dry_run: dryRun,
       confirm: !dryRun,

@@ -1,13 +1,13 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { EnvironmentInfo } from '../api-gen/models';
 import { EnvironmentService } from '../core/services/environment.service';
 import { ParamsService } from '../core/services/params.service';
 import { toApiError } from '../core/services/api-error';
-import { EnvSelectComponent } from '../shared/env-select';
+import { EnvPickerComponent } from '../shared/env-picker';
 
 @Component({
   selector: 'app-params-edit-page',
-  imports: [EnvSelectComponent],
+  imports: [EnvPickerComponent],
   template: `
     <h1>Editar / actualizar un parámetro</h1>
     <p class="muted">
@@ -20,7 +20,12 @@ import { EnvSelectComponent } from '../shared/env-select';
 
     <div class="panel">
       <label for="env">Ambiente</label>
-      <app-env-select [environments]="environments()" [(value)]="env" />
+      <app-env-picker
+        [environments]="environments()"
+        [selected]="envSelection()"
+        [max]="1"
+        (selectedChange)="onEnvSelection($event)"
+      />
 
       <label for="name" style="margin-top:1rem;">Nombre del parámetro</label>
       <input
@@ -148,6 +153,13 @@ export class ParamsEditPage {
   readonly error = signal<string | null>(null);
   readonly resultMsg = signal<string | null>(null);
   readonly resultIsError = signal(false);
+
+  /** El panel es multi-select; con `[max]="1"` refleja el único ambiente elegido. */
+  readonly envSelection = computed(() => (this.env() ? [this.env()] : []));
+
+  onEnvSelection(sel: string[]): void {
+    this.env.set(sel[0] ?? '');
+  }
 
   constructor() {
     this.envService.list().then(
