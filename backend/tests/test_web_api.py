@@ -1,7 +1,7 @@
 import pytest
 from fastapi import HTTPException
 
-from yappy_api.routes.db import api_db_diff
+from yappy_api.routes.db import api_db_diff, api_db_schemas
 from yappy_api.routes.envs import api_envs
 from yappy_api.routes.params import (
     api_params_apply,
@@ -28,6 +28,7 @@ from yappy_api.schemas import (
     ReadParamsEntry,
     UpdateSessionItemRequest,
 )
+from yappy_library.adapters.database.connection import SyncError
 from yappy_library.application.database.sync import db_objects as obj
 from yappy_library.application.database.sync import params as p
 from yappy_library.config import Config
@@ -954,6 +955,38 @@ def test_api_db_diff_missing_in_b_respects_include_deletes(monkeypatch):
     assert payload_no_delete["status"] == "missing_in_b"
     assert payload_no_delete["script"] is None
     assert "no hay nada que sincronizar" in payload_no_delete["notes"][0]
+
+
+def test_api_db_schemas_lists_user_schemas(monkeypatch):
+    monkeypatch.setattr(
+        Config, "known_environments", classmethod(lambda cls: ["dev", "qa"])
+    )
+    monkeypatch.setattr(Config, "with_env", staticmethod(lambda env: _FakeConfig(env)))
+    monkeypatch.setattr("yappy_api.routes.db.connect", _fake_connect)
+    monkeypatch.setattr(
+        obj, "list_schemas", lambda conn: ["yappy", "yappy_payment"]
+    )
+
+    payload = api_db_schemas("dev")
+
+    assert payload == {"env": "dev", "schemas": ["yappy", "yappy_payment"]}
+
+
+def test_api_db_schemas_reports_unreachable_env(monkeypatch):
+    monkeypatch.setattr(
+        Config, "known_environments", classmethod(lambda cls: ["dev"])
+    )
+    monkeypatch.setattr(Config, "with_env", staticmethod(lambda env: _FakeConfig(env)))
+
+    def _boom(cfg):
+        raise SyncError("No reachable database for this environment.")
+
+    monkeypatch.setattr("yappy_api.routes.db.connect", _boom)
+
+    with pytest.raises(HTTPException) as exc_info:
+        api_db_schemas("dev")
+    assert exc_info.value.status_code == 400
+    assert "No reachable database" in str(exc_info.value.detail)
 
 
 def test_api_params_apply_target_b_builds_script_for_origin(monkeypatch):

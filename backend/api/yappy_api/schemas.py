@@ -151,6 +151,11 @@ class ExecuteSqlResponse(BaseModel):
     err_count: int
 
 
+class SchemasResponse(BaseModel):
+    env: str
+    schemas: list[str] = []
+
+
 class ParamsDiffResponse(BaseModel):
     env_a: str
     env_b: str

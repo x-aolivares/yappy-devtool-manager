@@ -15,6 +15,7 @@ from ..schemas import (
     DiffResponse,
     ExecuteRequest,
     ExecuteSqlResponse,
+    SchemasResponse,
 )
 
 router = APIRouter(tags=["db"])
@@ -122,6 +123,19 @@ def api_db_diff(req: DbDiffRequest):
                 "script": script,
                 "notes": notes,
             }
+    except SyncError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
+
+
+@router.get("/api/db/schemas", operation_id="list_db_schemas", response_model=SchemasResponse)
+def api_db_schemas(env: str):
+    """List the user schemas of an environment, to feed the schema picker."""
+    cfg = env_config(env)
+    try:
+        with connect(cfg) as conn:
+            return {"env": env, "schemas": obj.list_schemas(conn)}
     except SyncError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

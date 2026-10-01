@@ -4,11 +4,12 @@ import { EnvironmentService } from '../core/services/environment.service';
 import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
 import { EnvSelectComponent } from '../shared/env-select';
+import { SchemaSelectComponent } from '../shared/schema-select';
 import { StatusBadge } from '../shared/status-badge';
 
 @Component({
   selector: 'app-compile-page',
-  imports: [EnvSelectComponent, StatusBadge],
+  imports: [EnvSelectComponent, SchemaSelectComponent, StatusBadge],
   template: `
     <h1>Compilar / Ejecutar SQL</h1>
     <p class="muted">
@@ -50,13 +51,11 @@ import { StatusBadge } from '../shared/status-badge';
         </div>
         <div>
           <label for="schema">Schema (opcional)</label>
-          <input
-            id="schema"
-            type="text"
-            [value]="schema()"
-            (input)="schema.set($any($event.target).value)"
-            placeholder="p. ej. yappy"
-            spellcheck="false"
+          <app-schema-select
+            [env]="env()"
+            [(value)]="schema"
+            [optional]="true"
+            emptyLabel="(sin schema)"
           />
         </div>
       </div>

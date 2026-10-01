@@ -7,20 +7,19 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { SessionDetailResponse } from '../../models/session-detail-response';
+import { SessionItemInfo } from '../../models/session-item-info';
+import { UpdateSessionItemRequest } from '../../models/update-session-item-request';
 
-export interface GetSession$Params {
+export interface CreateSessionItem$Params {
   session_id: string;
-  name?: (string | null);
-  filter?: (string | null);
+      body: UpdateSessionItemRequest
 }
 
-export function getSession(http: HttpClient, rootUrl: string, params: GetSession$Params, context?: HttpContext): Observable<StrictHttpResponse<SessionDetailResponse>> {
-  const rb = new RequestBuilder(rootUrl, getSession.PATH, 'get');
+export function createSessionItem(http: HttpClient, rootUrl: string, params: CreateSessionItem$Params, context?: HttpContext): Observable<StrictHttpResponse<SessionItemInfo>> {
+  const rb = new RequestBuilder(rootUrl, createSessionItem.PATH, 'post');
   if (params) {
     rb.path('session_id', params.session_id, {});
-    rb.query('name', params.name, {});
-    rb.query('filter', params.filter, {});
+    rb.body(params.body, 'application/json');
   }
 
   return http.request(
@@ -28,9 +27,9 @@ export function getSession(http: HttpClient, rootUrl: string, params: GetSession
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<SessionDetailResponse>;
+      return r as StrictHttpResponse<SessionItemInfo>;
     })
   );
 }
 
-getSession.PATH = '/api/sessions/{session_id}';
+createSessionItem.PATH = '/api/sessions/{session_id}/items/create';

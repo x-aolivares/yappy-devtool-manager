@@ -7,20 +7,15 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { SessionDetailResponse } from '../../models/session-detail-response';
 
-export interface GetSession$Params {
+export interface GetSessionReportMarkdown$Params {
   session_id: string;
-  name?: (string | null);
-  filter?: (string | null);
 }
 
-export function getSession(http: HttpClient, rootUrl: string, params: GetSession$Params, context?: HttpContext): Observable<StrictHttpResponse<SessionDetailResponse>> {
-  const rb = new RequestBuilder(rootUrl, getSession.PATH, 'get');
+export function getSessionReportMarkdown(http: HttpClient, rootUrl: string, params: GetSessionReportMarkdown$Params, context?: HttpContext): Observable<StrictHttpResponse<any>> {
+  const rb = new RequestBuilder(rootUrl, getSessionReportMarkdown.PATH, 'get');
   if (params) {
     rb.path('session_id', params.session_id, {});
-    rb.query('name', params.name, {});
-    rb.query('filter', params.filter, {});
   }
 
   return http.request(
@@ -28,9 +23,9 @@ export function getSession(http: HttpClient, rootUrl: string, params: GetSession
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<SessionDetailResponse>;
+      return r as StrictHttpResponse<any>;
     })
   );
 }
 
-getSession.PATH = '/api/sessions/{session_id}';
+getSessionReportMarkdown.PATH = '/api/sessions/{session_id}/report.md';

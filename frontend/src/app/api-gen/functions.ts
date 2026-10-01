@@ -5,6 +5,8 @@ export type { ListEnvironments$Params as ListEnvironments$Params } from './fn/en
 export { listEnvironments as listEnvironments } from './fn/envs/list-environments';
 export type { DiffDbObject$Params as DiffDbObject$Params } from './fn/db/diff-db-object';
 export { diffDbObject as diffDbObject } from './fn/db/diff-db-object';
+export type { ListDbSchemas$Params as ListDbSchemas$Params } from './fn/db/list-db-schemas';
+export { listDbSchemas as listDbSchemas } from './fn/db/list-db-schemas';
 export type { ExecuteSql$Params as ExecuteSql$Params } from './fn/db/execute-sql';
 export { executeSql as executeSql } from './fn/db/execute-sql';
 export type { ParamsDiff$Params as ParamsDiff$Params } from './fn/params/params-diff';
@@ -27,5 +29,9 @@ export type { GetSession$Params as GetSession$Params } from './fn/sessions/get-s
 export { getSession as getSession } from './fn/sessions/get-session';
 export type { DeleteSession$Params as DeleteSession$Params } from './fn/sessions/delete-session';
 export { deleteSession as deleteSession } from './fn/sessions/delete-session';
+export type { GetSessionReportMarkdown$Params as GetSessionReportMarkdown$Params } from './fn/sessions/get-session-report-markdown';
+export { getSessionReportMarkdown as getSessionReportMarkdown } from './fn/sessions/get-session-report-markdown';
 export type { UpdateSessionItem$Params as UpdateSessionItem$Params } from './fn/sessions/update-session-item';
 export { updateSessionItem as updateSessionItem } from './fn/sessions/update-session-item';
+export type { CreateSessionItem$Params as CreateSessionItem$Params } from './fn/sessions/create-session-item';
+export { createSessionItem as createSessionItem } from './fn/sessions/create-session-item';

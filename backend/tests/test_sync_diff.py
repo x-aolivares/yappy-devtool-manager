@@ -165,3 +165,43 @@ def test_create_procedure_script_keeps_create():
     script = ddl.create_procedure_script(create)
     assert script.startswith("CREATE PROCEDURE `calc`(x int)")
     assert "DEFINER" not in script
+
+
+class _SchemaCursor:
+    def __init__(self, rows):
+        self._rows = rows
+        self.executed = None
+
+    def execute(self, sql, params=None):
+        self.executed = sql
+
+    def fetchall(self):
+        return self._rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _SchemaConn:
+    def __init__(self, rows):
+        self._cursor = _SchemaCursor(rows)
+
+    def cursor(self, *args, **kwargs):
+        return self._cursor
+
+
+def test_list_schemas_returns_schemas_in_order():
+    conn = _SchemaConn([("alpha",), ("beta",)])
+    assert obj.list_schemas(conn) == ["alpha", "beta"]
+
+
+def test_list_schemas_excludes_system_schemas():
+    conn = _SchemaConn([])
+    obj.list_schemas(conn)
+    sql = conn._cursor.executed
+    assert "INFORMATION_SCHEMA.SCHEMATA" in sql
+    for system in ("information_schema", "mysql", "performance_schema", "sys"):
+        assert f"'{system}'" in sql

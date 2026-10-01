@@ -1,20 +1,54 @@
-<header>
-  <div class="brand">Yappy <span>DevTool</span></div>
-  <nav>
-    <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }"
-      >Inicio</a
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">Yappy <span>DevTool</span></div>
+
+    <nav class="nav" aria-label="Secciones de la herramienta">
+      <a
+        class="home"
+        routerLink="/"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="{ exact: true }"
+        ariaCurrentWhenActive="page"
+        title="Inicio"
+        >Inicio</a
+      >
+
+      @for (section of sections; track section.id) {
+        <div class="section">
+          <h2 class="section-label">{{ section.label }}</h2>
+          @if (section.items.length) {
+            <ul>
+              @for (item of section.items; track item.link) {
+                <li>
+                  <a
+                    [routerLink]="item.link"
+                    routerLinkActive="active"
+                    ariaCurrentWhenActive="page"
+                    [title]="item.hint"
+                    >{{ item.label }}</a
+                  >
+                </li>
+              }
+            </ul>
+          } @else {
+            <p class="section-empty">{{ section.emptyNote }}</p>
+          }
+        </div>
+      }
+    </nav>
+
+    <button
+      type="button"
+      class="theme-toggle"
+      aria-label="Alternar modo oscuro"
+      [attr.aria-pressed]="theme.isDark()"
+      (click)="theme.toggle()"
     >
-  </nav>
-  <button
-    type="button"
-    class="theme-toggle"
-    aria-label="Alternar modo oscuro"
-    [attr.aria-pressed]="theme.isDark()"
-    (click)="theme.toggle()"
-  >
-    {{ theme.isDark() ? 'Modo claro' : 'Modo oscuro' }}
-  </button>
-</header>
-<main>
-  <router-outlet />
-</main>
+      {{ theme.isDark() ? 'Modo claro' : 'Modo oscuro' }}
+    </button>
+  </aside>
+
+  <main>
+    <router-outlet />
+  </main>
+</div>

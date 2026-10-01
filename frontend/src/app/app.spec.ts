@@ -50,4 +50,57 @@ describe('App', () => {
     expect(toggle?.getAttribute('aria-pressed')).toBe('true');
     expect(toggle?.textContent).toContain('Modo claro');
   });
+
+  it('groups the navigation under one heading per section', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const compiled = fixture.nativeElement as HTMLElement;
+
+    const labels = [...compiled.querySelectorAll('.section-label')].map((el) =>
+      el.textContent?.trim(),
+    );
+    expect(labels).toEqual(['AWS', 'Database', 'Bitbucket', 'CircleCI']);
+  });
+
+  it('keeps Inicio outside any section and points at the root route', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const compiled = fixture.nativeElement as HTMLElement;
+
+    const home = compiled.querySelector<HTMLAnchorElement>('.nav .home');
+    expect(home?.textContent?.trim()).toBe('Inicio');
+    expect(home?.getAttribute('href')).toBe('/');
+    // Nothing is highlighted until a route is active: Inicio is not inside a section.
+    expect(compiled.querySelector('.section .home')).toBeNull();
+  });
+
+  it('marks sections without tools instead of hiding them', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const compiled = fixture.nativeElement as HTMLElement;
+
+    const empty = [...compiled.querySelectorAll('.section-empty')].map((el) =>
+      el.textContent?.trim(),
+    );
+    expect(empty).toEqual(['Sin herramientas todavía', 'Sin herramientas todavía']);
+  });
+
+  it('links every AWS and Database tool to a real route', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const compiled = fixture.nativeElement as HTMLElement;
+
+    const hrefs = [...compiled.querySelectorAll('.section a')].map((el) =>
+      el.getAttribute('href'),
+    );
+    expect(hrefs).toEqual([
+      '/params-read',
+      '/params-diff',
+      '/params-create',
+      '/params-edit',
+      '/sessions',
+      '/db-diff',
+      '/compile',
+    ]);
+  });
 });

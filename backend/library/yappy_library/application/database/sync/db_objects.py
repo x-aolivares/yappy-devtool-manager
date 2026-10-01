@@ -24,6 +24,14 @@ WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s
 ORDER BY INDEX_NAME, SEQ_IN_INDEX
 """
 
+# System schemas are never a target for DDL/SQL execution, so they stay hidden.
+_SYSTEM_SCHEMAS_SQL = """
+SELECT SCHEMA_NAME
+FROM INFORMATION_SCHEMA.SCHEMATA
+WHERE SCHEMA_NAME NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
+ORDER BY SCHEMA_NAME
+"""
+
 
 def quote_ident(name: str) -> str:
     return "`" + name.replace("`", "``") + "`"
@@ -80,3 +88,14 @@ def table_indexes(conn, schema: str, table: str) -> list[dict]:
     with conn.cursor(DictCursor) as cur:
         cur.execute(_INDEXES_SQL, (schema, table))
         return list(cur.fetchall())
+
+
+def list_schemas(conn) -> list[str]:
+    """Return the user schemas of the connected database, alphabetically.
+
+    Used to populate the schema picker in the web UI, so the connection may be
+    expensive (RDS token + SSM tunnel): callers should not call it per keystroke.
+    """
+    with conn.cursor() as cur:
+        cur.execute(_SYSTEM_SCHEMAS_SQL)
+        return [row[0] for row in cur.fetchall()]

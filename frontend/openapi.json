@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Yappy Region Sync",
-    "description": "Diff de DB (tablas/SP) y de par\u00e1metros SSM/Secrets entre regiones de origen y destino",
+    "description": "Diff de DB (tablas/SP) y de parámetros SSM/Secrets entre regiones de origen y destino",
     "version": "2.0.0"
   },
   "paths": {
@@ -51,6 +51,49 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DiffResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/db/schemas": {
+      "get": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Api Db Schemas",
+        "description": "List the user schemas of an environment, to feed the schema picker.",
+        "operationId": "list_db_schemas",
+        "parameters": [
+          {
+            "name": "env",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Env"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemasResponse"
                 }
               }
             }
@@ -463,6 +506,38 @@
               "type": "string",
               "title": "Session Id"
             }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Filter"
+            }
           }
         ],
         "responses": {
@@ -529,6 +604,46 @@
         }
       }
     },
+    "/api/sessions/{session_id}/report.md": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Api Sessions Report",
+        "operationId": "get_session_report_markdown",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions/{session_id}/items": {
       "post": {
         "tags": [
@@ -536,6 +651,58 @@
         ],
         "summary": "Api Sessions Item Update",
         "operationId": "update_session_item",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSessionItemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionItemInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/items/create": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Api Sessions Item Create",
+        "operationId": "create_session_item",
         "parameters": [
           {
             "name": "session_id",
@@ -663,6 +830,21 @@
             "title": "Value Type",
             "default": "String"
           },
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "default": "ssm"
+          },
+          "secret_name": {
+            "type": "string",
+            "title": "Secret Name",
+            "default": ""
+          },
+          "secret_value": {
+            "type": "string",
+            "title": "Secret Value",
+            "default": ""
+          },
           "envs": {
             "items": {
               "type": "string"
@@ -719,6 +901,11 @@
           "title": {
             "type": "string",
             "title": "Title",
+            "default": ""
+          },
+          "alias": {
+            "type": "string",
+            "title": "Alias",
             "default": ""
           },
           "reuse": {
@@ -1677,6 +1864,27 @@
         },
         "type": "object",
         "title": "ReadParamsEntry"
+      },
+      "SchemasResponse": {
+        "properties": {
+          "env": {
+            "type": "string",
+            "title": "Env"
+          },
+          "schemas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Schemas",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "env"
+        ],
+        "title": "SchemasResponse"
       },
       "SessionDetailResponse": {
         "properties": {

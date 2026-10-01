@@ -23,6 +23,7 @@ export type { ParamsMultiResponse } from './models/params-multi-response';
 export type { ParamsReadResponse } from './models/params-read-response';
 export type { ReadEntryResultInfo } from './models/read-entry-result-info';
 export type { ReadParamsEntry } from './models/read-params-entry';
+export type { SchemasResponse } from './models/schemas-response';
 export type { SessionDetailResponse } from './models/session-detail-response';
 export type { SessionItemInfo } from './models/session-item-info';
 export type { SessionsListResponse } from './models/sessions-list-response';
