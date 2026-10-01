@@ -19,6 +19,13 @@ import yappy_cli.cli as cli
 def _stub_everything(monkeypatch, tmp_path):
     """Neutralize all of setup()'s side effects."""
 
+    repo_root = tmp_path / "repo"
+    (repo_root / "backend" / "config").mkdir(parents=True)
+    (repo_root / "frontend").mkdir()
+    (repo_root / "frontend" / "package.json").write_text("{}")
+    (repo_root / "pyproject.toml").write_text("[project]\nname = 'test'\n")
+    monkeypatch.setattr(cli, "get_project_root", lambda: repo_root)
+
     # Never touch the developer's real ~/.bashrc.
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
 

@@ -8,9 +8,12 @@ __pycache__/
 .env.*
 config/env.*
 !config/env.*.example
+backend/config/env.*
+!backend/config/env.*.example
 *.egg-info/
 dist/
 build/
+backend/build/
 .idea/
 scripts/mysql-*.zip
 scripts/mysql-*/
@@ -30,6 +33,7 @@ backups/
 
 # Session store (local SQLite, review ledgers)
 data/
+backend/data/
 
 # uv lockfile (no se usa uv en este repo)
 uv.lock

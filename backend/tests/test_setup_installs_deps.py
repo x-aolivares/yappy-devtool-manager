@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import yappy_cli.cli as cli
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALL_SH = REPO_ROOT / "install.sh"
 
 

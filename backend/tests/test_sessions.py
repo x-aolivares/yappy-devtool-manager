@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 
 from yappy_api import sessions as S
@@ -162,3 +164,24 @@ def test_reuse_preserves_progress_of_existing_session(store):
     assert again["id"] == s1["id"]
     assert again["status_counts"]["aplicado"] == 1
     assert again["items"][0]["notes"] == "listo"
+
+
+def test_legacy_session_database_moves_under_backend(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    (root / "backend").mkdir(parents=True)
+    legacy_db = root / "data" / "sessions.db"
+    legacy_db.parent.mkdir(parents=True)
+    with sqlite3.connect(legacy_db) as conn:
+        conn.execute("CREATE TABLE migration_check (value TEXT)")
+        conn.execute("INSERT INTO migration_check VALUES ('preserved')")
+    conn.close()
+    monkeypatch.setattr(S, "project_root", lambda: root)
+
+    new_db = S._db_path()
+
+    assert new_db == root / "backend" / "data" / "sessions.db"
+    assert not legacy_db.exists()
+    with sqlite3.connect(new_db) as conn:
+        assert conn.execute("SELECT value FROM migration_check").fetchone() == (
+            "preserved",
+        )

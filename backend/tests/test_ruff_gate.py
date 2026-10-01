@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
-TARGETS = ["backend", "tests"]
+ROOT = Path(__file__).resolve().parents[2]
+TARGETS = ["backend", "backend/tests"]
 
 
 def _ruff_available() -> bool:

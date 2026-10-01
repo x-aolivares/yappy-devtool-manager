@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from dotenv import dotenv_values
 
-from .paths import project_root
+from .paths import project_config_dir, project_root
 
 
 def win_to_posix(path: str) -> str:
@@ -30,7 +30,7 @@ def posix_to_win(path: str) -> str:
 
 
 def _package_root_config() -> Path:
-    return project_root() / "config"
+    return project_config_dir()
 
 
 class Config:
@@ -53,8 +53,13 @@ class Config:
                     f"Available: {', '.join(available) if available else 'none'}"
                 )
 
-        # Also load local .env from project root or cwd
-        local_env = config_dir.parent / ".env"
+        # Also load local .env from project root or cwd.
+        local_env_root = (
+            config_dir.parent.parent
+            if config_dir.parent.name == "backend"
+            else config_dir.parent
+        )
+        local_env = local_env_root / ".env"
         if local_env.exists():
             self._load_file(local_env)
 
@@ -75,16 +80,21 @@ class Config:
             cls._config_dir = package_root
             return cls._config_dir
 
-        # 3) Walk up from cwd looking for a config dir with the env.base marker.
+        # 3) Walk up from cwd looking for backend/config or a legacy config dir.
         #    This keeps `yappy web` (and any command) working no matter where the
         #    package is installed from or which directory it is invoked in.
         for parent in [Path.cwd(), *Path.cwd().parents]:
+            candidate = parent / "backend" / "config"
+            if (candidate / "env.base").is_file():
+                cls._config_dir = candidate
+                return cls._config_dir
+
             candidate = parent / "config"
             if (candidate / "env.base").is_file():
                 cls._config_dir = candidate
                 return cls._config_dir
 
-        # 4) Last resort: the repository-relative config dir
+        # 4) Last resort: the repository-relative backend config dir.
         cls._config_dir = package_root
         return cls._config_dir
 
@@ -127,7 +137,7 @@ class Config:
         if val is None:
             raise ValueError(
                 f"Missing required config: {key} "
-                f"(check config/env.{self._env or 'base'} "
+                f"(check backend/config/env.{self._env or 'base'} "
                 f"or set YAPPY_{key})"
             )
         return val

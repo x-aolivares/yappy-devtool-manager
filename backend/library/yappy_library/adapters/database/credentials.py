@@ -11,7 +11,7 @@ import botocore.session
 
 from yappy_library.config import Config
 from yappy_library.adapters.logging import die, success, warn
-from yappy_library.paths import project_root
+from yappy_library.paths import project_config_dir
 
 
 def generate_token(cfg: Config) -> str:
@@ -70,7 +70,7 @@ def _clipboard(text: str) -> None:
 def write_local_env(token: str, env_local: Path | None = None) -> None:
     """Persist a generated database token to the project-local env file."""
     if env_local is None:
-        env_local = project_root() / "config" / ".env.local"
+        env_local = project_config_dir() / ".env.local"
 
     try:
         existing = {}
