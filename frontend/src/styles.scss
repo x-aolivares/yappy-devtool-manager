@@ -1,114 +1,174 @@
 // ============================================================
-// Yappy Region Sync — Angular Material 3 (dark) + branding Yappy
+// Yappy Region Sync — sistema visual claro/oscuro inspirado en BBit
 // ============================================================
 @use '@angular/material' as mat;
 
 html {
   height: 100%;
+  color-scheme: light;
   @include mat.theme(
     (
-      // Paleta de marca: azul corporativo (primario) y naranja (terciario).
       color: (
-        theme-type: dark,
         primary: mat.$azure-palette,
         tertiary: mat.$orange-palette,
       ),
       typography: (
-        plain-family: ('Segoe UI', system-ui, sans-serif),
-        brand-family: ('ValdemaMedium', 'Segoe UI', system-ui, sans-serif),
+        plain-family: (
+          'Segoe UI',
+          system-ui,
+          sans-serif,
+        ),
+        brand-family: (
+          'ValdemaMedium',
+          'Segoe UI',
+          system-ui,
+          sans-serif,
+        ),
       ),
       density: 0,
     )
   );
-
-  // Overrides del sistema con los colores exactos de Yappy Comercial.
-  // Los componentes Material se estiran contra estos --mat-sys-* tokens.
-  --mat-sys-primary: #0050b3;
-  --mat-sys-on-primary: #ffffff;
-  --mat-sys-primary-container: #0d4c9e;
-  --mat-sys-on-primary-container: #ffffff;
-  --mat-sys-tertiary: #ff8200;
-  --mat-sys-on-tertiary: #121212;
-  --mat-sys-error: #ed5353;
-  --mat-sys-on-error: #121212;
-  --mat-sys-background: #121212;
-  --mat-sys-on-background: #f5f5f5;
-  --mat-sys-surface: #262626;
-  --mat-sys-surface-container-low: #1c1c1c;
-  --mat-sys-surface-container: #262626;
-  --mat-sys-surface-container-high: #333333;
-  --mat-sys-surface-container-highest: #3d3d3d;
-  --mat-sys-on-surface: #f5f5f5;
-  --mat-sys-on-surface-variant: #9e9e9e;
-  --mat-sys-outline: #333333;
-  --mat-sys-outline-variant: #3d3d3d;
-  --mat-sys-on-primary-fixed: #0050b3;
-  --mat-sys-on-tertiary-fixed: #ff8200;
 }
 
 // Tipografía de marca (wordmark Yappy).
 @font-face {
   font-family: 'ValdemaMedium';
-  src: url('/fonts/valdema-medium.woff2') format('woff2'),
+  src:
+    url('/fonts/valdema-medium.woff2') format('woff2'),
     url('/fonts/valdema-medium.woff') format('woff');
   font-weight: 400;
   font-style: normal;
   font-display: block;
 }
 
-// ============================================================
-// Design tokens de marca (paleta oficial Yappy Comercial)
-// ============================================================
 :root {
-  /* Escala tipográfica común para toda la app */
+  color-scheme: light;
+
+  /* Escala tipográfica compacta para una interfaz de operaciones */
   --text-xxs: 0.7rem;
   --text-xs: 0.75rem;
-  --text-sm: 0.82rem;
+  --text-sm: 0.8125rem;
   --text-md: 0.9rem;
   --text-base: 1rem;
   --text-lg: 1.15rem;
 
-  /* Azules de marca */
-  --yappy-bl: #2f6df6; /* azul corporativo más vivo para CTAs */
-  --yappy-bldark: #1f53c4; /* hover del azul corporativo */
-  --yappy-cyan: #5ab4ff; /* celeste: burbuja izquierda */
-  --yappy-cyan2: #c6e8ff; /* celeste claro (tint) */
+  /* Paleta clara del frontend de referencia BBit */
+  --bb-sans:
+    'Charlie Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  --bb-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  --bb-blue: #0052cc;
+  --bb-blue-hover: #0747a6;
+  --bb-blue-on: #ffffff;
+  --bb-bg: #ffffff;
+  --bb-surface: #f4f5f7;
+  --bb-border: #dfe1e6;
+  --bb-text: #172b4d;
+  --bb-text-secondary: #5e6c84;
+  --bb-success: #36b37e;
+  --bb-success-text: #216e4e;
+  --bb-success-bg: #e3fcef;
+  --bb-success-border: #b3f5d0;
+  --bb-warning: #ff991f;
+  --bb-warning-text: #974f0c;
+  --bb-warning-bg: #fff3cd;
+  --bb-warning-border: #ffc107;
+  --bb-danger: #d93025;
+  --bb-danger-text: #ae2e24;
+  --bb-danger-bg: #f8d7da;
+  --bb-danger-border: #ffbdad;
+  --bb-code-bg: #f4f5f7;
+  --bb-hover-bg: #fafbfc;
+  --bb-selected-bg: #e9f2ff;
+  --bb-elevated: #ffffff;
+  --bb-border-radius: 3px;
+  --bb-radius-md: 6px;
+  --bb-radius-pill: 999px;
+  --bb-control-h: 34px;
+  --bb-control-pad-x: 14px;
 
-  /* Naranjas de marca */
-  --yappy-org: #ff9f43; /* naranja: burbuja derecha */
-  --yappy-org2: #ea7a17; /* hover del naranja */
+  /* Alias semánticos para que las plantillas de Yappy no dependan del tema */
+  --bg: var(--bb-surface);
+  --panel: var(--bb-bg);
+  --border: var(--bb-border);
+  --text: var(--bb-text);
+  --muted: var(--bb-text-secondary);
+  --accent: var(--bb-blue);
+  --accent-hover: var(--bb-blue-hover);
+  --accent-on: var(--bb-blue-on);
+  --accent-2: var(--bb-warning);
+  --ok: var(--bb-success-text);
+  --ok-bg: var(--bb-success-bg);
+  --warn: var(--bb-warning-text);
+  --warn-bg: var(--bb-warning-bg);
+  --err: var(--bb-danger-text);
+  --err-bg: var(--bb-danger-bg);
+  --code-bg: var(--bb-code-bg);
 
-  /* Fondos estándar */
-  --yappy-white: #ffffff; /* fondo claro estándar */
-  --yappy-ink: #121212; /* fondo oscuro estándar */
+  /* Angular Material también sigue el color-scheme seleccionado. */
+  --mat-sys-primary: var(--bb-blue);
+  --mat-sys-on-primary: var(--bb-blue-on);
+  --mat-sys-primary-container: var(--bb-selected-bg);
+  --mat-sys-on-primary-container: var(--bb-text);
+  --mat-sys-tertiary: var(--bb-warning);
+  --mat-sys-on-tertiary: var(--bb-warning-text);
+  --mat-sys-error: var(--bb-danger);
+  --mat-sys-on-error: #ffffff;
+  --mat-sys-background: var(--bb-surface);
+  --mat-sys-on-background: var(--bb-text);
+  --mat-sys-surface: var(--bb-bg);
+  --mat-sys-surface-container-low: var(--bb-hover-bg);
+  --mat-sys-surface-container: var(--bb-surface);
+  --mat-sys-surface-container-high: #ebecf0;
+  --mat-sys-surface-container-highest: var(--bb-border);
+  --mat-sys-on-surface: var(--bb-text);
+  --mat-sys-on-surface-variant: var(--bb-text-secondary);
+  --mat-sys-outline: #a5adba;
+  --mat-sys-outline-variant: var(--bb-border);
+  --mat-sys-on-primary-fixed: var(--bb-blue);
+  --mat-sys-on-tertiary-fixed: var(--bb-warning-text);
+}
 
-  /* Neutros derivados para la UI sobre fondo oscuro */
-  --yappy-ink2: #262626; /* superficies elevadas (paneles) */
-  --yappy-ink3: #333333; /* bordes */
-  --yappy-gry: #f5f5f5; /* texto principal */
-  --yappy-gry2: #9e9e9e; /* texto apagado */
+html[data-theme='light'] {
+  color-scheme: light;
+}
 
-  /* Semánticos de estado */
-  --yappy-grn: #65bc7b;
-  --yappy-red: #ed5353;
-  --yappy-teal: #19c0c0;
+html[data-theme='dark'] {
+  color-scheme: dark;
 
-  /* Celestes de fondo */
-  --yappy-tint: #f4faff;
-  --yappy-tint2: #e3f3ff;
+  --bb-blue: #579dff;
+  --bb-blue-hover: #85b8ff;
+  --bb-blue-on: #102a43;
+  --bb-bg: #22272b;
+  --bb-surface: #1d2125;
+  --bb-border: #454f59;
+  --bb-text: #dee4ea;
+  --bb-text-secondary: #9fadbc;
+  --bb-success: #4bce97;
+  --bb-success-text: #4bce97;
+  --bb-success-bg: #164b35;
+  --bb-success-border: #216e4e;
+  --bb-warning: #f5cd47;
+  --bb-warning-text: #f5cd47;
+  --bb-warning-bg: #332e1b;
+  --bb-warning-border: #7f5f01;
+  --bb-danger: #f87168;
+  --bb-danger-text: #f87168;
+  --bb-danger-bg: #42221f;
+  --bb-danger-border: #ae2e24;
+  --bb-code-bg: #161a1d;
+  --bb-hover-bg: #252b31;
+  --bb-selected-bg: #1c2a3a;
+  --bb-elevated: #2c333a;
 
-  /* Aliases de uso en la UI (equivalen a legacy style.css) */
-  --bg: var(--yappy-ink);
-  --panel: var(--yappy-ink2);
-  --border: var(--yappy-ink3);
-  --text: var(--yappy-gry);
-  --muted: #ffffff;
-  --accent: var(--yappy-bl);
-  --accent-2: var(--yappy-org);
-  --ok: var(--yappy-grn);
-  --warn: var(--yappy-org2);
-  --err: var(--yappy-red);
-  --code-bg: #0d0d0d;
+  --mat-sys-primary-container: #0c66e4;
+  --mat-sys-on-primary-container: #ffffff;
+  --mat-sys-on-tertiary: #1d2125;
+  --mat-sys-on-error: #1d2125;
+  --mat-sys-surface-container-high: #2c333a;
+  --mat-sys-surface-container-highest: #38414a;
+  --mat-sys-outline: #454f59;
+  --mat-sys-on-primary-fixed: #579dff;
+  --mat-sys-on-tertiary-fixed: #f5cd47;
 }
 
 * {
@@ -122,9 +182,14 @@ body {
 
 body {
   margin: 0;
-  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--bb-sans);
   background: var(--bg);
   color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease;
 }
 
 // ============================================================
@@ -146,22 +211,24 @@ button.primary {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  background: linear-gradient(135deg, var(--yappy-bl) 0%, #4b8dff 100%);
-  border: 0.0625rem solid rgba(122, 177, 255, 0.55);
-  color: #ffffff;
-  border-radius: 0.5rem;
-  padding: 0.55rem 0.8rem;
+  background: var(--accent);
+  border: 0.0625rem solid var(--accent);
+  color: var(--accent-on);
+  border-radius: var(--bb-radius-md);
+  min-height: var(--bb-control-h);
+  padding: 0 var(--bb-control-pad-x);
   font-weight: 700;
   font-size: var(--text-sm);
   line-height: 1.2;
-  box-shadow: 0 0.375rem 0.875rem rgba(47, 109, 246, 0.2);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.2s ease;
+  text-decoration: none;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease;
 
   &:hover {
     text-decoration: none;
-    transform: translateY(-0.0625rem);
-    box-shadow: 0 0.5rem 1.125rem rgba(47, 109, 246, 0.28);
-    filter: brightness(1.04);
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
   }
 }
 
@@ -183,9 +250,9 @@ h2 {
 .panel {
   background: var(--panel);
   border: 0.0625rem solid var(--border);
-  border-radius: 0.625rem;
-  padding: 1.25rem;
-  margin-top: 1.125rem;
+  border-radius: var(--bb-border-radius);
+  padding: 1.125rem;
+  margin-top: 1rem;
 }
 
 .form-grid {
@@ -236,6 +303,9 @@ h2 {
   justify-content: space-between;
   gap: 0.625rem;
   margin: 1.125rem 0 0.5rem;
+  padding-bottom: 0.625rem;
+  border-bottom: 0.0625rem solid var(--border);
+  font-size: var(--text-sm);
 }
 
 .radio-row {
@@ -295,8 +365,8 @@ pre {
 .error-box {
   border: 0.0625rem solid var(--err);
   color: var(--err);
-  background: rgba(248, 81, 73, 0.08);
-  border-radius: 0.5rem;
+  background: var(--err-bg);
+  border-radius: var(--bb-border-radius);
   padding: 0.75rem 0.875rem;
   margin-top: 0.875rem;
   font-size: 0.8125rem;
@@ -306,8 +376,8 @@ pre {
 .ok-box {
   border: 0.0625rem solid var(--ok);
   color: var(--ok);
-  background: rgba(101, 188, 123, 0.08);
-  border-radius: 0.5rem;
+  background: var(--ok-bg);
+  border-radius: var(--bb-border-radius);
   padding: 0.75rem 0.875rem;
   margin-top: 0.875rem;
   font-size: 0.8125rem;
@@ -316,13 +386,17 @@ pre {
 .card {
   background: var(--panel);
   border: 0.0625rem solid var(--border);
-  border-radius: 0.75rem;
-  padding: 1.375rem;
+  border-radius: var(--bb-radius-md);
+  padding: 1.125rem;
   display: block;
   color: var(--text);
+  transition:
+    border-color 0.12s ease,
+    background-color 0.12s ease;
 
   &:hover {
     border-color: var(--accent);
+    background: var(--bb-hover-bg);
     text-decoration: none;
   }
 
@@ -385,10 +459,10 @@ input[type='text'],
 input:not([type]),
 textarea {
   width: 100%;
-  background: var(--code-bg);
+  background: var(--bb-elevated);
   color: var(--text);
   border: 0.0625rem solid var(--border);
-  border-radius: 0.375rem;
+  border-radius: var(--bb-radius-md);
   padding: 0.5rem 0.625rem;
   font-size: 0.875rem;
 }
@@ -414,10 +488,13 @@ textarea {
   resize: vertical;
 }
 
-select:focus,
-input:focus,
-textarea:focus {
-  outline: 0.0625rem solid var(--accent);
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
 }
 
 .checkbox-row {
@@ -435,28 +512,37 @@ textarea:focus {
 
 button {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-on);
   font-weight: 700;
-  border: none;
-  border-radius: 0.5rem;
-  padding: 0.52rem 0.82rem;
+  border: 0.0625rem solid var(--accent);
+  border-radius: var(--bb-radius-md);
+  min-height: var(--bb-control-h);
+  padding: 0 var(--bb-control-pad-x);
   font-size: var(--text-sm);
   line-height: 1.2;
   cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease;
 
-  &:hover {
-    filter: brightness(1.1);
+  &:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
   }
 
   &.secondary {
-    background: var(--panel);
-    color: var(--text);
-    border: 0.0625rem solid var(--border);
+    background: var(--bb-elevated);
+    color: var(--accent);
+    border: 0.0625rem solid var(--accent);
     box-shadow: none;
+
+    &:hover:not(:disabled) {
+      background: var(--bb-selected-bg);
+    }
   }
 
   &:disabled {
-    opacity: 0.5;
+    opacity: 0.6;
     cursor: not-allowed;
   }
 }
@@ -466,8 +552,8 @@ button {
 // ============================================================
 .badge {
   display: inline-block;
-  padding: 0.25rem 0.75rem;
-  border-radius: 62.4375rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--bb-border-radius);
   font-size: 0.75rem;
   font-weight: 700;
   border: 0.0625rem solid;
@@ -475,29 +561,34 @@ button {
   &.equal,
   &.none {
     color: var(--ok);
-    border-color: var(--ok);
+    background: var(--bb-success-bg);
+    border-color: var(--bb-success-border);
   }
 
   &.different,
   &.error {
     color: var(--err);
-    border-color: var(--err);
+    background: var(--err-bg);
+    border-color: var(--bb-danger-border);
   }
 
   &.missing_in_a,
   &.secret {
     color: var(--warn);
-    border-color: var(--warn);
+    background: var(--warn-bg);
+    border-color: var(--bb-warning-border);
   }
 
   &.missing_in_b {
     color: var(--muted);
-    border-color: var(--muted);
+    background: var(--bb-surface);
+    border-color: var(--border);
   }
 
   &.ok {
     color: var(--ok);
-    border-color: var(--ok);
+    background: var(--bb-success-bg);
+    border-color: var(--bb-success-border);
   }
 }
 
@@ -521,10 +612,16 @@ td {
 }
 
 th {
+  background: var(--bb-surface);
   color: var(--muted);
-  font-weight: 600;
-  font-size: 0.76rem;
-  letter-spacing: 0.02em;
+  font-weight: 700;
+  font-size: 0.6875rem;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+tbody tr:hover {
+  background: var(--bb-hover-bg);
 }
 
 td .diff-link {
@@ -540,7 +637,7 @@ td .diff-link {
   display: inline-block;
   width: 0.875rem;
   height: 0.875rem;
-  border: 0.125rem solid rgba(255, 255, 255, 0.3);
+  border: 0.125rem solid var(--border);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
@@ -566,7 +663,7 @@ td .diff-link {
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--yappy-bl), var(--yappy-org));
+  background: var(--accent);
 }
 
 .sessions-toolbar {
@@ -639,9 +736,9 @@ td .diff-link {
   display: inline-flex;
   align-items: center;
   padding: 0.3rem 0.65rem;
-  border-radius: 999px;
-  background: rgba(47, 109, 246, 0.12);
-  border: 0.0625rem solid rgba(47, 109, 246, 0.35);
+  border-radius: var(--bb-radius-pill);
+  background: var(--bb-selected-bg);
+  border: 0.0625rem solid var(--border);
   color: var(--text);
   font-weight: 600;
   font-size: 0.75rem;
@@ -837,5 +934,18 @@ details {
       font-size: 0.75rem;
       cursor: pointer;
     }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body,
+  button,
+  .primary,
+  .card {
+    transition-duration: 0.01ms;
+  }
+
+  .spinner {
+    animation: none;
   }
 }

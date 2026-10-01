@@ -1,8 +1,19 @@
 <header>
   <div class="brand">Yappy <span>RegionSync</span></div>
   <nav>
-    <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Inicio</a>
+    <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }"
+      >Inicio</a
+    >
   </nav>
+  <button
+    type="button"
+    class="theme-toggle"
+    aria-label="Alternar modo oscuro"
+    [attr.aria-pressed]="theme.isDark()"
+    (click)="theme.toggle()"
+  >
+    {{ theme.isDark() ? 'Modo claro' : 'Modo oscuro' }}
+  </button>
 </header>
 <main>
   <router-outlet />

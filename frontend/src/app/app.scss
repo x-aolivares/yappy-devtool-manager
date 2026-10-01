@@ -6,21 +6,26 @@
 header {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.75rem;
+  gap: 0.875rem;
+  min-height: 3.5rem;
+  padding: 0.625rem 1.5rem;
+  background: var(--bb-bg);
   border-bottom: 0.0625rem solid var(--border);
 }
 
 header .brand {
   font-family: 'ValdemaMedium', 'Segoe UI', system-ui, sans-serif;
   font-weight: 400;
-  font-size: 1.375rem;
-  color: #fff;
-  letter-spacing: 0.03125rem;
+  font-size: 1.125rem;
+  color: var(--bb-blue);
+  letter-spacing: 0.015625rem;
 }
 
 header .brand span {
-  color: var(--yappy-org);
+  color: var(--bb-text-secondary);
+  font-family: var(--bb-sans);
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 
 header nav {
@@ -31,27 +36,65 @@ header nav {
 }
 
 header nav a {
-  color: var(--muted);
-  padding: 0.375rem 0.75rem;
-  border-radius: 0.375rem;
+  color: var(--bb-text-secondary);
+  padding: 0.375rem 0.625rem;
+  border-radius: var(--bb-radius-md);
   border: 0.0625rem solid transparent;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
 
   &:hover {
     color: var(--text);
-    background: var(--panel);
+    background: var(--bb-surface);
     text-decoration: none;
   }
 
   &.active {
-    color: var(--accent);
-    border-color: var(--border);
+    color: var(--bb-blue);
+    background: var(--bb-selected-bg);
+    border-color: var(--bb-border);
+  }
+}
+
+.theme-toggle {
+  flex: none;
+  background: var(--bb-elevated);
+  color: var(--bb-blue);
+  border: 0.0625rem solid var(--bb-blue);
+  border-radius: var(--bb-radius-md);
+  min-height: var(--bb-control-h);
+  padding: 0 0.75rem;
+  font-size: var(--text-sm);
+  font-weight: 600;
+
+  &:hover:not(:disabled) {
+    background: var(--bb-selected-bg);
+    border-color: var(--bb-blue-hover);
   }
 }
 
 main {
-  max-width: min(90vw, 80rem);
+  max-width: 1080px;
   width: 100%;
   margin: 0 auto;
-  padding: 1.5rem 1.75rem;
+  padding: 1.5rem 1rem;
+}
+
+@media (max-width: 40rem) {
+  header {
+    flex-wrap: wrap;
+    padding: 0.625rem 1rem;
+    gap: 0.5rem;
+  }
+
+  header nav {
+    gap: 0.125rem;
+  }
+
+  .theme-toggle {
+    padding: 0 0.5rem;
+  }
+
+  main {
+    padding: 1.25rem 0.75rem;
+  }
 }
