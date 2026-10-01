@@ -355,18 +355,65 @@ def api_params_get(env: str, name: str):
     operation_id="params_read",
     response_model=ParamsReadResponse,
 )
-def api_params_read(env: str, body: list[ReadParamsEntry | str]):
-    cfg = env_config(env)
-    try:
-        entries = [e if isinstance(e, str) else e.model_dump() for e in body]
-        results = p.read_many(cfg, entries)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Error de AWS: {exc}") from exc
+def api_params_read(envs: list[str], entries: list[ReadParamsEntry | str]):
+    """Read the same keys across every selected environment.
+
+    One unreachable environment must not hide the values of the others, so each
+    environment is attempted independently and a failure becomes error rows
+    carrying that environment's name.
+    """
+    if not envs:
+        raise HTTPException(status_code=400, detail="Seleccioná al menos un ambiente.")
+    normalized = [e if isinstance(e, str) else e.model_dump() for e in entries]
+    if not normalized:
+        raise HTTPException(status_code=400, detail="La lista de parámetros está vacía.")
+
+    results: list[dict] = []
+    for env in envs:
+        try:
+            cfg = env_config(env)
+            # `read_many` knows nothing about which environment it read; stamp it
+            # here so the client can group the panels without guessing.
+            results.extend({**row, "env": env} for row in p.read_many(cfg, normalized))
+        except HTTPException as exc:
+            results.extend(_env_error_rows(env, entries, str(exc.detail)))
+        except ValueError as exc:
+            results.extend(_env_error_rows(env, entries, str(exc)))
+        except Exception as exc:
+            results.extend(_env_error_rows(env, entries, f"Error de AWS: {exc}"))
+
     return {
-        "env": env,
+        "envs": list(envs),
         "results": results,
         "ok_count": sum(1 for r in results if r.get("ok")),
         "err_count": sum(1 for r in results if not r.get("ok")),
     }
+
+
+def _env_error_rows(env: str, entries: list[dict | str], message: str) -> list[dict]:
+    """One failed row per requested key, so the panel keeps its shape.
+
+    Entries arrive either as plain key strings or as dicts, depending on what the
+    client sent; both shapes have to produce a row.
+    """
+    rows = []
+    for entry in entries:
+        if isinstance(entry, str):
+            key, is_secret = entry, False
+        else:
+            key = entry.get("key") or entry.get("name") or ""
+            is_secret = bool(entry.get("is_secret"))
+        rows.append(
+            {
+                "env": env,
+                "key": key,
+                "name": key,
+                "is_secret": is_secret,
+                "service": "secretsmanager" if is_secret else "ssm",
+                "value": None,
+                "value_type": None,
+                "ok": False,
+                "error": message,
+            }
+        )
+    return rows

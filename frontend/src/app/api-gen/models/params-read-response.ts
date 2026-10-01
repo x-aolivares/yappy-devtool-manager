@@ -3,7 +3,7 @@
 
 import { ReadEntryResultInfo } from '../models/read-entry-result-info';
 export interface ParamsReadResponse {
-  env: string;
+  envs?: Array<string>;
   err_count: number;
   ok_count: number;
   results: Array<ReadEntryResultInfo>;

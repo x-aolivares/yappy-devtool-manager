@@ -7,18 +7,16 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
+import { BodyParamsRead } from '../../models/body-params-read';
 import { ParamsReadResponse } from '../../models/params-read-response';
-import { ReadParamsEntry } from '../../models/read-params-entry';
 
 export interface ParamsRead$Params {
-  env: string;
-      body: Array<(ReadParamsEntry | string)>
+      body: BodyParamsRead
 }
 
 export function paramsRead(http: HttpClient, rootUrl: string, params: ParamsRead$Params, context?: HttpContext): Observable<StrictHttpResponse<ParamsReadResponse>> {
   const rb = new RequestBuilder(rootUrl, paramsRead.PATH, 'post');
   if (params) {
-    rb.query('env', params.env, {});
     rb.body(params.body, 'application/json');
   }
 

@@ -241,6 +241,7 @@ class ParameterReadInfo(BaseModel):
 
 
 class ReadEntryResultInfo(BaseModel):
+    env: str = ""
     key: str
     is_secret: bool
     service: str
@@ -251,7 +252,7 @@ class ReadEntryResultInfo(BaseModel):
 
 
 class ParamsReadResponse(BaseModel):
-    env: str
+    envs: list[str] = []
     results: list[ReadEntryResultInfo]
     ok_count: int
     err_count: int

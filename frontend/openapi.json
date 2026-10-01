@@ -373,38 +373,17 @@
           "params"
         ],
         "summary": "Api Params Read",
+        "description": "Read the same keys across every selected environment.\n\nOne unreachable environment must not hide the values of the others, so each\nenvironment is attempted independently and a failure becomes error rows\ncarrying that environment's name.",
         "operationId": "params_read",
-        "parameters": [
-          {
-            "name": "env",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Env"
-            }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "type": "array",
-                "items": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/ReadParamsEntry"
-                    },
-                    {
-                      "type": "string"
-                    }
-                  ]
-                },
-                "title": "Body"
+                "$ref": "#/components/schemas/Body_params_read"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -813,6 +792,37 @@
           "new_value"
         ],
         "title": "ApplyParamsRequest"
+      },
+      "Body_params_read": {
+        "properties": {
+          "envs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Envs"
+          },
+          "entries": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReadParamsEntry"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Entries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "envs",
+          "entries"
+        ],
+        "title": "Body_params_read"
       },
       "CreateMultiParamsRequest": {
         "properties": {
@@ -1754,9 +1764,13 @@
       },
       "ParamsReadResponse": {
         "properties": {
-          "env": {
-            "type": "string",
-            "title": "Env"
+          "envs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Envs",
+            "default": []
           },
           "results": {
             "items": {
@@ -1776,7 +1790,6 @@
         },
         "type": "object",
         "required": [
-          "env",
           "results",
           "ok_count",
           "err_count"
@@ -1785,6 +1798,11 @@
       },
       "ReadEntryResultInfo": {
         "properties": {
+          "env": {
+            "type": "string",
+            "title": "Env",
+            "default": ""
+          },
           "key": {
             "type": "string",
             "title": "Key"

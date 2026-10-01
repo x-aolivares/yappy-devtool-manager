@@ -295,6 +295,138 @@ h2 {
   max-width: 26rem;
 }
 
+/* Variante píldoras en línea (leer parámetros): compacta, wrap horizontal,
+   sólo nombre visible. El seleccionado se llena de azul como el mockup. */
+.env-list.chips {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  max-width: none;
+}
+
+.env-list.chips .env-item {
+  width: auto;
+  min-height: var(--bb-control-h);
+  padding: 0 0.875rem;
+  border-radius: var(--bb-radius-pill);
+  align-items: center;
+  gap: 0.3125rem;
+}
+
+.env-list.chips .env-text {
+  display: inline;
+  white-space: nowrap;
+}
+
+.env-list.chips .env-name {
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
+.env-list.chips .env-meta,
+.env-list.chips .env-error,
+.env-list.chips .env-role {
+  display: none;
+}
+
+.env-list.chips .env-check {
+  width: auto;
+  height: auto;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: currentColor;
+}
+
+.env-list.chips .env-item.selected {
+  background: var(--bb-blue);
+  border-color: var(--bb-blue);
+  color: var(--bb-blue-on);
+}
+
+/* Grupos de píldoras del encabezado de leer parámetros (Servicios | Ambientes). */
+.read-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13.125rem, 1fr));
+  gap: 0.875rem;
+}
+
+.pill-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pill-label {
+  font-size: var(--text-xxs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0;
+  font-weight: 700;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  min-height: var(--bb-control-h);
+  padding: 0 0.875rem;
+  color: var(--text);
+  background: var(--panel);
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--bb-radius-pill);
+  font-size: var(--text-sm);
+  font-weight: 600;
+
+  &:hover:not(:disabled) {
+    border-color: var(--bb-blue-hover);
+    background: var(--bb-hover-bg);
+  }
+
+  &.selected {
+    background: var(--bb-blue);
+    border-color: var(--bb-blue);
+    color: var(--bb-blue-on);
+  }
+}
+
+.read-actions {
+  display: flex;
+  gap: 0.625rem;
+  align-items: flex-end;
+  margin-top: 0.875rem;
+
+  button {
+    flex: none;
+  }
+}
+
+/* Panel de valor por ambiente: caja que se ajusta al contenido (los JSON
+   multicapa crecen) + escritura puntual por ambiente. */
+.env-value-panel .value-row {
+  display: flex;
+  gap: 0.625rem;
+  align-items: flex-start;
+}
+
+.env-value-panel textarea.value-box {
+  flex: 1;
+  min-height: 2.4rem;
+  margin-bottom: 0;
+  font-family: var(--bb-mono);
+  font-size: var(--text-sm);
+  resize: vertical;
+}
+
+.env-value-panel textarea.value-box.value-error {
+  color: var(--err);
+}
+
+.env-value-panel .update-btn {
+  flex: none;
+}
+
 .env-item {
   display: flex;
   align-items: center;

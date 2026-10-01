@@ -98,17 +98,72 @@ def test_api_params_read_ok(monkeypatch):
     monkeypatch.setattr(p, "read_many", staticmethod(_fake_read_many))
 
     payload = api_params_read(
-        env="dev",
-        body=[
+        envs=["dev"],
+        entries=[
             ReadParamsEntry(key="/rate"),
             ReadParamsEntry(key="/secret", is_secret=True),
         ],
     )
 
-    assert payload["env"] == "dev"
+    assert payload["envs"] == ["dev"]
     assert payload["ok_count"] == 2 and payload["err_count"] == 0
     assert payload["results"][0]["key"] == "/rate"
     assert payload["results"][1]["service"] == "secretsmanager"
+
+
+def test_api_params_read_reads_every_selected_environment(monkeypatch):
+    monkeypatch.setattr(
+        Config, "known_environments", classmethod(lambda cls: ["dev", "qa", "uat"])
+    )
+    monkeypatch.setattr(Config, "with_env", staticmethod(lambda env: _FakeConfig(env)))
+    seen = []
+
+    def _read_many(cfg, entries):
+        seen.append(cfg._env)
+        return [
+            {"env": cfg._env, "key": "/rate", "ok": True, "value": "1", "service": "ssm"}
+        ]
+
+    monkeypatch.setattr(p, "read_many", staticmethod(_read_many))
+
+    payload = api_params_read(envs=["dev", "qa", "uat"], entries=["/rate"])
+
+    assert seen == ["dev", "qa", "uat"]
+    assert payload["envs"] == ["dev", "qa", "uat"]
+    assert [r["env"] for r in payload["results"]] == ["dev", "qa", "uat"]
+    assert payload["ok_count"] == 3
+
+
+def test_api_params_read_keeps_other_environments_when_one_fails(monkeypatch):
+    monkeypatch.setattr(
+        Config, "known_environments", classmethod(lambda cls: ["dev", "qa"])
+    )
+    monkeypatch.setattr(Config, "with_env", staticmethod(lambda env: _FakeConfig(env)))
+
+    def _read_many(cfg, entries):
+        if cfg._env == "qa":
+            raise RuntimeError("AccessDenied")
+        return [{"env": "dev", "key": "/rate", "ok": True, "value": "1", "service": "ssm"}]
+
+    monkeypatch.setattr(p, "read_many", staticmethod(_read_many))
+
+    payload = api_params_read(envs=["dev", "qa"], entries=["/rate"])
+
+    assert payload["ok_count"] == 1
+    assert payload["err_count"] == 1
+    failed = [r for r in payload["results"] if not r["ok"]]
+    assert len(failed) == 1
+    assert failed[0]["env"] == "qa"
+    assert failed[0]["key"] == "/rate"
+    assert "AccessDenied" in failed[0]["error"]
+
+
+def test_api_params_read_no_environments_returns_400(monkeypatch):
+    with pytest.raises(HTTPException) as exc_info:
+        api_params_read(envs=[], entries=["/rate"])
+
+    assert exc_info.value.status_code == 400
+    assert "al menos un ambiente" in str(exc_info.value.detail)
 
 
 def test_api_params_read_accepts_plain_key_strings(monkeypatch):
@@ -124,8 +179,8 @@ def test_api_params_read_accepts_plain_key_strings(monkeypatch):
     )
 
     payload = api_params_read(
-        env="dev",
-        body=["/prod/ecommerce/db/master_url", "/prod/payment/stripe/secret_key"],
+        envs=["dev"],
+        entries=["/prod/ecommerce/db/master_url", "/prod/payment/stripe/secret_key"],
     )
 
     assert received == [
@@ -142,7 +197,7 @@ def test_api_params_read_empty_list_returns_400(monkeypatch):
     monkeypatch.setattr(Config, "with_env", staticmethod(lambda env: _FakeConfig(env)))
 
     with pytest.raises(HTTPException) as exc_info:
-        api_params_read(env="dev", body=[])
+        api_params_read(envs=["dev"], entries=[])
 
     assert exc_info.value.status_code == 400
     assert "vacía" in str(exc_info.value.detail)

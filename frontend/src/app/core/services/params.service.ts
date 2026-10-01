@@ -46,7 +46,7 @@ export class ParamsService {
     return this.api.invoke(paramsGet, { env, name });
   }
 
-  read(env: string, entries: Array<ReadParamsEntry | string>): Promise<ParamsReadResponse> {
-    return this.api.invoke(paramsRead, { env, body: entries });
+  read(envs: string[], entries: Array<ReadParamsEntry | string>): Promise<ParamsReadResponse> {
+    return this.api.invoke(paramsRead, { body: { envs, entries } });
   }
 }
