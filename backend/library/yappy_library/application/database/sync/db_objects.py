@@ -99,3 +99,25 @@ def list_schemas(conn) -> list[str]:
     with conn.cursor() as cur:
         cur.execute(_SYSTEM_SCHEMAS_SQL)
         return [row[0] for row in cur.fetchall()]
+
+
+_FK_LINKS_SQL = """
+SELECT DISTINCT TABLE_SCHEMA, TABLE_NAME, REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME
+FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+WHERE REFERENCED_TABLE_NAME IS NOT NULL
+"""
+
+
+def foreign_key_links(conn) -> list[tuple[str, str, str, str]]:
+    """Every ``(child_schema, child_table, parent_schema, parent_table)`` edge.
+
+    Used to write parents before children when copying rows, so a migration is
+    not rejected by a foreign key constraint half way through.
+    """
+    with conn.cursor() as cur:
+        cur.execute(_FK_LINKS_SQL)
+        return [
+            (row[0], row[1], row[2], row[3])
+            for row in cur.fetchall()
+            if row[0] and row[1] and row[2] and row[3]
+        ]

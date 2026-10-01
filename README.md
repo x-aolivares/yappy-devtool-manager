@@ -173,10 +173,11 @@ yappy web --build                    # Compilar el frontend Angular + abrir la w
 yappy web --no-browser               # Servir sin abrir el navegador
 ```
 
-La web (diff de DB y de parámetros/secretos entre ambientes) se sirve desde
-`frontend/` (Angular). El frontend **no se commitea compilado**: si no existe
-`frontend/dist/browser`, `yappy web` sirve las páginas legacy sin romper.
-Para compilar el frontend hace falta **Node.js >= 24.15**:
+La web (diff de DB, compilación entre ambientes, consultas SQL y migraciones de
+datos, diff de parámetros/secretos) se sirve desde `frontend/` (Angular). El
+frontend **no se commitea compilado**: si no existe `frontend/dist/browser`,
+`yappy web` avisa que falta el build. Para compilar el frontend hace falta
+**Node.js >= 24.15**:
 
 ```bash
 cd frontend && npm install && npm run build

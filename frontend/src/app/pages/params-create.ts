@@ -5,11 +5,11 @@ import { ParamsService } from '../core/services/params.service';
 import { toApiError } from '../core/services/api-error';
 import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
-import { EnvPickerComponent } from '../shared/env-picker';
+import { EnvControlsComponent, ServiceOption } from '../shared/env-controls';
 
 @Component({
   selector: 'app-params-create-page',
-  imports: [StatusBadge, CopyButton, EnvPickerComponent],
+  imports: [StatusBadge, CopyButton, EnvControlsComponent],
   template: `
     <h1>Crear / Actualizar en múltiples regiones</h1>
     <p class="muted">
@@ -20,30 +20,18 @@ import { EnvPickerComponent } from '../shared/env-picker';
     </p>
 
     <div class="panel">
-      <label style="margin-top:0;">Regiones destino</label>
-      <app-env-picker
-        [environments]="environments()"
-        [(selected)]="selectedEnvs"
-        label="Regiones destino"
-      />
+      <div style="margin-bottom:1rem;">
+        <app-env-controls
+          [environments]="environments()"
+          [services]="createServices"
+          envLabel="Regiones destino"
+          [(envs)]="selectedEnvs"
+          [(service)]="serviceMode"
+        />
+      </div>
       @if (envLoadError()) {
         <span class="muted">No se pudieron cargar los ambientes: {{ envLoadError() }}</span>
       }
-
-      <div style="margin-top:1rem; margin-bottom:1rem;">
-        <label for="service-mode">Servicio objetivo</label>
-        <select
-          id="service-mode"
-          style="max-width: 26rem;"
-          [value]="serviceMode() || ''"
-          (change)="serviceMode.set($any($event.target).value)"
-        >
-          <option value="" disabled [selected]="!serviceMode()">Seleccione un servicio</option>
-          <option value="ssm">SSM Parameter Store</option>
-          <option value="secretsmanager">Secrets Manager</option>
-          <option value="ssm+secret">SSM + secreto asociado</option>
-        </select>
-      </div>
 
       <label for="name">
         {{ serviceMode() === 'secretsmanager' ? 'Nombre del secreto' : 'Nombre del parámetro' }}
@@ -208,7 +196,11 @@ export class ParamsCreatePage {
 
   readonly environments = signal<EnvironmentInfo[] | null>(null);
   readonly envLoadError = signal<string | null>(null);
-  readonly serviceMode = signal<string>('');
+  /**
+   * Las píldoras no tienen opción "sin elegir", así que el modo arranca en SSM
+   * (el más común) en vez de quedar vacío esperando un `<select>` con placeholder.
+   */
+  readonly serviceMode = signal<string>('ssm');
   readonly name = signal('');
   readonly value = signal('');
   readonly secretName = signal('');
@@ -216,6 +208,16 @@ export class ParamsCreatePage {
   readonly valueType = signal<string>('String');
   readonly createSecret = signal(false);
   readonly selectedEnvs = signal<string[]>([]);
+
+  /**
+   * El servicio acá es el *modo* de escritura, no sólo dónde se guarda: por eso
+   * incluye el modo pareado que no existe en el resto de las páginas.
+   */
+  readonly createServices: readonly ServiceOption[] = [
+    { value: 'ssm', label: 'SSM Parameter Store' },
+    { value: 'secretsmanager', label: 'Secrets Manager' },
+    { value: 'ssm+secret', label: 'SSM + secreto asociado' },
+  ];
 
   readonly busy = signal(false);
   readonly dryRun = signal(false);
@@ -232,7 +234,7 @@ export class ParamsCreatePage {
   }
 
   private bundle(dryRun: boolean) {
-    const mode = this.serviceMode() || 'ssm';
+    const mode = this.serviceMode();
     const paramName = this.name().trim();
     const secretName = this.secretName().trim() || paramName;
     const pairedMode = mode === 'ssm+secret' || (mode === 'ssm' && this.createSecret());
@@ -256,8 +258,12 @@ export class ParamsCreatePage {
   }
 
   run(dryRun: boolean) {
+    const mode = this.serviceMode();
+    if (!mode) {
+      this.error.set('Elegí el servicio objetivo.');
+      return;
+    }
     const p = this.bundle(dryRun);
-    const mode = this.serviceMode() || 'ssm';
     if (!p.name) {
       this.error.set(mode === 'secretsmanager' ? 'Ingresá el nombre del secreto.' : 'Ingresá el nombre del parámetro.');
       return;

@@ -1,40 +1,35 @@
 import { Component, computed, input, model } from '@angular/core';
 import { EnvironmentInfo } from '../api-gen/models';
-import { EnvPickerComponent } from './env-picker';
+import { EnvControlsComponent, PARAM_SERVICES } from './env-controls';
 
+/**
+ * Controles de un par origen → destino, sobre los grupos de píldoras.
+ *
+ * `envB` (origen) y `envA` (destino) siguen siendo la única fuente de verdad:
+ * el picker los refleja en orden de selección y al hacer click se escribe de
+ * vuelta. Así los `set` programáticos desde las páginas (params-diff los lee de
+ * la URL) siguen reflejándose sin duplicar estado.
+ *
+ * Las páginas que eligen N ambientes o uno solo usan `app-env-controls` directo.
+ */
 @Component({
   selector: 'app-region-controls',
-  imports: [EnvPickerComponent],
+  imports: [EnvControlsComponent],
   template: `
-    <div style="margin-bottom: 1.125rem;">
-      <label id="envs-label">Ambientes</label>
-      <app-env-picker
-        [environments]="environments()"
-        [selected]="selected()"
-        [max]="2"
-        [roleLabels]="roles"
-        label="Ambientes de origen y destino"
-        (selectedChange)="onSelection($event)"
-      />
-      <p class="muted" style="margin-top: 0.25rem; font-size: 0.75rem;">
-        Elegí dos: el primero es el de origen y el segundo el de destino.
-      </p>
-    </div>
-    <div class="form-grid">
-      @if (withService()) {
-        <div>
-          <label for="service">Servicio</label>
-          <select
-            id="service"
-            [value]="service() || ''"
-            (change)="service.set($any($event.target).value)">
-            <option value="" disabled [selected]="!service()">Seleccione un servicio</option>
-            <option value="ssm">SSM Parameter Store</option>
-            <option value="secretsmanager">Secrets Manager</option>
-          </select>
-        </div>
-      }
-      @if (withName()) {
+    <app-env-controls
+      [environments]="environments()"
+      [services]="withService() ? services() : []"
+      [roleLabels]="roles"
+      [envLabel]="envLabel()"
+      [hint]="hint()"
+      [max]="2"
+      [envs]="pair()"
+      (envsChange)="onPair($event)"
+      [(service)]="service"
+    />
+
+    @if (withName()) {
+      <div class="form-grid">
         <div>
           <label for="name">Nombre del parámetro / secreto</label>
           <input
@@ -46,8 +41,8 @@ import { EnvPickerComponent } from './env-picker';
             spellcheck="false"
           />
         </div>
-      }
-    </div>
+      </div>
+    }
   `,
 })
 export class RegionControlsComponent {
@@ -55,31 +50,27 @@ export class RegionControlsComponent {
   withService = input(true);
   withName = input(false);
 
-  envB = model('');
-  envA = model('');
+  /** Opciones del grupo de servicios; por defecto los de parámetros. */
+  services = input<readonly { value: string; label: string }[]>(PARAM_SERVICES);
+  envLabel = input('Ambientes');
+  hint = input<string | null>(null);
+
+  envB = model(''); // origen
+  envA = model(''); // destino
   service = model<string>('');
   nameValue = model('');
 
   protected readonly roles = ['Origen', 'Destino'];
 
-  /**
-   * `envB` (origen) y `envA` (destino) siguen siendo la única fuente de verdad:
-   * el panel los refleja en orden, y al hacer click se escribe de vuelta. Así
-   * los `set` programáticos desde las páginas (params-diff los lee de la URL)
-   * siguen reflejándose sin duplicar estado.
-   */
-  protected readonly selected = computed(() => {
+  /** Los dos ambientes en orden de selección: primero origen, segundo destino. */
+  protected readonly pair = computed(() => {
     const out: string[] = [];
-    if (this.envB()) {
-      out.push(this.envB());
-    }
-    if (this.envA() && this.envA() !== this.envB()) {
-      out.push(this.envA());
-    }
+    if (this.envB()) out.push(this.envB());
+    if (this.envA() && this.envA() !== this.envB()) out.push(this.envA());
     return out;
   });
 
-  protected onSelection(sel: string[]): void {
+  protected onPair(sel: string[]): void {
     this.envB.set(sel[0] ?? '');
     this.envA.set(sel[1] ?? '');
   }

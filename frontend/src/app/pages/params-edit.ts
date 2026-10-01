@@ -3,11 +3,11 @@ import { EnvironmentInfo } from '../api-gen/models';
 import { EnvironmentService } from '../core/services/environment.service';
 import { ParamsService } from '../core/services/params.service';
 import { toApiError } from '../core/services/api-error';
-import { EnvPickerComponent } from '../shared/env-picker';
+import { EnvControlsComponent } from '../shared/env-controls';
 
 @Component({
   selector: 'app-params-edit-page',
-  imports: [EnvPickerComponent],
+  imports: [EnvControlsComponent],
   template: `
     <h1>Editar / actualizar un parámetro</h1>
     <p class="muted">
@@ -19,13 +19,7 @@ import { EnvPickerComponent } from '../shared/env-picker';
     </p>
 
     <div class="panel">
-      <label for="env">Ambiente</label>
-      <app-env-picker
-        [environments]="environments()"
-        [selected]="envSelection()"
-        [max]="1"
-        (selectedChange)="onEnvSelection($event)"
-      />
+      <app-env-controls [environments]="environments()" [max]="1" [(envs)]="envs" />
 
       <label for="name" style="margin-top:1rem;">Nombre del parámetro</label>
       <input
@@ -140,7 +134,7 @@ export class ParamsEditPage {
   private readonly paramsService = inject(ParamsService);
 
   readonly environments = signal<EnvironmentInfo[] | null>(null);
-  readonly env = signal('');
+  readonly envs = signal<string[]>([]);
   readonly name = signal('');
   readonly value = signal('');
   readonly valueType = signal('String');
@@ -154,12 +148,8 @@ export class ParamsEditPage {
   readonly resultMsg = signal<string | null>(null);
   readonly resultIsError = signal(false);
 
-  /** El panel es multi-select; con `[max]="1"` refleja el único ambiente elegido. */
-  readonly envSelection = computed(() => (this.env() ? [this.env()] : []));
-
-  onEnvSelection(sel: string[]): void {
-    this.env.set(sel[0] ?? '');
-  }
+  /** El ambiente elegido: el array es la fuente de verdad, el string se deriva. */
+  readonly env = computed(() => (this.envs().length === 1 ? this.envs()[0] : ''));
 
   constructor() {
     this.envService.list().then(

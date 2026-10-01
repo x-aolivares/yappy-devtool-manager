@@ -1,7 +1,13 @@
 import pytest
 from fastapi import HTTPException
 
-from yappy_api.routes.db import api_db_diff, api_db_schemas
+from yappy_api.routes.db import (
+    api_compile,
+    api_db_diff,
+    api_db_schemas,
+    api_migrate,
+    api_query,
+)
 from yappy_api.routes.envs import api_envs
 from yappy_api.routes.params import (
     api_params_apply,
@@ -20,17 +26,22 @@ from yappy_api.routes.sessions import (
 )
 from yappy_api.schemas import (
     ApplyParamsRequest,
+    CompileRequest,
     CreateMultiParamsRequest,
     CreateSessionRequest,
     DbDiffRequest,
     ExecuteParamsRequest,
+    MigrationRequest,
     ParamsDiffRequest,
+    QueryRequest,
     ReadParamsEntry,
     UpdateSessionItemRequest,
 )
 from yappy_library.adapters.database.connection import SyncError
 from yappy_library.application.database.sync import db_objects as obj
+from yappy_library.application.database.sync import migrate as dbmig
 from yappy_library.application.database.sync import params as p
+from yappy_library.application.database.sync import query as dbquery
 from yappy_library.config import Config
 
 
@@ -1042,6 +1053,316 @@ def test_api_db_schemas_reports_unreachable_env(monkeypatch):
         api_db_schemas("dev")
     assert exc_info.value.status_code == 400
     assert "No reachable database" in str(exc_info.value.detail)
+
+
+# --- Compile: origen -> destino ---------------------------------------------
+
+
+def _two_envs(monkeypatch, envs=("dev", "qa")):
+    monkeypatch.setattr(
+        Config, "known_environments", classmethod(lambda cls: list(envs))
+    )
+    monkeypatch.setattr(Config, "with_env", staticmethod(lambda env: _FakeConfig(env)))
+    monkeypatch.setattr("yappy_api.routes.db.connect", _fake_connect)
+
+
+def test_api_compile_rejects_same_source_and_target(monkeypatch):
+    _two_envs(monkeypatch)
+    with pytest.raises(HTTPException) as exc:
+        api_compile(
+            CompileRequest(
+                env_b="dev", env_a="dev", object_type="table",
+                schema_name="s", object_name="t",
+            )
+        )
+    assert exc.value.status_code == 400
+
+
+def test_api_compile_requires_schema_and_name(monkeypatch):
+    _two_envs(monkeypatch)
+    with pytest.raises(HTTPException) as exc:
+        api_compile(
+            CompileRequest(
+                env_b="dev", env_a="qa", object_type="table",
+                schema_name="", object_name="",
+            )
+        )
+    assert "schema" in str(exc.value.detail)
+
+
+def test_api_compile_rejects_unknown_object_type(monkeypatch):
+    _two_envs(monkeypatch)
+    with pytest.raises(HTTPException) as exc:
+        api_compile(
+            CompileRequest(
+                env_b="dev", env_a="qa", object_type="view",
+                schema_name="s", object_name="v",
+            )
+        )
+    assert "object_type" in str(exc.value.detail)
+
+
+def test_api_compile_procedure_is_replaced_from_the_source(monkeypatch):
+    _two_envs(monkeypatch, ("dev", "local"))
+    monkeypatch.setattr(
+        obj, "show_create_procedure",
+        lambda conn, schema, name: "CREATE PROCEDURE `p`() BEGIN SELECT 1; END",
+    )
+    # Guard so the route never needs the destination's procedure definition.
+    monkeypatch.setattr(
+        "yappy_api.routes.db.connect",
+        lambda cfg: _FakeConn(cfg._env),
+    )
+    executed = []
+    monkeypatch.setattr(
+        "yappy_api.routes.db.syncexec.execute_sql",
+        lambda cfg, schema, code: executed.append((cfg._env, schema, code)) or [],
+    )
+
+    payload = api_compile(
+        CompileRequest(
+            env_b="dev", env_a="local", object_type="procedure",
+            schema_name="s", object_name="p",
+        )
+    )
+
+    # The destination is the environment that gets written.
+    assert payload["status"] == "different"
+    assert "CREATE OR REPLACE PROCEDURE" in payload["script"]
+    assert executed == [("local", "s", payload["script"])]
+
+
+def test_api_compile_table_alters_only_the_differences(monkeypatch):
+    _two_envs(monkeypatch, ("dev", "local"))
+    # The destination lacks `newcol`; the origin has it.
+    monkeypatch.setattr(
+        obj, "show_create_table",
+        lambda conn, schema, name: (
+            "CREATE TABLE `t` (`id` INT, `newcol` INT)"
+            if conn.env == "dev"
+            else "CREATE TABLE `t` (`id` INT)"
+        ),
+    )
+    monkeypatch.setattr(
+        obj, "table_columns",
+        lambda conn, schema, name: (
+            [{"COLUMN_NAME": "id", "COLUMN_TYPE": "INT", "IS_NULLABLE": "NO",
+              "COLUMN_DEFAULT": None, "EXTRA": "", "CHARACTER_SET_NAME": None,
+              "COLLATION_NAME": None, "COLUMN_COMMENT": ""},
+             {"COLUMN_NAME": "newcol", "COLUMN_TYPE": "INT", "IS_NULLABLE": "YES",
+              "COLUMN_DEFAULT": None, "EXTRA": "", "CHARACTER_SET_NAME": None,
+              "COLLATION_NAME": None, "COLUMN_COMMENT": ""}]
+            if conn.env == "dev"
+            else [{"COLUMN_NAME": "id", "COLUMN_TYPE": "INT", "IS_NULLABLE": "NO",
+                   "COLUMN_DEFAULT": None, "EXTRA": "", "CHARACTER_SET_NAME": None,
+                   "COLLATION_NAME": None, "COLUMN_COMMENT": ""}]
+        ),
+    )
+    monkeypatch.setattr(obj, "table_indexes", lambda conn, schema, name: [])
+    executed = []
+    monkeypatch.setattr(
+        "yappy_api.routes.db.syncexec.execute_sql",
+        lambda cfg, schema, code: executed.append((cfg._env, code)) or [],
+    )
+
+    payload = api_compile(
+        CompileRequest(
+            env_b="dev", env_a="local", object_type="table",
+            schema_name="s", object_name="t",
+        )
+    )
+
+    assert payload["status"] == "different"
+    assert "ADD COLUMN `newcol` INT" in payload["script"]
+    assert executed[0][0] == "local"
+
+
+def test_api_compile_table_missing_in_destination_is_created(monkeypatch):
+    _two_envs(monkeypatch, ("dev", "local"))
+    monkeypatch.setattr(obj, "show_create_table", lambda conn, s, n: "CREATE TABLE `t` (`id` INT)")
+
+    def columns(conn, schema, name):
+        if conn.env == "local":
+            return []
+        return [{"COLUMN_NAME": "id", "COLUMN_TYPE": "INT", "IS_NULLABLE": "NO",
+                 "COLUMN_DEFAULT": None, "EXTRA": "", "CHARACTER_SET_NAME": None,
+                 "COLLATION_NAME": None, "COLUMN_COMMENT": ""}]
+
+    monkeypatch.setattr(obj, "table_columns", columns)
+    monkeypatch.setattr(obj, "table_indexes", lambda conn, s, n: [])
+    monkeypatch.setattr("yappy_api.routes.db.syncexec.execute_sql", lambda *a: [])
+
+    payload = api_compile(
+        CompileRequest(
+            env_b="dev", env_a="local", object_type="table",
+            schema_name="s", object_name="t",
+        )
+    )
+    assert payload["status"] == "missing_in_a"
+    assert payload["script"].startswith("CREATE TABLE")
+
+
+def test_api_compile_identical_table_produces_nothing(monkeypatch):
+    _two_envs(monkeypatch, ("dev", "local"))
+    ddl = "CREATE TABLE `t` (`id` INT)"
+    monkeypatch.setattr(obj, "show_create_table", lambda conn, s, n: ddl)
+    monkeypatch.setattr(
+        obj, "table_columns",
+        lambda conn, s, n: [{"COLUMN_NAME": "id", "COLUMN_TYPE": "INT", "IS_NULLABLE": "NO",
+                            "COLUMN_DEFAULT": None, "EXTRA": "", "CHARACTER_SET_NAME": None,
+                            "COLLATION_NAME": None, "COLUMN_COMMENT": ""}],
+    )
+    monkeypatch.setattr(obj, "table_indexes", lambda conn, s, n: [])
+    monkeypatch.setattr("yappy_api.routes.db.syncexec.execute_sql", lambda *a: [])
+
+    payload = api_compile(
+        CompileRequest(
+            env_b="dev", env_a="local", object_type="table",
+            schema_name="s", object_name="t",
+        )
+    )
+    assert payload["status"] == "equal"
+    assert payload["script"] is None
+
+
+def test_api_compile_object_missing_in_source_reports_none(monkeypatch):
+    _two_envs(monkeypatch, ("dev", "local"))
+    monkeypatch.setattr(obj, "show_create_table", lambda conn, s, n: None)
+
+    payload = api_compile(
+        CompileRequest(
+            env_b="dev", env_a="local", object_type="table",
+            schema_name="s", object_name="t",
+        )
+    )
+    assert payload["status"] == "none"
+    assert payload["script"] is None
+
+
+# --- Query: consultar --------------------------------------------------------
+
+
+def test_api_query_returns_rows(monkeypatch):
+    _two_envs(monkeypatch)
+    monkeypatch.setattr(
+        "yappy_api.routes.db.dbquery.run_select",
+        lambda cfg, code, limit: dbquery.QueryResult(
+            columns=["id"], rows=[{"id": 1}], total=1, ms=1.5
+        ),
+    )
+
+    payload = api_query(QueryRequest(env="dev", code="SELECT 1"))
+    assert payload["env"] == "dev"
+    assert payload["columns"] == ["id"]
+    assert payload["rows"] == [{"id": 1}]
+    assert payload["total"] == 1
+
+
+def test_api_query_rejects_a_write_statement(monkeypatch):
+    _two_envs(monkeypatch)
+    with pytest.raises(HTTPException) as exc:
+        api_query(QueryRequest(env="dev", code="DELETE FROM t"))
+    assert exc.value.status_code == 400
+    assert "lectura" in str(exc.value.detail)
+
+
+# --- Migrate: migrar info ----------------------------------------------------
+
+
+EXAMPLE_QUERY = (
+    "SELECT * FROM schema_abc.table_abc abc, schema_zxc.zxc zxc "
+    "WHERE zxc.abc_id = abc.abc_id AND zxc.zxc_status = 'COMPLETED' "
+    "AND abc.abc_type = 'M2P' AND abc.abc_cutoff_date = '2026-10-01'"
+)
+
+
+def test_api_migrate_expands_the_query_into_every_table(monkeypatch):
+    _two_envs(monkeypatch, ("dev", "local"))
+    captured = {}
+
+    def fake_migrate(cfg_b, cfg_a, plan, dry_run=False):
+        captured["source"] = cfg_b._env
+        captured["target"] = cfg_a._env
+        captured["tables"] = [t.name for t in plan.tables]
+        captured["dry_run"] = dry_run
+        return [
+            dbmig.TableMigrationResult(
+                schema="schema_abc", table="table_abc", alias="abc",
+                target_schema="schema_abc", target_table="table_abc",
+                select_sql="SELECT DISTINCT `abc`.* ...",
+                row_count=2, replaced=0 if dry_run else 2,
+            ),
+            dbmig.TableMigrationResult(
+                schema="schema_zxc", table="zxc", alias="zxc",
+                target_schema="schema_zxc", target_table="zxc",
+                select_sql="SELECT DISTINCT `zxc`.* ...",
+                row_count=1, replaced=0 if dry_run else 1,
+            ),
+        ]
+
+    monkeypatch.setattr("yappy_api.routes.db.dbmig.migrate", fake_migrate)
+
+    payload = api_migrate(
+        MigrationRequest(env_b="dev", env_a="local", code=EXAMPLE_QUERY, dry_run=True)
+    )
+
+    assert captured["tables"] == ["schema_abc.table_abc", "schema_zxc.zxc"]
+    assert captured["source"] == "dev"
+    assert captured["target"] == "local"
+    assert payload["dry_run"] is True
+    assert payload["ok_count"] == 2
+    assert [t["table_name"] for t in payload["tables"]] == ["table_abc", "zxc"]
+    assert all(t["replaced"] == 0 for t in payload["tables"])
+
+
+def test_api_migrate_requires_confirmation_when_writing(monkeypatch):
+    _two_envs(monkeypatch, ("dev", "local"))
+    with pytest.raises(HTTPException) as exc:
+        api_migrate(
+            MigrationRequest(env_b="dev", env_a="local", code=EXAMPLE_QUERY, confirm=False)
+        )
+    assert exc.value.status_code == 400
+    assert "confirmación" in str(exc.value.detail)
+
+
+def test_api_migrate_rejects_same_source_and_target(monkeypatch):
+    _two_envs(monkeypatch)
+    with pytest.raises(HTTPException) as exc:
+        api_migrate(
+            MigrationRequest(env_b="dev", env_a="dev", code=EXAMPLE_QUERY, dry_run=True)
+        )
+    assert exc.value.status_code == 400
+
+
+def test_api_migrate_rejects_unmigratable_queries(monkeypatch):
+    _two_envs(monkeypatch, ("dev", "local"))
+    with pytest.raises(HTTPException) as exc:
+        api_migrate(
+            MigrationRequest(
+                env_b="dev", env_a="local",
+                code="SELECT id FROM t GROUP BY id", dry_run=True,
+            )
+        )
+    assert exc.value.status_code == 400
+    assert "GROUP BY" in str(exc.value.detail)
+
+
+def test_api_migrate_defaults_the_schema_for_unqualified_tables(monkeypatch):
+    _two_envs(monkeypatch, ("dev", "local"))
+    captured = {}
+
+    def fake_migrate(cfg_b, cfg_a, plan, dry_run=False):
+        captured["tables"] = [t.name for t in plan.tables]
+        return []
+
+    monkeypatch.setattr("yappy_api.routes.db.dbmig.migrate", fake_migrate)
+    api_migrate(
+        MigrationRequest(
+            env_b="dev", env_a="local", code="SELECT * FROM orders",
+            default_schema="shop", dry_run=True,
+        )
+    )
+    assert captured["tables"] == ["shop.orders"]
 
 
 def test_api_params_apply_target_b_builds_script_for_origin(monkeypatch):

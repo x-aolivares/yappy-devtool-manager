@@ -9,12 +9,20 @@ from yappy_library.application.database.sync import db_objects as obj
 from yappy_library.application.database.sync import ddl
 from yappy_library.application.database.sync import diff as db_diff
 from yappy_library.application.database.sync import exec as syncexec
+from yappy_library.application.database.sync import migrate as dbmig
+from yappy_library.application.database.sync import query as dbquery
 from ..deps import env_config
 from ..schemas import (
+    CompileRequest,
+    CompileResponse,
     DbDiffRequest,
     DiffResponse,
     ExecuteRequest,
     ExecuteSqlResponse,
+    MigrationRequest,
+    MigrationResponse,
+    QueryRequest,
+    QueryResponse,
     SchemasResponse,
 )
 
@@ -163,6 +171,169 @@ def api_execute_sql(req: ExecuteRequest):
         "object_type": req.object_type,
         "schema_name": req.schema_name,
         "results": [r.__dict__ for r in results],
+        "ok_count": sum(1 for r in results if r.ok),
+        "err_count": sum(1 for r in results if not r.ok),
+    }
+
+
+@router.post("/api/compile", operation_id="compile_db_object", response_model=CompileResponse)
+def api_compile(req: CompileRequest):
+    """Compile an object from the source environment into the destination one.
+
+    A stored procedure is recreated wholesale from the source definition
+    (``CREATE OR REPLACE``). A table is not overwritten: only the columns and
+    indexes that differ are emitted, as ``ALTER TABLE``, so destination data and
+    its identity survive.
+    """
+    if req.env_a == req.env_b:
+        raise HTTPException(status_code=400, detail="El origen y el destino deben ser distintos")
+    if req.object_type not in ("table", "procedure"):
+        raise HTTPException(status_code=400, detail="object_type debe ser 'table' o 'procedure'")
+    if not req.schema_name.strip() or not req.object_name.strip():
+        raise HTTPException(status_code=400, detail="Completá el schema y el nombre del objeto.")
+
+    cfg_b = env_config(req.env_b)  # origen
+    cfg_a = env_config(req.env_a)  # destino
+    schema, name = req.schema_name.strip(), req.object_name.strip()
+
+    try:
+        with connect(cfg_b) as conn_b, connect(cfg_a) as conn_a:
+            if req.object_type == "procedure":
+                code_b = obj.show_create_procedure(conn_b, schema, name)
+                if code_b is None:
+                    status, script = "none", None
+                    notes = [f"El stored procedure no existe en {req.env_b} (origen)."]
+                else:
+                    status, script = "different", ddl.replace_procedure_script(code_b)
+                    notes = [
+                        f"Se recompila {schema}.{name} en {req.env_a} (destino) "
+                        f"tomando la definición de {req.env_b} (origen)."
+                    ]
+            else:
+                code_b = obj.show_create_table(conn_b, schema, name)
+                if code_b is None:
+                    status, script = "none", None
+                    notes = [f"La tabla no existe en {req.env_b} (origen)."]
+                else:
+                    code_a = obj.show_create_table(conn_a, schema, name)
+                    cols_a = obj.table_columns(conn_a, schema, name)
+                    idx_a = obj.table_indexes(conn_a, schema, name)
+
+                    if not cols_a:
+                        status, script = "missing_in_a", ddl.create_table_script(code_b)
+                        notes = [
+                            f"La tabla no existe en {req.env_a} (destino): "
+                            f"se crea desde {req.env_b} (origen)."
+                        ]
+                    else:
+                        cols_b = obj.table_columns(conn_b, schema, name)
+                        idx_b = obj.table_indexes(conn_b, schema, name)
+                        col_ops, index_ops = db_diff.diff_tables(cols_a, cols_b, idx_a, idx_b)
+
+                        same_ddl = (
+                            code_a is not None
+                            and obj.normalize_ddl(code_a) == obj.normalize_ddl(code_b)
+                        )
+                        if same_ddl and not col_ops and not index_ops:
+                            status, script = "equal", None
+                            notes = [
+                                "Sin cambios: la tabla del destino ya es igual a la del origen."
+                            ]
+                        else:
+                            status = "different"
+                            script = ddl.alter_table_script(schema, name, col_ops, index_ops)
+                            if not script:
+                                notes = [
+                                    "El texto del DDL difiere pero la estructura "
+                                    "(columnas e índices) es idéntica: no hay nada que aplicar."
+                                ]
+                            else:
+                                notes = [
+                                    f"Se actualizan columnas e índices de {schema}.{name} "
+                                    f"en {req.env_a} (destino) para igualarla a {req.env_b}."
+                                ]
+
+            results: list = []
+            if script:
+                results = syncexec.execute_sql(cfg_a, schema, script)
+
+        return {
+            "env_b": req.env_b,
+            "env_a": req.env_a,
+            "object_type": req.object_type,
+            "schema_name": schema,
+            "object_name": name,
+            "status": status,
+            "code_b": code_b,
+            "script": script,
+            "notes": notes,
+            "results": [r.__dict__ for r in results],
+            "ok_count": sum(1 for r in results if r.ok),
+            "err_count": sum(1 for r in results if not r.ok),
+        }
+    except SyncError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
+
+
+@router.post("/api/query", operation_id="query_db", response_model=QueryResponse)
+def api_query(req: QueryRequest):
+    """Run one read-only statement and return its rows."""
+    cfg = env_config(req.env)
+    try:
+        result = dbquery.run_select(cfg, req.code, limit=req.limit)
+    except (dbquery.QueryError, SyncError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
+
+    return {
+        "env": req.env,
+        "columns": result.columns,
+        "rows": result.rows,
+        "total": result.total,
+        "truncated": result.truncated,
+        "ms": result.ms,
+    }
+
+
+@router.post(
+    "/api/migrate", operation_id="migrate_db_data", response_model=MigrationResponse
+)
+def api_migrate(req: MigrationRequest):
+    """Migrate every table involved in a query, honouring its joins and filters.
+
+    The query is expanded into one SELECT per table; each one's rows are copied
+    with ``REPLACE INTO``. With ``dry_run`` nothing is written: the response only
+    reports how many rows each table would contribute.
+    """
+    if req.env_a == req.env_b:
+        raise HTTPException(status_code=400, detail="El origen y el destino deben ser distintos")
+    if not req.dry_run and not req.confirm:
+        raise HTTPException(
+            status_code=400, detail="La migración requiere confirmación (confirm=true)."
+        )
+
+    cfg_b = env_config(req.env_b)  # origen
+    cfg_a = env_config(req.env_a)  # destino
+
+    try:
+        plan = dbmig.parse_select(req.code, default_schema=req.default_schema)
+        results = dbmig.migrate(cfg_b, cfg_a, plan, dry_run=req.dry_run)
+    except (dbmig.MigrationError, dbquery.QueryError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except SyncError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
+
+    return {
+        "env_b": req.env_b,
+        "env_a": req.env_a,
+        "dry_run": req.dry_run,
+        "tables": [r.to_dict() for r in results],
+        "notes": plan.notes,
         "ok_count": sum(1 for r in results if r.ok),
         "err_count": sum(1 for r in results if not r.ok),
     }

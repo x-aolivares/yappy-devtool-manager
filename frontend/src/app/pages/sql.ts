@@ -1,0 +1,349 @@
+import { Component, computed, inject, signal } from '@angular/core';
+import { EnvironmentInfo, MigrationResponse, QueryResponse } from '../api-gen/models';
+import { EnvironmentService } from '../core/services/environment.service';
+import { DbService } from '../core/services/db.service';
+import { toApiError } from '../core/services/api-error';
+import { EnvControlsComponent } from '../shared/env-controls';
+import { StatusBadge } from '../shared/status-badge';
+
+/**
+ * Ejecutar SQL: consultar información y migrar lo consultado.
+ *
+ * Son dos usos distintos sobre la misma consulta:
+ *
+ * 1. **Consultar** — correr un SELECT de lectura contra un ambiente y ver las
+ *    filas. Solo se aceptan sentencias que leen.
+ * 2. **Migrar info** — copiar a otro ambiente todas las tablas que la consulta
+ *    toca, cada una con los filtros de la consulta. Si el
+ *    SELECT une `a` y `b` con filtros, se migran las filas de `a` que cumplen
+ *    esos filtros y las de `b` que también cumplen — no el resultado aplanado
+ *    del join.
+ *
+ * El destino se elige solo al migrar: consultar no necesita dos ambientes.
+ */
+@Component({
+  selector: 'app-sql-page',
+  imports: [EnvControlsComponent, StatusBadge],
+  template: `
+    <h1>Ejecutar SQL</h1>
+    <p class="muted">
+      Corré una consulta de lectura contra un ambiente y mirá el resultado. Con
+      <strong>Migrar info</strong> se copia a otro ambiente cada tabla que la consulta toca,
+      con sus mismos filtros — no el aplanado del join.
+    </p>
+
+    <div class="panel">
+      <div style="margin-bottom:1.125rem;">
+        <app-env-controls
+          [environments]="environments()"
+          [max]="1"
+          envLabel="Ambiente"
+          [(envs)]="envs"
+          (envsChange)="onQueryEnvChange()"
+        />
+      </div>
+
+      <label for="sql">Consulta SQL</label>
+      <textarea
+        id="sql"
+        spellcheck="false"
+        rows="8"
+        [value]="sql()"
+        (input)="sql.set($any($event.target).value)"
+        placeholder="SELECT * FROM schema_abc.table_abc abc, schema_zxc.zxc zxc&#10;WHERE zxc.abc_id = abc.abc_id&#10;  AND zxc.zxc_status = 'COMPLETED'&#10;  AND abc.abc_type = 'M2P'"
+      ></textarea>
+
+      <div class="actions" style="margin-top:0.75rem; justify-content:flex-end;">
+        <button type="button" [disabled]="busy()" (click)="runQuery()">Consultar</button>
+      </div>
+    </div>
+
+    @if (error()) {
+      <div class="error-box">{{ error() }}</div>
+    }
+
+    @if (busy()) {
+      <div class="panel"><span class="spinner"></span>{{ busyText() }}</div>
+    }
+
+    @if (result()) {
+      <div class="panel">
+        <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+          <span class="muted">{{ result()!.env }}</span>
+          <span class="muted">{{ result()!.ms }} ms</span>
+          <span class="muted">
+            {{
+              result()!.truncated
+                ? 'primeras ' + rows().length + ' filas'
+                : result()!.total + ' fila(s)'
+            }}
+          </span>
+        </div>
+        @if (result()!.truncated) {
+          <div class="note">
+            • El resultado es más largo de lo que se muestra. Agregá más filtros para ver todo.
+          </div>
+        }
+      </div>
+
+      @if (rows().length) {
+        <div class="panel">
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  @for (c of result()!.columns; track c) {
+                    <th>{{ c }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of rows(); track $index) {
+                  <tr>
+                    @for (c of result()!.columns; track c) {
+                      <td>{{ cell(row[c]) }}</td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      } @else {
+        <div class="panel"><pre class="empty">La consulta no devolvió filas.</pre></div>
+      }
+    }
+
+    @if (showMigrate()) {
+      <div class="panel">
+        <div class="section-title"><strong>Migrar info</strong></div>
+        <p class="muted" style="font-size:0.85rem;">
+          Se copia cada tabla de la consulta al ambiente destino, con los filtros y joins
+          que ya definiste. Las filas que ya existen se reemplazan.
+        </p>
+        <div style="margin:0.875rem 0;">
+          <app-env-controls
+            [environments]="destEnvironments()"
+            [max]="1"
+            envLabel="Ambiente destino"
+            [(envs)]="destEnvs"
+            (envsChange)="onDestEnvChange()"
+          />
+          @if (env() === destEnv()) {
+            <p class="muted hint-error" style="margin-top:0.375rem; font-size:0.75rem;">
+              El destino no puede ser el mismo ambiente de la consulta.
+            </p>
+          }
+        </div>
+        <div class="actions" style="justify-content:space-between; flex-wrap:wrap; gap:0.625rem;">
+          <label class="checkbox-row" style="margin:0;">
+            <input
+              type="checkbox"
+              [checked]="confirmChecked()"
+              (change)="confirmChecked.set($any($event.target).checked)"
+            />
+            <span>Sí, migrar a <strong>{{ destEnv() || '…' }}</strong></span>
+          </label>
+          <div class="actions" style="gap:0.625rem;">
+            <button type="button" class="secondary" [disabled]="busy()" (click)="previewMigration()">
+              Simular
+            </button>
+            <button
+              type="button"
+              [disabled]="busy() || !canMigrate()"
+              (click)="runMigration()"
+            >
+              Migrar info
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+
+    @if (migration()) {
+      <div class="panel">
+        <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+          <span class="muted">{{ migration()!.env_b }} → {{ migration()!.env_a }}</span>
+          @if (migration()!.dry_run) {
+            <app-badge status="equal" label="Simulación" />
+          }
+        </div>
+        @for (n of migration()!.notes ?? []; track n) {
+          <div class="note">• {{ n }}</div>
+        }
+      </div>
+
+      <div class="panel">
+        <div class="section-title">
+          <strong>
+            @if (migration()!.dry_run) { Filas por tabla } @else { Resultado por tabla }
+          </strong>
+        </div>
+        @for (t of migration()!.tables; track t.schema_name + '.' + t.table_name) {
+          <div class="stmt-row">
+            <app-badge [status]="t.ok ? 'ok' : 'error'" [label]="t.ok ? 'OK' : 'Error'" />
+            <div style="flex:1; min-width:0;">
+              <strong>{{ t.schema_name }}.{{ t.table_name }}</strong>
+              @if (t.alias) {
+                <span class="muted"> (alias {{ t.alias }})</span>
+              }
+              <div class="muted stmt-meta">
+                @if (migration()!.dry_run) {
+                  <span>{{ t.row_count }} fila(s)</span>
+                } @else {
+                  <span>{{ t.replaced }} de {{ t.row_count }} fila(s) migradas</span>
+                }
+                @if (t.skipped_columns?.length) {
+                  <span>columnas no existentes en el destino, omitidas: {{ t.skipped_columns!.join(', ') }}</span>
+                }
+                @if (t.error) {
+                  <span style="color:var(--err);">{{ t.error }}</span>
+                }
+              </div>
+              <pre class="stmt-preview">{{ t.select_sql }}</pre>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  `,
+})
+export class SqlPage {
+  private readonly envService = inject(EnvironmentService);
+  private readonly dbService = inject(DbService);
+
+  readonly environments = signal<EnvironmentInfo[] | null>(null);
+  readonly envs = signal<string[]>([]);
+  readonly sql = signal('');
+  readonly confirmChecked = signal(false);
+  readonly destEnvs = signal<string[]>([]);
+
+  readonly busy = signal(false);
+  readonly busyText = signal('');
+  readonly error = signal<string | null>(null);
+  readonly result = signal<QueryResponse | null>(null);
+  readonly migration = signal<MigrationResponse | null>(null);
+
+  /** `rows` is optional in the contract; normalize it once for the template. */
+  readonly rows = computed(() => this.result()?.rows ?? []);
+  /** El ambiente elegido: el array es la fuente de verdad, el string se deriva. */
+  readonly env = computed(() => (this.envs().length === 1 ? this.envs()[0] : ''));
+  readonly destEnv = computed(() => (this.destEnvs().length === 1 ? this.destEnvs()[0] : ''));
+  /** The destination picker excludes the query's own environment. */
+  readonly destEnvironments = computed(() => {
+    const all = this.environments();
+    if (!all) return null;
+    return all.filter((e) => e.env !== this.env());
+  });
+
+  /** Migration only makes sense on a query that actually returned something. */
+  readonly showMigrate = computed(() => this.rows().length > 0);
+  readonly canMigrate = computed(
+    () => !!this.destEnv() && this.destEnv() !== this.env() && this.confirmChecked(),
+  );
+
+  constructor() {
+    this.envService.list().then(
+      (envs) => this.environments.set(envs.environments),
+      (err) => this.error.set('No se pudieron cargar los ambientes: ' + toApiError(err).message),
+    );
+  }
+
+  /** Cambiar el ambiente de la consulta descarta la migración anterior. */
+  onQueryEnvChange(): void {
+    this.migration.set(null);
+    this.confirmChecked.set(false);
+    // El destino no puede coincidir con el ambiente de la consulta.
+    if (this.env() && this.destEnvs().length === 1 && this.destEnvs()[0] === this.env()) {
+      this.destEnvs.set([]);
+    }
+  }
+
+  onDestEnvChange(): void {
+    this.migration.set(null);
+  }
+
+  cell(value: unknown): string {
+    if (value === null || value === undefined) return '—';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  }
+
+  runQuery() {
+    const env = this.env();
+    if (!env) {
+      this.error.set('Seleccioná el ambiente.');
+      return;
+    }
+    if (!this.sql().trim()) {
+      this.error.set('Pegá la consulta que querés ejecutar.');
+      return;
+    }
+
+    this.busy.set(true);
+    this.error.set(null);
+    this.migration.set(null);
+    this.confirmChecked.set(false);
+    this.busyText.set(`Consultando ${env}...`);
+
+    this.dbService
+      .query({ env, code: this.sql() })
+      .then(
+        (d) => {
+          this.busy.set(false);
+          this.result.set(d);
+        },
+        (err) => {
+          this.busy.set(false);
+          this.error.set(toApiError(err).message);
+        },
+      );
+  }
+
+  private migrate(dryRun: boolean): void {
+    const text = this.sql().trim();
+    if (!this.destEnv()) {
+      this.error.set('Elegí el ambiente destino.');
+      return;
+    }
+    if (!dryRun && !this.confirmChecked()) {
+      this.error.set('Confirmá que querés migrar los datos a ' + this.destEnv() + '.');
+      return;
+    }
+
+    this.busy.set(true);
+    this.error.set(null);
+    this.busyText.set(
+      dryRun
+        ? `Simulando la migración de ${this.env()} a ${this.destEnv()}...`
+        : `Migrando datos de ${this.env()} a ${this.destEnv()}...`,
+    );
+
+    this.dbService
+      .migrate({
+        env_b: this.env(),
+        env_a: this.destEnv(),
+        code: text,
+        dry_run: dryRun,
+        confirm: !dryRun,
+      })
+      .then(
+        (d) => {
+          this.busy.set(false);
+          this.migration.set(d);
+        },
+        (err) => {
+          this.busy.set(false);
+          this.error.set(toApiError(err).message);
+        },
+      );
+  }
+
+  previewMigration(): void {
+    this.migrate(true);
+  }
+
+  runMigration(): void {
+    this.migrate(false);
+  }
+}

@@ -65,8 +65,13 @@ export const NAV_SECTIONS: readonly NavSection[] = [
       },
       {
         link: '/compile',
-        label: 'Compilar / Ejecutar SQL',
-        hint: 'Ejecuta SQL o DDL contra la base de un ambiente',
+        label: 'Compilar',
+        hint: 'Compila una tabla o stored procedure de un ambiente a otro',
+      },
+      {
+        link: '/sql',
+        label: 'Ejecutar SQL',
+        hint: 'Consulta información y migra los datos de lo consultado',
       },
     ],
   },

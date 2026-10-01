@@ -152,6 +152,132 @@
         }
       }
     },
+    "/api/compile": {
+      "post": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Api Compile",
+        "description": "Compile an object from the source environment into the destination one.\n\nA stored procedure is recreated wholesale from the source definition\n(``CREATE OR REPLACE``). A table is not overwritten: only the columns and\nindexes that differ are emitted, as ``ALTER TABLE``, so destination data and\nits identity survive.",
+        "operationId": "compile_db_object",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompileResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/query": {
+      "post": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Api Query",
+        "description": "Run one read-only statement and return its rows.",
+        "operationId": "query_db",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/migrate": {
+      "post": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Api Migrate",
+        "description": "Migrate every table involved in a query, honouring its joins and filters.\n\nThe query is expanded into one SELECT per table; each one's rows are copied\nwith ``REPLACE INTO``. With ``dry_run`` nothing is written: the response only\nreports how many rows each table would contribute.",
+        "operationId": "migrate_db_data",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/params/diff": {
       "post": {
         "tags": [
@@ -824,6 +950,126 @@
         ],
         "title": "Body_params_read"
       },
+      "CompileRequest": {
+        "properties": {
+          "env_b": {
+            "type": "string",
+            "title": "Env B"
+          },
+          "env_a": {
+            "type": "string",
+            "title": "Env A"
+          },
+          "object_type": {
+            "type": "string",
+            "title": "Object Type"
+          },
+          "schema_name": {
+            "type": "string",
+            "title": "Schema Name"
+          },
+          "object_name": {
+            "type": "string",
+            "title": "Object Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "env_b",
+          "env_a",
+          "object_type",
+          "schema_name",
+          "object_name"
+        ],
+        "title": "CompileRequest",
+        "description": "Compile an object from one environment into another (origen -> destino)."
+      },
+      "CompileResponse": {
+        "properties": {
+          "env_b": {
+            "type": "string",
+            "title": "Env B"
+          },
+          "env_a": {
+            "type": "string",
+            "title": "Env A"
+          },
+          "object_type": {
+            "type": "string",
+            "title": "Object Type"
+          },
+          "schema_name": {
+            "type": "string",
+            "title": "Schema Name"
+          },
+          "object_name": {
+            "type": "string",
+            "title": "Object Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "code_b": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code B"
+          },
+          "script": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes",
+            "default": []
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/StatementResultInfo"
+            },
+            "type": "array",
+            "title": "Results",
+            "default": []
+          },
+          "ok_count": {
+            "type": "integer",
+            "title": "Ok Count",
+            "default": 0
+          },
+          "err_count": {
+            "type": "integer",
+            "title": "Err Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "env_b",
+          "env_a",
+          "object_type",
+          "schema_name",
+          "object_name",
+          "status"
+        ],
+        "title": "CompileResponse"
+      },
       "CreateMultiParamsRequest": {
         "properties": {
           "name": {
@@ -1339,6 +1585,166 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "MigrationRequest": {
+        "properties": {
+          "env_b": {
+            "type": "string",
+            "title": "Env B"
+          },
+          "env_a": {
+            "type": "string",
+            "title": "Env A"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "default_schema": {
+            "type": "string",
+            "title": "Default Schema",
+            "default": ""
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          },
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "env_b",
+          "env_a",
+          "code"
+        ],
+        "title": "MigrationRequest"
+      },
+      "MigrationResponse": {
+        "properties": {
+          "env_b": {
+            "type": "string",
+            "title": "Env B"
+          },
+          "env_a": {
+            "type": "string",
+            "title": "Env A"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/MigrationTableInfo"
+            },
+            "type": "array",
+            "title": "Tables",
+            "default": []
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes",
+            "default": []
+          },
+          "ok_count": {
+            "type": "integer",
+            "title": "Ok Count",
+            "default": 0
+          },
+          "err_count": {
+            "type": "integer",
+            "title": "Err Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "env_b",
+          "env_a",
+          "dry_run"
+        ],
+        "title": "MigrationResponse"
+      },
+      "MigrationTableInfo": {
+        "properties": {
+          "schema_name": {
+            "type": "string",
+            "title": "Schema Name"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "alias": {
+            "type": "string",
+            "title": "Alias"
+          },
+          "target_schema": {
+            "type": "string",
+            "title": "Target Schema"
+          },
+          "target_table": {
+            "type": "string",
+            "title": "Target Table"
+          },
+          "select_sql": {
+            "type": "string",
+            "title": "Select Sql"
+          },
+          "row_count": {
+            "type": "integer",
+            "title": "Row Count",
+            "default": 0
+          },
+          "replaced": {
+            "type": "integer",
+            "title": "Replaced",
+            "default": 0
+          },
+          "skipped_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skipped Columns",
+            "default": []
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schema_name",
+          "table_name",
+          "alias",
+          "target_schema",
+          "target_table",
+          "select_sql"
+        ],
+        "title": "MigrationTableInfo",
+        "description": "One table of a migration.\n\nThe source table is reported as ``schema``/``table`` rather than\n``schema_name``/``table_name`` to keep it aligned with the SQL projection it\ncame from."
+      },
       "MultiResultInfo": {
         "properties": {
           "env": {
@@ -1795,6 +2201,80 @@
           "err_count"
         ],
         "title": "ParamsReadResponse"
+      },
+      "QueryRequest": {
+        "properties": {
+          "env": {
+            "type": "string",
+            "title": "Env"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "default": 500
+          }
+        },
+        "type": "object",
+        "required": [
+          "env",
+          "code"
+        ],
+        "title": "QueryRequest"
+      },
+      "QueryResponse": {
+        "properties": {
+          "env": {
+            "type": "string",
+            "title": "Env"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns",
+            "default": []
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Rows",
+            "default": []
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "default": false
+          },
+          "ms": {
+            "type": "number",
+            "title": "Ms",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "env"
+        ],
+        "title": "QueryResponse"
       },
       "ReadEntryResultInfo": {
         "properties": {

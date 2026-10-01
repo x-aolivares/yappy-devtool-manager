@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class DbDiffRequest(BaseModel):
@@ -77,6 +77,88 @@ class ExecuteRequest(BaseModel):
     object_type: str  # "table" | "procedure"
     schema_name: str = ""
     code: str
+
+
+class CompileRequest(BaseModel):
+    """Compile an object from one environment into another (origen -> destino)."""
+
+    env_b: str  # origen
+    env_a: str  # destino
+    object_type: str  # "table" | "procedure"
+    schema_name: str
+    object_name: str
+
+
+class CompileResponse(BaseModel):
+    env_b: str
+    env_a: str
+    object_type: str
+    schema_name: str
+    object_name: str
+    status: str
+    code_b: str | None = None
+    script: str | None = None
+    notes: list[str] = []
+    results: list[StatementResultInfo] = []
+    ok_count: int = 0
+    err_count: int = 0
+
+
+class QueryRequest(BaseModel):
+    env: str
+    code: str
+    limit: int = 500
+
+
+class QueryResponse(BaseModel):
+    env: str
+    columns: list[str] = []
+    rows: list[dict[str, Any]] = []
+    total: int | None = None
+    truncated: bool = False
+    ms: float = 0.0
+
+
+class MigrationRequest(BaseModel):
+    env_b: str  # origen: de dónde se lee
+    env_a: str  # destino: a dónde se escribe
+    code: str
+    default_schema: str = ""
+    dry_run: bool = False
+    confirm: bool = False
+
+
+class MigrationTableInfo(BaseModel):
+    """One table of a migration.
+
+    The source table is reported as ``schema``/``table`` rather than
+    ``schema_name``/``table_name`` to keep it aligned with the SQL projection it
+    came from.
+    """
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    schema_name: str
+    table_name: str
+    alias: str
+    target_schema: str
+    target_table: str
+    select_sql: str
+    row_count: int = 0
+    replaced: int = 0
+    skipped_columns: list[str] = []
+    ok: bool = True
+    error: str | None = None
+
+
+class MigrationResponse(BaseModel):
+    env_b: str
+    env_a: str
+    dry_run: bool
+    tables: list[MigrationTableInfo] = []
+    notes: list[str] = []
+    ok_count: int = 0
+    err_count: int = 0
 
 
 class ReadParamsEntry(BaseModel):

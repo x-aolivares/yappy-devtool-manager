@@ -23,7 +23,7 @@ function buttons(fixture: ComponentFixture<EnvPickerComponent>): HTMLButtonEleme
 }
 
 describe('EnvPickerComponent', () => {
-  it('renders one toggle button per environment, with no select and no checkbox', async () => {
+  it('renders one toggle pill per environment, with no select and no checkbox', async () => {
     const fixture = await setup();
     const el = fixture.nativeElement as HTMLElement;
 
@@ -111,6 +111,13 @@ describe('EnvPickerComponent', () => {
 
     const roles = buttons(fixture).map((b) => b.querySelector('.env-role')?.textContent?.trim());
     expect(roles).toEqual([undefined, 'Origen', 'Destino']);
+  });
+
+  it('shows no role when none is given', async () => {
+    const fixture = await setup(0, ['qa']);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.env-role')).toBeNull();
   });
 
   it('reports a missing environment list instead of rendering empty panels', async () => {

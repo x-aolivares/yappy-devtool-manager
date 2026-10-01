@@ -101,6 +101,7 @@ describe('App', () => {
       '/sessions',
       '/db-diff',
       '/compile',
+      '/sql',
     ]);
   });
 });

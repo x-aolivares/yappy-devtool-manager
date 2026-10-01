@@ -9,17 +9,18 @@ import { EnvironmentInfo } from '../api-gen/models';
  * La lista sigue viniendo de `EnvironmentService.list()` (los `.env` de
  * `config/`), así que no hay nada hardcodeado acá.
  *
- * Dos variantes visuales:
- * - `stack`: paneles apilados (params-create, las páginas con origen/destino).
- * - `chips`: píldoras en línea (leer parámetros), nombre + metadato compacto.
+ * Siempre se presenta en línea, como píldoras: es el diseño de las secciones de
+ * ambiente en toda la app. Antes tenía dos variantes (`stack` apilado y `chips`
+ * en línea); como ya no queda ningún uso del apilado, la variante se sacó y
+ * `.env-list` es directamente el layout de píldoras.
  *
  * La selección se emite como array **en orden de selección**, que es lo que
- * permite que las páginas de diff deriven origen/destino sin cambiar de estado.
+ * permite que las páginas deriven origen/destino sin estado duplicado.
  */
 @Component({
   selector: 'app-env-picker',
   template: `
-    <div class="env-list" [class.chips]="variant() === 'chips'" role="group" [attr.aria-label]="label()">
+    <div class="env-list" role="group" [attr.aria-label]="label()">
       @for (e of environments() ?? []; track e.env) {
         <button
           type="button"
@@ -37,7 +38,7 @@ import { EnvironmentInfo } from '../api-gen/models';
               <span class="env-error">{{ e.load_error }}</span>
             }
           </span>
-          @if (variant() === 'stack' && roleOf(e.env); as role) {
+          @if (roleOf(e.env); as role) {
             <span class="env-role">{{ role }}</span>
           }
         </button>
@@ -54,7 +55,6 @@ export class EnvPickerComponent {
   label = input('Ambientes');
   /** Etiqueta del slot según el orden de selección (ej. `['Origen', 'Destino']`). */
   roleLabels = input<readonly string[]>([]);
-  variant = input<'stack' | 'chips'>('stack');
 
   selected = model<string[]>([]);
 

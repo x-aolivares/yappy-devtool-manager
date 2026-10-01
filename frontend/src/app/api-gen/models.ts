@@ -3,6 +3,8 @@
 
 export type { ApplyParamsRequest } from './models/apply-params-request';
 export type { BodyParamsRead } from './models/body-params-read';
+export type { CompileRequest } from './models/compile-request';
+export type { CompileResponse } from './models/compile-response';
 export type { CreateMultiParamsRequest } from './models/create-multi-params-request';
 export type { CreateSessionRequest } from './models/create-session-request';
 export type { DbDiffRequest } from './models/db-diff-request';
@@ -15,6 +17,9 @@ export type { ExecuteParamsResponse } from './models/execute-params-response';
 export type { ExecuteRequest } from './models/execute-request';
 export type { ExecuteSqlResponse } from './models/execute-sql-response';
 export type { HttpValidationError } from './models/http-validation-error';
+export type { MigrationRequest } from './models/migration-request';
+export type { MigrationResponse } from './models/migration-response';
+export type { MigrationTableInfo } from './models/migration-table-info';
 export type { MultiResultInfo } from './models/multi-result-info';
 export type { ParameterReadInfo } from './models/parameter-read-info';
 export type { ParamsApplyResponse } from './models/params-apply-response';
@@ -22,6 +27,8 @@ export type { ParamsDiffRequest } from './models/params-diff-request';
 export type { ParamsDiffResponse } from './models/params-diff-response';
 export type { ParamsMultiResponse } from './models/params-multi-response';
 export type { ParamsReadResponse } from './models/params-read-response';
+export type { QueryRequest } from './models/query-request';
+export type { QueryResponse } from './models/query-response';
 export type { ReadEntryResultInfo } from './models/read-entry-result-info';
 export type { ReadParamsEntry } from './models/read-params-entry';
 export type { SchemasResponse } from './models/schemas-response';

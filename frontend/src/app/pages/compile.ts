@@ -1,35 +1,71 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { EnvironmentInfo, ExecuteSqlResponse, StatementResultInfo } from '../api-gen/models';
+import { CompileResponse, EnvironmentInfo } from '../api-gen/models';
 import { EnvironmentService } from '../core/services/environment.service';
 import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
-import { EnvPickerComponent } from '../shared/env-picker';
-import { SchemaSelectComponent } from '../shared/schema-select';
+import { objectLabel } from '../core/format';
 import { StatusBadge } from '../shared/status-badge';
+import { CopyButton } from '../shared/copy-button';
+import { RegionControlsComponent } from '../shared/region-controls';
 
+/**
+ * Compilar: llevar un objeto de un ambiente a otro.
+ *
+ * El sentido siempre es origen -> destino. Lo usual es tomar el objeto de un
+ * ambiente real y compilarlo en el local, pero nada acá lo asume: los dos
+ * ambientes son eligeibles y el origen siempre es el que manda.
+ *
+ * - Stored procedure: se recompila entero desde la definición del origen.
+ * - Tabla: no se sobrescribe. Se emiten solo las diferencias de columnas e
+ *   índices como ALTER TABLE, para no perder los datos del destino.
+ */
 @Component({
   selector: 'app-compile-page',
-  imports: [EnvPickerComponent, SchemaSelectComponent, StatusBadge],
+  imports: [RegionControlsComponent, StatusBadge, CopyButton],
   template: `
-    <h1>Compilar / Ejecutar SQL</h1>
+    <h1>Compilar</h1>
     <p class="muted">
-      Elegí el ambiente, el tipo de objeto y pegá el código para ejecutarlo directo contra esa base.
-      En Aurora/MySQL los stored procedures se (re)compilan con
-      <code>CREATE [OR REPLACE] PROCEDURE</code>. Cada sentencia corre con autocommit activo.
+      Compila un objeto desde el ambiente de <strong>origen</strong> hacia el de
+      <strong>destino</strong> — lo usual es de un ambiente real a
+      <code>local</code>. Un stored procedure se recompila entero desde la definición del
+      origen; una tabla no se sobrescribe: solo se aplican las diferencias de columnas e
+      índices.
     </p>
 
     <div class="panel">
+      <app-region-controls
+        [environments]="environments()"
+        [withService]="false"
+        envLabel="Ambientes"
+        hint="Elegí dos: el primero es el de origen y el segundo el de destino."
+        [(envB)]="envB"
+        [(envA)]="envA"
+      />
       <div class="form-grid">
         <div>
-          <label for="env">Ambiente</label>
-          <app-env-picker
-            id="env"
-            [environments]="environments()"
-            [selected]="envSelection()"
-            [max]="1"
-            (selectedChange)="onEnvSelection($event)"
+          <label for="schema">Schema</label>
+          <input
+            id="schema"
+            type="text"
+            [value]="schema()"
+            (input)="schema.set($any($event.target).value)"
+            placeholder="p. ej. yappy"
+            spellcheck="false"
           />
         </div>
+        <div>
+          <label for="object-name">Nombre del objeto</label>
+          <input
+            id="object-name"
+            type="text"
+            [value]="objectName()"
+            (input)="objectName.set($any($event.target).value)"
+            placeholder="p. ej. users"
+            spellcheck="false"
+          />
+        </div>
+      </div>
+      <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
         <div>
           <label>Tipo de objeto</label>
           <div class="radio-row">
@@ -54,38 +90,17 @@ import { StatusBadge } from '../shared/status-badge';
               Stored procedure
             </label>
           </div>
+          <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
+            @if (objectType() === 'procedure') {
+              Se recompila la definición completa en el destino.
+            } @else {
+              Se generan ALTER TABLE solo con lo que difiere; los datos del destino quedan.
+            }
+          </p>
         </div>
-        <div>
-          <label for="schema">Schema (opcional)</label>
-          <app-schema-select
-            [env]="env()"
-            [(value)]="schema"
-            [optional]="true"
-            emptyLabel="(sin schema)"
-          />
+        <div class="actions" style="align-items:flex-end; justify-content:flex-end;">
+          <button type="button" [disabled]="busy()" (click)="compile()">Compilar</button>
         </div>
-      </div>
-
-      <label for="code">Código SQL / DDL</label>
-      <textarea
-        id="code"
-        spellcheck="false"
-        [value]="code()"
-        (input)="code.set($any($event.target).value)"
-        placeholder="Pegá acá el script, por ejemplo el que genera el DB Diff..."
-      ></textarea>
-
-      <label class="checkbox-row" style="margin-top:0.75rem;">
-        <input
-          type="checkbox"
-          [checked]="confirmChecked()"
-          (change)="confirmChecked.set($any($event.target).checked)"
-        />
-        <span>Sí, quiero ejecutar esto en <strong>{{ confirmEnv() }}</strong></span>
-      </label>
-
-      <div class="actions" style="justify-content:flex-end; margin-top:0.625rem;">
-        <button type="button" [disabled]="busy()" (click)="run()">Compilar</button>
       </div>
     </div>
 
@@ -94,38 +109,60 @@ import { StatusBadge } from '../shared/status-badge';
     }
 
     @if (busy()) {
-      <div class="panel"><span class="spinner"></span>Ejecutando en {{ env() || '…' }}...</div>
+      <div class="panel"><span class="spinner"></span>{{ busyText() }}</div>
     }
 
     @if (result()) {
-      @if (result()!.err_count === 0) {
-        <div class="ok-box">
-          <strong>Listo.</strong> {{ result()!.ok_count }} sentencia{{ result()!.ok_count === 1 ? '' : 's' }}
-          ejecutada{{ result()!.ok_count === 1 ? '' : 's' }} correctamente en {{ result()!.env }}.
-        </div>
-      } @else {
-        <div class="error-box">
-          <strong>{{ result()!.err_count }} sentencia{{ result()!.err_count === 1 ? '' : 's' }} fallaron</strong>
-          de {{ result()!.ok_count + result()!.err_count }} en {{ result()!.env }}.
-        </div>
-      }
       <div class="panel">
-        @for (row of result()!.results; track row.index) {
-          <div class="stmt-row">
-            <span>#{{ row.index }}</span>
-            <app-badge [status]="row.ok ? 'ok' : 'error'" [label]="row.ok ? 'OK' : 'Error'" />
-            <div style="flex:1; min-width:0;">
-              <pre class="stmt-preview">{{ row.sql }}</pre>
-              <div class="muted stmt-meta">
-                <span>{{ stmtMeta(row) }}</span>
-                @if (row.error) {
-                  <span style="color:var(--err);">{{ row.error }}</span>
-                }
-              </div>
-            </div>
-          </div>
+        <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+          <app-badge [status]="result()!.status" />
+          <span class="muted">
+            {{ objectLabel(result()!.object_type) }} {{ result()!.schema_name }}.{{
+              result()!.object_name
+            }}
+          </span>
+          <span class="muted">{{ result()!.env_b }} → {{ result()!.env_a }}</span>
+        </div>
+        @for (n of result()!.notes ?? []; track n) {
+          <div class="note">• {{ n }}</div>
         }
       </div>
+
+      @if (result()!.script) {
+        <div class="panel">
+          <div class="section-title">
+            <strong>
+              {{ result()!.object_type === 'procedure' ? 'Procedimiento recompilado' : 'DDL aplicado' }}
+              en {{ result()!.env_a }} (destino)
+            </strong>
+          </div>
+          <pre class="script-block">{{ result()!.script }}</pre>
+          <div class="actions" style="margin-top:0.625rem;">
+            <app-copy-button [text]="result()!.script ?? ''" />
+          </div>
+        </div>
+      }
+
+      @if (result()!.results?.length) {
+        <div class="panel">
+          <div class="section-title"><strong>Sentencias ejecutadas</strong></div>
+          @for (row of result()!.results!; track row.index) {
+            <div class="stmt-row">
+              <span>#{{ row.index }}</span>
+              <app-badge [status]="row.ok ? 'ok' : 'error'" [label]="row.ok ? 'OK' : 'Error'" />
+              <div style="flex:1; min-width:0;">
+                <pre class="stmt-preview">{{ row.sql }}</pre>
+                <div class="muted stmt-meta">
+                  <span>{{ row.ms }} ms</span>
+                  @if (row.error) {
+                    <span style="color:var(--err);">{{ row.error }}</span>
+                  }
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+      }
     }
   `,
 })
@@ -133,25 +170,22 @@ export class CompilePage {
   private readonly envService = inject(EnvironmentService);
   private readonly dbService = inject(DbService);
 
+  /** Exposed to the template for its labels. */
+  protected readonly objectLabel = objectLabel;
+
   readonly environments = signal<EnvironmentInfo[] | null>(null);
-  readonly env = signal('');
-  readonly objectType = signal<'table' | 'procedure'>('table');
+  readonly envB = signal(''); // origen
+  readonly envA = signal(''); // destino
   readonly schema = signal('');
-  readonly code = signal('');
-  readonly confirmChecked = signal(false);
+  readonly objectName = signal('');
+  readonly objectType = signal<'table' | 'procedure'>('table');
 
   readonly busy = signal(false);
+  readonly busyText = signal('');
   readonly error = signal<string | null>(null);
-  readonly result = signal<ExecuteSqlResponse | null>(null);
+  readonly result = signal<CompileResponse | null>(null);
 
-  readonly confirmEnv = computed(() => this.env() || '…');
-
-  /** El panel es multi-select; con `[max]="1"` refleja el único ambiente elegido. */
-  readonly envSelection = computed(() => (this.env() ? [this.env()] : []));
-
-  onEnvSelection(sel: string[]): void {
-    this.env.set(sel[0] ?? '');
-  }
+  readonly direction = computed(() => `${this.envB() || '…'} → ${this.envA() || '…'}`);
 
   constructor() {
     this.envService.list().then(
@@ -160,38 +194,35 @@ export class CompilePage {
     );
   }
 
-  stmtMeta(row: StatementResultInfo): string {
-    const parts = [`${row.ms} ms`];
-    if (row.ok && row.affected !== null && row.affected !== undefined) {
-      parts.push(`${row.affected} filas`);
-    }
-    return parts.join(' · ');
-  }
-
-  run() {
-    const env = this.env();
-    const code = this.code();
-    if (!env) {
-      this.error.set('Seleccioná el ambiente.');
+  compile() {
+    const schema = this.schema().trim();
+    const objectName = this.objectName().trim();
+    if (!this.envA() || !this.envB()) {
+      this.error.set('Seleccioná el ambiente de origen y el de destino.');
       return;
     }
-    if (!code.trim()) {
-      this.error.set('Pegá el código SQL que querés ejecutar.');
+    if (this.envA() === this.envB()) {
+      this.error.set('El origen y el destino tienen que ser distintos.');
       return;
     }
-    if (!this.confirmChecked()) {
-      this.error.set('Confirmá que querés ejecutar esto en ' + env + '.');
+    if (!schema || !objectName) {
+      this.error.set('Completá el schema y el nombre del objeto.');
       return;
     }
 
     this.busy.set(true);
     this.error.set(null);
+    this.busyText.set(
+      `Compilando ${objectLabel(this.objectType())} ${schema}.${objectName} de ${this.envB()} a ${this.envA()}...`,
+    );
+
     this.dbService
-      .executeSql({
-        env,
+      .compile({
+        env_b: this.envB(),
+        env_a: this.envA(),
         object_type: this.objectType(),
-        schema_name: this.schema().trim(),
-        code,
+        schema_name: schema,
+        object_name: objectName,
       })
       .then(
         (d) => {

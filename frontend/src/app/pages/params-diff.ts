@@ -61,6 +61,7 @@ type PairKey = 'param' | 'secret';
       <app-region-controls
         [environments]="environments()"
         [withName]="true"
+        hint="Elegí dos: el primero es el de origen y el segundo el de destino."
         [(envB)]="envB"
         [(envA)]="envA"
         [(service)]="service"

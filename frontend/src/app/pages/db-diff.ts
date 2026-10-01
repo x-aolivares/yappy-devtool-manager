@@ -22,6 +22,7 @@ import { RegionControlsComponent } from '../shared/region-controls';
       <app-region-controls
         [environments]="environments()"
         [withService]="false"
+        hint="Elegí dos: el primero es el de origen y el segundo el de destino."
         [(envB)]="envB"
         [(envA)]="envA"
       />

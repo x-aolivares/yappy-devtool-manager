@@ -9,6 +9,7 @@ import { ParamsEditPage } from './pages/params-edit';
 import { ParamsReadPage } from './pages/params-read';
 import { SessionDetailPage } from './pages/session-detail';
 import { SessionsPage } from './pages/sessions';
+import { SqlPage } from './pages/sql';
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', component: HomePage },
@@ -20,5 +21,6 @@ export const routes: Routes = [
   { path: 'params-edit', component: ParamsEditPage },
   { path: 'db-diff', component: DbDiffPage },
   { path: 'compile', component: CompilePage },
+  { path: 'sql', component: SqlPage },
   { path: '**', redirectTo: '' },
 ];

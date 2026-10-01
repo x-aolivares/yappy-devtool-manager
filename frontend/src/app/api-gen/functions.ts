@@ -9,6 +9,12 @@ export type { ListDbSchemas$Params as ListDbSchemas$Params } from './fn/db/list-
 export { listDbSchemas as listDbSchemas } from './fn/db/list-db-schemas';
 export type { ExecuteSql$Params as ExecuteSql$Params } from './fn/db/execute-sql';
 export { executeSql as executeSql } from './fn/db/execute-sql';
+export type { CompileDbObject$Params as CompileDbObject$Params } from './fn/db/compile-db-object';
+export { compileDbObject as compileDbObject } from './fn/db/compile-db-object';
+export type { QueryDb$Params as QueryDb$Params } from './fn/db/query-db';
+export { queryDb as queryDb } from './fn/db/query-db';
+export type { MigrateDbData$Params as MigrateDbData$Params } from './fn/db/migrate-db-data';
+export { migrateDbData as migrateDbData } from './fn/db/migrate-db-data';
 export type { ParamsDiff$Params as ParamsDiff$Params } from './fn/params/params-diff';
 export { paramsDiff as paramsDiff } from './fn/params/params-diff';
 export type { ParamsApply$Params as ParamsApply$Params } from './fn/params/params-apply';

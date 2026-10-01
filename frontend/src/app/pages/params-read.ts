@@ -11,7 +11,7 @@ import { ParamsService } from '../core/services/params.service';
 import { SessionService } from '../core/services/session.service';
 import { toApiError } from '../core/services/api-error';
 import { formatValue } from '../core/format';
-import { EnvPickerComponent } from '../shared/env-picker';
+import { EnvControlsComponent, PARAM_SERVICES } from '../shared/env-controls';
 import { StatusBadge } from '../shared/status-badge';
 
 interface EnvPanel {
@@ -29,14 +29,14 @@ interface EnvPanel {
 /**
  * Leer / actualizar un parámetro o secreto en N ambientes.
  *
- * La selección sale del env-picker (nada hardcodeado); del primer ambiente se
+ * La selección sale de los grupos de píldoras (nada hardcodeado); del primer ambiente se
  * muestra el valor como caja editable y `Actualizar` escribe SÓLO ese ambiente
  * vía params/multi con `envs: [env]`. Con dos o más ambientes marcados se arma
  * la sesión de trabajo (origen = primero, destino = segundo).
  */
 @Component({
   selector: 'app-params-read-page',
-  imports: [EnvPickerComponent, StatusBadge, RouterLink],
+  imports: [EnvControlsComponent, StatusBadge, RouterLink],
   template: `
     <h1>Leer Parámetros / Secretos</h1>
     <p class="muted">
@@ -46,34 +46,12 @@ interface EnvPanel {
     </p>
 
     <div class="panel">
-      <div class="read-controls">
-        <div class="pill-group">
-          <label class="pill-label">Servicios</label>
-          <div class="env-list chips" role="group" aria-label="Servicio">
-            @for (s of services; track s.value) {
-              <button
-                type="button"
-                class="chip"
-                [class.selected]="service() === s.value"
-                [attr.aria-pressed]="service() === s.value"
-                (click)="service.set(s.value)"
-              >
-                <span aria-hidden="true">{{ service() === s.value ? '✓' : '' }}</span>
-                {{ s.label }}
-              </button>
-            }
-          </div>
-        </div>
-        <div class="pill-group">
-          <label class="pill-label">Ambientes</label>
-          <app-env-picker
-            [environments]="environments()"
-            [(selected)]="envs"
-            variant="chips"
-            label="Ambientes a leer"
-          />
-        </div>
-      </div>
+      <app-env-controls
+        [environments]="environments()"
+        [services]="services"
+        [(envs)]="envs"
+        [(service)]="service"
+      />
 
       <p class="muted" style="margin-top: 0.25rem; font-size: 0.75rem;">
         Se leen las mismas claves en todos los ambientes marcados. Con dos o más también se arma la
@@ -185,10 +163,7 @@ export class ParamsReadPage {
   readonly writingEnv = signal<string | null>(null);
   readonly writeStatus = signal<Record<string, { ok: boolean; message: string }>>({});
 
-  readonly services = [
-    { value: 'ssm', label: 'SSM' },
-    { value: 'secretsmanager', label: 'Secrets Manager' },
-  ];
+  readonly services = PARAM_SERVICES;
 
   constructor() {
     const q = new URLSearchParams(location.search);
