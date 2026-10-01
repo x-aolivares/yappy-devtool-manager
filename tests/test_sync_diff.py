@@ -1,8 +1,8 @@
 import pytest
 
-from src.sync import db_objects as obj
-from src.sync import ddl
-from src.sync import diff
+from yappy_cli.sync import db_objects as obj
+from yappy_cli.sync import ddl
+from yappy_cli.sync import diff
 
 
 def test_normalize_ddl_strips_definer_and_whitespace():

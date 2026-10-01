@@ -109,7 +109,7 @@ def test_yappy_config_dir_override_wins(tmp_path, monkeypatch):
 
 
 def test_config_resolved_walking_up_from_cwd(tmp_path, monkeypatch):
-    from src import config as config_mod
+    from yappy_cli import config as config_mod
 
     cfg_dir = tmp_path / "proyecto" / "config"
     cfg_dir.mkdir(parents=True)

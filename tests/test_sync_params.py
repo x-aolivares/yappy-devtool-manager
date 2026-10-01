@@ -1,6 +1,6 @@
 import json
 
-from src.sync import params as p
+from yappy_cli.sync import params as p
 
 
 def test_compare_values_equal_json():

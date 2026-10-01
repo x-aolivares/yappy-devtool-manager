@@ -1,6 +1,6 @@
 import pytest
 
-from src.web import sessions as S
+from yappy_cli.web import sessions as S
 
 
 @pytest.fixture()

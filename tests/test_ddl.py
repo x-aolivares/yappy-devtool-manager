@@ -1,4 +1,4 @@
-from src.sync import ddl
+from yappy_cli.sync import ddl
 
 
 def test_drop_table_script():
