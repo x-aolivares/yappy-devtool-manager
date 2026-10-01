@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 import yappy_cli.db.tunnel as tunnel
-import yappy_cli.process_tracker as process_tracker
+import yappy_library.adapters.process_tracker as process_tracker
 
 
 def _fake_cfg():

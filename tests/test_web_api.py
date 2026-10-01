@@ -1,23 +1,24 @@
 import pytest
 from fastapi import HTTPException
 
-from yappy_cli.config import Config
-from yappy_cli.sync import db_objects as obj
-from yappy_cli.sync import params as p
-from yappy_cli.web.api.db import api_db_diff
-from yappy_cli.web.api.envs import api_envs
-from yappy_cli.web.api.params import api_params_apply
-from yappy_cli.web.api.params import api_params_apply_execute
-from yappy_cli.web.api.params import api_params_diff
-from yappy_cli.web.api.params import api_params_get
-from yappy_cli.web.api.params import api_params_multi
-from yappy_cli.web.api.params import api_params_read
-from yappy_cli.web.api.sessions import api_sessions_create
-from yappy_cli.web.api.sessions import api_sessions_delete
-from yappy_cli.web.api.sessions import api_sessions_get
-from yappy_cli.web.api.sessions import api_sessions_item_update
-from yappy_cli.web.api.sessions import api_sessions_list
-from yappy_cli.web.schemas import (
+from yappy_api.routes.db import api_db_diff
+from yappy_api.routes.envs import api_envs
+from yappy_api.routes.params import (
+    api_params_apply,
+    api_params_apply_execute,
+    api_params_diff,
+    api_params_get,
+    api_params_multi,
+    api_params_read,
+)
+from yappy_api.routes.sessions import (
+    api_sessions_create,
+    api_sessions_delete,
+    api_sessions_get,
+    api_sessions_item_update,
+    api_sessions_list,
+)
+from yappy_api.schemas import (
     ApplyParamsRequest,
     CreateMultiParamsRequest,
     CreateSessionRequest,
@@ -27,6 +28,9 @@ from yappy_cli.web.schemas import (
     ReadParamsEntry,
     UpdateSessionItemRequest,
 )
+from yappy_library.application.database.sync import db_objects as obj
+from yappy_library.application.database.sync import params as p
+from yappy_library.config import Config
 
 
 class _FakeConfig:
@@ -924,7 +928,7 @@ def test_api_db_diff_missing_in_b_respects_include_deletes(monkeypatch):
         Config, "known_environments", classmethod(lambda cls: ["dev", "qa"])
     )
     monkeypatch.setattr(Config, "with_env", staticmethod(lambda env: _FakeConfig(env)))
-    monkeypatch.setattr("yappy_cli.web.api.db.connect", _fake_connect)
+    monkeypatch.setattr("yappy_api.routes.db.connect", _fake_connect)
     monkeypatch.setattr(obj, "show_create_table",
                         lambda conn, schema, name: (
                             "CREATE TABLE ..." if conn.env == "dev" else None

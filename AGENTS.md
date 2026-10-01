@@ -23,7 +23,7 @@ When a user requests an adjustment:
 1. Make the code change
 2. Update `version` in `pyproject.toml`
 3. Run the gate: `python -m pytest` (includes the ruff gate) and
-   `python -m ruff check yappy_cli tests`
+   `python -m ruff check backend tests`
 4. `git add -A && git commit -m "tipo: descripción concisa"`
 5. `git push`
 
@@ -36,7 +36,7 @@ in `pyproject.toml` and enforced by `tests/test_ruff_gate.py`, so it runs with
 completed for anyone.
 
 Style rules are intentionally **not** enforced. Notably `F841` must stay off:
-`yappy_cli/workflow/executor.py` calls `session.multiple.pf(...)` for its side
+`backend/cli/yappy_cli/workflow/executor.py` calls `session.multiple.pf(...)` for its side
 effect (opening port-forwards) and discards the return value, so "fixing" that
 warning would tear down working tunnels.
 

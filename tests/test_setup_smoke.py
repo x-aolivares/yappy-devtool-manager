@@ -35,7 +35,7 @@ def _stub_everything(monkeypatch, tmp_path):
     monkeypatch.setattr(builtins, "input", lambda *a, **k: "n")
 
     # Kafka download is a real network fetch — stub it.
-    import yappy_cli.kafka.setup as kafka_setup
+    import yappy_library.adapters.kafka.setup as kafka_setup
 
     monkeypatch.setattr(kafka_setup, "setup_kafka_configs", lambda cfg: None)
     monkeypatch.setattr(kafka_setup, "setup_kafka", lambda cfg: True)

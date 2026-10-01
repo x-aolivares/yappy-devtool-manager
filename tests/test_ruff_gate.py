@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-TARGETS = ["yappy_cli", "tests"]
+TARGETS = ["backend", "tests"]
 
 
 def _ruff_available() -> bool:
@@ -39,7 +39,7 @@ def test_ruff_config_is_scoped_to_correctness_rules():
     """The gate must not drift into style rules like F841.
 
     F841 would demand deleting `session.multiple.pf(...)` in
-    workflow/executor.py, which is a deliberate side-effect call that opens
+    `backend/cli/yappy_cli/workflow/executor.py`, a side-effect call that opens
     port-forwards. Auto-fixing it would break working tunnels.
     """
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")

@@ -8,7 +8,7 @@
 #   yappy setup
 #
 # This script deliberately does NOT install dependencies (backend or frontend).
-# Dependency installation lives in `yappy setup` (yappy_cli/cli.py) so there is a
+# Dependency installation lives in `yappy setup` (backend/cli/yappy_cli/cli.py) so there is a
 # single source of truth. Duplicating dep logic here would drift from the code.
 #
 # This script only:

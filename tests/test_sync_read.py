@@ -1,6 +1,6 @@
 import pytest
 
-from yappy_cli.sync import params as p
+from yappy_library.application.database.sync import params as p
 
 
 class ResourceNotFound(Exception):

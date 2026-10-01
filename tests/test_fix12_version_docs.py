@@ -42,11 +42,11 @@ def test_readme_title_and_docs_fixed():
 
 def test_readme_kafka_path_matches_config_default():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    from yappy_cli.config import Config
+    from yappy_library.config import Config, win_to_posix
 
     default = Config().kafka_path
     assert "config/kafka" not in readme
-    assert default.replace("\\", "\\\\") in readme or default in readme
+    assert win_to_posix(default) in readme or default in readme
 
 
 def test_readme_setup_claims_only_env_base_created():

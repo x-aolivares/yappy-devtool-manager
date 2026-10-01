@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yappy-cli-manager"
-version = "2.22.2"
+version = "2.23.0"
 description = "Yappy CLI Manager - orquestador de sesiones AWS, SSM, RDS, Kafka y port-forwarding"
 requires-python = ">=3.14"
 dynamic = ["dependencies", "optional-dependencies"]
@@ -17,7 +17,8 @@ optional-dependencies = {dev = {file = ["docs/requirements-dev.txt"]}}
 yappy = "yappy_cli.cli:app"
 
 [tool.setuptools.packages.find]
-include = ["yappy_cli*"]
+where = ["backend/library", "backend/api", "backend/cli"]
+include = ["yappy_library*", "yappy_api*", "yappy_cli*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -35,7 +36,7 @@ testpaths = ["tests"]
 # Deliberately NOT enforced, and why:
 #   F401 unused imports  - style; the three in yappy_cli/ are now cleaned up
 #   F541 f-string w/o {} - pure style, 9 occurrences, zero risk
-#   F841 unused variable - actively HARMFUL here: yappy_cli/workflow/executor.py
+#   F841 unused variable - actively HARMFUL here: backend/cli/yappy_cli/workflow/executor.py
 #                          calls session.multiple.pf(...) for its side effect
 #                          (opening port-forwards) and ignores the return value.
 #                          "Fixing" that would tear down working tunnels.

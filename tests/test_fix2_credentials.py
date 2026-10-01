@@ -7,6 +7,7 @@ import pytest
 import yappy_cli.aws.session as aws_session
 import yappy_cli.db.tunnel as tunnel
 import yappy_cli.workflow.executor as executor_mod
+import yappy_library.adapters.database.credentials as credentials
 
 
 def test_executor_never_prints_db_password(monkeypatch, capsys):
@@ -117,13 +118,15 @@ def test_mfa_credentials_helper_preserves_other_profiles(monkeypatch, tmp_path):
 
 
 def test_write_local_env_sets_0600_on_posix(monkeypatch, tmp_path):
-    monkeypatch.setattr(tunnel.os, "name", "posix")
+    monkeypatch.setattr(credentials.os, "name", "posix")
     chmods = []
-    monkeypatch.setattr(tunnel.os, "chmod", lambda path, mode: chmods.append((Path(path), mode)))
-    monkeypatch.setattr(tunnel, "_clipboard", lambda text: None)
+    monkeypatch.setattr(
+        credentials.os, "chmod", lambda path, mode: chmods.append((Path(path), mode))
+    )
+    monkeypatch.setattr(credentials, "_clipboard", lambda text: None)
 
     target = tmp_path / ".env.local"
-    tunnel._write_local_env("SECRETTOKEN", env_local=target)
+    credentials.write_local_env("SECRETTOKEN", env_local=target)
 
     def _fs(p):
         return str(p).replace("\\", "/")

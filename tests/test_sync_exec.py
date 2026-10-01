@@ -2,9 +2,9 @@ import contextlib
 
 import pytest
 
-from yappy_cli.sync import exec as dbexec
-from yappy_cli.sync.exec import split_statements
-from yappy_cli.sync.conn import SyncError
+from yappy_library.application.database.sync import exec as dbexec
+from yappy_library.application.database.sync.exec import split_statements
+from yappy_library.adapters.database.connection import SyncError
 
 
 # --- split_statements -----------------------------------------------------

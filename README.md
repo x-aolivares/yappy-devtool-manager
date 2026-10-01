@@ -72,7 +72,7 @@ yappy setup               # Instala deps (backend + frontend), config, kafka
 
 `install.sh` es **solo bootstrap**: su único trabajo es hacer que el comando `yappy`
 exista. No instala dependencias, porque eso vive en `yappy setup`
-(`yappy_cli/cli.py`) y duplicar esa lógica en un script la haría divergir del
+(`backend/cli/yappy_cli/cli.py`) y duplicar esa lógica en un script la haría divergir del
 código. La primera corrida de `pip install -e .` tiene que vivir en el script por
 la paradoja de bootstrap: el comando que instalaría las dependencias no puede
 correr hasta que el comando mismo existe.
