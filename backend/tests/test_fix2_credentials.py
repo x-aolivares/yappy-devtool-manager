@@ -121,11 +121,12 @@ def test_write_local_env_sets_0600_on_posix(monkeypatch, tmp_path):
     monkeypatch.setattr(credentials.os, "name", "posix")
     chmods = []
     monkeypatch.setattr(
-        credentials.os, "chmod", lambda path, mode: chmods.append((Path(path), mode))
+        credentials.os, "chmod", lambda path, mode: chmods.append((str(path), mode))
     )
     monkeypatch.setattr(credentials, "_clipboard", lambda text: None)
 
     target = tmp_path / ".env.local"
+    target.write_text("DB_USER=test-user\n")
     credentials.write_local_env("SECRETTOKEN", env_local=target)
 
     def _fs(p):

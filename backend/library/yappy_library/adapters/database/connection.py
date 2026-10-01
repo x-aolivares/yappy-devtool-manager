@@ -7,7 +7,7 @@ Replicates how yappy-cli-manager reaches Aurora:
    (same pattern as ``src/db/tunnel`` / ``src/base.ssm_tunnel``), connecting to
    ``localhost:<db_port>``.
 
-``DB_USER`` / ``DB_PASSWORD`` fall back to ``config/.env.local`` (what
+``DB_USER`` / ``DB_PASSWORD`` fall back to ``backend/config/.env.local`` (what
 ``yappy run db <env>`` writes).
 """
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 import contextlib
 import socket
 import time
-from pathlib import Path
 from typing import Iterator
 
 import pymysql
@@ -25,19 +24,15 @@ from dotenv import dotenv_values
 from yappy_library.adapters.database.credentials import generate_token
 from yappy_library.adapters.processes import BaseCommand
 from yappy_library.config import Config
-from yappy_library.paths import project_root
+from yappy_library.paths import project_config_dir
 
 
 class SyncError(ValueError):
     """Raised when a target environment cannot be reached or inspected."""
 
 
-def _repo_root() -> Path:
-    return project_root()
-
-
 def _local_env_values() -> dict[str, str]:
-    path = _repo_root() / "config" / ".env.local"
+    path = project_config_dir() / ".env.local"
     return dotenv_values(path) if path.exists() else {}
 
 

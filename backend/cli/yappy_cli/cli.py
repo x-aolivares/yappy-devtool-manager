@@ -9,7 +9,11 @@ import typer
 
 from yappy_library.adapters.logging import console, die, info, success, warn
 from yappy_library.config import Config, win_to_posix
-from yappy_library.paths import project_root as get_project_root
+from yappy_library.paths import (
+    migrate_backend_resources,
+    project_config_dir,
+    project_root as get_project_root,
+)
 from .aws.session import app as aws_app
 from .db.tunnel import app as db_app
 from .ssm.tunnel import CLUSTER_ALIASES, app as ssm_app
@@ -516,10 +520,14 @@ def _setup_config(config_dir: Path):
 def setup():
     """One-time project setup: shell integration, config, dependencies."""
     project_root = get_project_root()
-    config_dir = project_root / "config"
+    migrated_resources = migrate_backend_resources(project_root)
+    config_dir = project_config_dir(project_root)
 
     info("=== Yappy Setup ===")
     print()
+    if migrated_resources:
+        success(f"Backend resources moved: {', '.join(migrated_resources)}")
+        print()
 
     # 1. Ensure Python Scripts directory is on PATH
     bashrc = Path.home() / ".bashrc"

@@ -31,7 +31,7 @@ Descargar desde: https://docs.aws.amazon.com/systems-manager/latest/userguide/in
 
 ### 4. Kafka
 
-Estructura esperada en disco (configurable vía `KAFKA_PATH` en `config/env.base`):
+Estructura esperada en disco (configurable vía `KAFKA_PATH` en `backend/config/env.base`):
 
 ```
 {KAFKA_PATH}/kafka-core/        # bin/, config/, libs/
@@ -85,19 +85,20 @@ yappy update              # git pull + pip install -e .
 
 `yappy setup` hace todo automáticamente:
 
-1. **Shell integration** — agrega `eval "$(yappy init bash)"` al `.bashrc`
-2. **Config files** — crea `config/env.base` desde `config/env.base.example` si no existe (los archivos de entorno como `env.dev`/`env.qa` deben crearse manualmente copiando un `.example`)
-3. **Dependencias backend** — `python -m pip install -e .` (resuelve desde `docs/requirements.txt`, declarado dinámico en `pyproject.toml`)
-4. **Dependencias frontend** — `npm install` en `frontend/` (resuelve desde `frontend/package.json`)
-5. **Herramientas externas** — verifica que `aws` y `session-manager-plugin` estén instalados
-6. **Kafka** — descarga server + UI si no están
-7. **Perfil AWS** — verifica que el perfil configurado exista
+1. **Recursos del backend** — migra `build/`, `config/` y `data/` heredados desde la raíz hacia `backend/`, conservando los archivos locales ignorados; la suite vive en `backend/tests/`
+2. **Shell integration** — agrega `eval "$(yappy init bash)"` al `.bashrc`
+3. **Config files** — crea `backend/config/env.base` desde `backend/config/env.base.example` si no existe (los archivos de entorno como `env.dev`/`env.qa` deben crearse manualmente copiando un `.example`)
+4. **Dependencias backend** — `python -m pip install -e .` (resuelve desde `docs/requirements.txt`, declarado dinámico en `pyproject.toml`)
+5. **Dependencias frontend** — `npm install` en `frontend/` (resuelve desde `frontend/package.json`)
+6. **Herramientas externas** — verifica que `aws` y `session-manager-plugin` estén instalados
+7. **Kafka** — descarga server + UI si no están
+8. **Perfil AWS** — verifica que el perfil configurado exista
 
 Después del setup, editá los archivos de config con tus valores:
 
 ```bash
 yappy edit           # Abre el proyecto en VS Code
-# Editar config/env.base (los archivos por entorno deben crearse a mano, p. ej. copiando config/env.environment.example a config/env.dev)
+# Editar backend/config/env.base (los archivos por entorno deben crearse a mano, p. ej. copiando backend/config/env.environment.example a backend/config/env.dev)
 ```
 
 ---

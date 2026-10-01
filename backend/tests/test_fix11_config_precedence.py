@@ -16,8 +16,8 @@ _RELEVANT_KEYS = (
 
 @pytest.fixture
 def config_dir(tmp_path, monkeypatch):
-    config_dir = tmp_path / "config"
-    config_dir.mkdir()
+    config_dir = tmp_path / "backend" / "config"
+    config_dir.mkdir(parents=True)
     (config_dir / "env.base").write_text("AWS_PROFILE=base-profile\n")
     (config_dir / "env.dev").write_text("AWS_PROFILE=dev-profile\n")
     monkeypatch.setattr(Config, "_config_dir", config_dir)
@@ -111,7 +111,7 @@ def test_yappy_config_dir_override_wins(tmp_path, monkeypatch):
 def test_config_resolved_walking_up_from_cwd(tmp_path, monkeypatch):
     from yappy_library import config as config_mod
 
-    cfg_dir = tmp_path / "proyecto" / "config"
+    cfg_dir = tmp_path / "proyecto" / "backend" / "config"
     cfg_dir.mkdir(parents=True)
     (cfg_dir / "env.base").write_text("AWS_PROFILE=base\n")
     (cfg_dir / "env.promo").write_text("AWS_REGION=sa-east-1\n")

@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from yappy_library.paths import project_root
+from yappy_library.paths import migrate_backend_resources, project_root
 
 VALID_STATUSES = ("pendiente", "revisado", "aplicado", "saltado")
 
@@ -55,7 +55,11 @@ def _db_path() -> Path:
     override = os.environ.get("YAPPY_SESSIONS_DB")
     if override:
         return Path(override)
-    return project_root() / "data" / "sessions.db"
+    root = project_root()
+    if (root / "backend").is_dir():
+        migrate_backend_resources(root, names=("data",))
+        return root / "backend" / "data" / "sessions.db"
+    return root / "data" / "sessions.db"
 
 
 def _connect() -> sqlite3.Connection:

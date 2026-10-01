@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yappy-cli-manager"
-version = "2.24.1"
+version = "2.25.0"
 description = "Yappy CLI Manager - orquestador de sesiones AWS, SSM, RDS, Kafka y port-forwarding"
 requires-python = ">=3.14"
 dynamic = ["dependencies", "optional-dependencies"]
@@ -21,7 +21,7 @@ where = ["backend/library", "backend/api", "backend/cli"]
 include = ["yappy_library*", "yappy_api*", "yappy_cli*"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["backend/tests"]
 
 [tool.ruff]
 # This gate exists to catch CORRECTNESS bugs, not to enforce style.
@@ -42,7 +42,7 @@ testpaths = ["tests"]
 #                          "Fixing" that would tear down working tunnels.
 line-length = 100
 target-version = "py314"
-exclude = [".venv", "build", "dist", "frontend"]
+exclude = [".venv", "build", "backend/build", "dist", "frontend"]
 
 [tool.ruff.lint]
 select = ["F821", "F811", "E9"]

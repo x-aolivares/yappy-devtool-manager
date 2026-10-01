@@ -23,14 +23,14 @@ When a user requests an adjustment:
 1. Make the code change
 2. Update `version` in `pyproject.toml`
 3. Run the gate: `python -m pytest` (includes the ruff gate) and
-   `python -m ruff check backend tests`
+   `python -m ruff check backend backend/tests`
 4. `git add -A && git commit -m "tipo: descripción concisa"`
 5. `git push`
 
 ## Lint gate (ruff)
 
 `ruff` runs with a deliberately narrow selection — `F821`, `F811`, `E9` — defined
-in `pyproject.toml` and enforced by `tests/test_ruff_gate.py`, so it runs with
+in `pyproject.toml` and enforced by `backend/tests/test_ruff_gate.py`, so it runs with
 `pytest`. It exists because a `NameError` shipped in `yappy setup` (it called
 `_win_to_posix` while the function is `win_to_posix`) and the command had never
 completed for anyone.
@@ -40,7 +40,7 @@ Style rules are intentionally **not** enforced. Notably `F841` must stay off:
 effect (opening port-forwards) and discards the return value, so "fixing" that
 warning would tear down working tunnels.
 
-If you add a rule, update `tests/test_ruff_gate.py::test_ruff_config_is_scoped_to_correctness_rules`
+If you add a rule, update `backend/tests/test_ruff_gate.py::test_ruff_config_is_scoped_to_correctness_rules`
 in the same commit, and say in the description why the rule is safe here.
 
 ## Commit message format
@@ -56,9 +56,10 @@ El mensaje debe ser descriptivo: sujeto corto en español (ej: `feat: rebrand a 
 
 ## Config files
 
-Files under `config/env.*` (without `.example`) are gitignored.
+Files under `backend/config/env.*` (without `.example`) are gitignored. Legacy
+root-level `config/env.*` files remain ignored during migration.
 Never commit real credentials or environment-specific values.
-Always update the `.example` templates when the config shape changes.
+Always update the `backend/config/*.example` templates when the config shape changes.
 
 ## Dependencias compartidas (sync con bbit-release-manager)
 

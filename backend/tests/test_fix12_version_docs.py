@@ -2,7 +2,7 @@ from pathlib import Path
 
 import tomllib
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _pyproject_version() -> str:
@@ -52,4 +52,4 @@ def test_readme_kafka_path_matches_config_default():
 def test_readme_setup_claims_only_env_base_created():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "crea `env.base`, `env.dev`, `env.qa`" not in readme
-    assert "crea `config/env.base`" in readme
+    assert "crea `backend/config/env.base`" in readme
