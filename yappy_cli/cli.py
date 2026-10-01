@@ -7,7 +7,7 @@ from pathlib import Path
 
 import typer
 
-from .logger import console, info, success, warn, raw, die
+from .logger import console, info, success, warn, die
 from .config import Config, win_to_posix
 from .aws.session import app as aws_app
 from .db.tunnel import app as db_app

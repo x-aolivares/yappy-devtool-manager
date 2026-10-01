@@ -5,8 +5,6 @@ import os
 import time
 from pathlib import Path
 
-from .logger import info
-
 _TRACKER_DIR = Path.home() / ".yappy" / "tracker"
 
 

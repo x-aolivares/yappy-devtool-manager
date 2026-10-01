@@ -22,8 +22,26 @@ When a user requests an adjustment:
 
 1. Make the code change
 2. Update `version` in `pyproject.toml`
-3. `git add -A && git commit -m "tipo: descripción concisa"`
-4. `git push`
+3. Run the gate: `python -m pytest` (includes the ruff gate) and
+   `python -m ruff check yappy_cli tests`
+4. `git add -A && git commit -m "tipo: descripción concisa"`
+5. `git push`
+
+## Lint gate (ruff)
+
+`ruff` runs with a deliberately narrow selection — `F821`, `F811`, `E9` — defined
+in `pyproject.toml` and enforced by `tests/test_ruff_gate.py`, so it runs with
+`pytest`. It exists because a `NameError` shipped in `yappy setup` (it called
+`_win_to_posix` while the function is `win_to_posix`) and the command had never
+completed for anyone.
+
+Style rules are intentionally **not** enforced. Notably `F841` must stay off:
+`yappy_cli/workflow/executor.py` calls `session.multiple.pf(...)` for its side
+effect (opening port-forwards) and discards the return value, so "fixing" that
+warning would tear down working tunnels.
+
+If you add a rule, update `tests/test_ruff_gate.py::test_ruff_config_is_scoped_to_correctness_rules`
+in the same commit, and say in the description why the rule is safe here.
 
 ## Commit message format
 

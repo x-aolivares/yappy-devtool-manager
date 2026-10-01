@@ -59,7 +59,7 @@ def test_setup_runs_to_completion(monkeypatch, tmp_path, capsys):
 
 def test_setup_does_not_crash_on_any_step(monkeypatch, tmp_path, capsys):
     """Guards the whole body: a fresh .bashrc exercises the write branches."""
-    calls = _stub_everything(monkeypatch, tmp_path)
+    _stub_everything(monkeypatch, tmp_path)
 
     # Empty .bashrc -> setup must create it and append PATH + shell integration.
     (tmp_path / ".bashrc").write_text("")

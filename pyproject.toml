@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yappy-cli-manager"
-version = "2.22.0"
+version = "2.22.1"
 description = "Yappy CLI Manager - orquestador de sesiones AWS, SSM, RDS, Kafka y port-forwarding"
 requires-python = ">=3.14"
 dynamic = ["dependencies", "optional-dependencies"]
@@ -21,3 +21,27 @@ include = ["yappy_cli*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+# This gate exists to catch CORRECTNESS bugs, not to enforce style.
+#
+# Enabled deliberately narrow:
+#   F821 - undefined name. A NameError shipped in `yappy setup` (it called
+#          `_win_to_posix` while the function is `win_to_posix`) and the command
+#          had never completed for anyone. Nothing caught it.
+#   F811 - redefinition of a name in the same scope (silent logic bugs)
+#   E9   - syntax / IO errors that break the interpreter outright
+#
+# Deliberately NOT enforced, and why:
+#   F401 unused imports  - style; the three in yappy_cli/ are now cleaned up
+#   F541 f-string w/o {} - pure style, 9 occurrences, zero risk
+#   F841 unused variable - actively HARMFUL here: yappy_cli/workflow/executor.py
+#                          calls session.multiple.pf(...) for its side effect
+#                          (opening port-forwards) and ignores the return value.
+#                          "Fixing" that would tear down working tunnels.
+line-length = 100
+target-version = "py314"
+exclude = [".venv", "build", "dist", "frontend", "src"]
+
+[tool.ruff.lint]
+select = ["F821", "F811", "E9"]
