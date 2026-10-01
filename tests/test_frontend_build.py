@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from src.cli import _frontend_needs_build
+from yappy_cli.cli import _frontend_needs_build
 
 
 def _make_frontend(tmp_path: Path) -> Path:

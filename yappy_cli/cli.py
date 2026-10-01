@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -136,8 +137,6 @@ def web(
 
 def _frontend_needs_build(frontend: Path | None = None) -> bool:
     """True si el frontend dist/browser falta o sus fuentes son más nuevas."""
-    import shutil
-
     frontend = frontend or (Path(__file__).resolve().parent.parent / "frontend")
     if not (frontend / "package.json").exists():
         return False
@@ -176,8 +175,6 @@ def _frontend_needs_build(frontend: Path | None = None) -> bool:
 
 def _build_web_frontend() -> None:
     """Compile the Angular frontend (frontend/ dist) on demand."""
-    import shutil
-
     from .logger import info
 
     frontend = Path(__file__).resolve().parent.parent / "frontend"
@@ -186,6 +183,11 @@ def _build_web_frontend() -> None:
         die("npm no está instalado — instalá Node.js (>=24.15) para compilar el frontend")
     if not (frontend / "package.json").exists():
         die(f"No se encontró frontend/ en {frontend}")
+    if not (frontend / "node_modules").exists():
+        die(
+            "Faltan las dependencias del frontend (frontend/node_modules no existe).\n"
+            "  Ejecuta 'yappy setup' (o 'cd frontend && npm ci') y volve a intentar."
+        )
     info("Compilando frontend Angular (frontend/ -> dist/browser)...")
     result = subprocess.run(
         [npm, "run", "build"],
@@ -198,6 +200,56 @@ def _build_web_frontend() -> None:
     if result.returncode != 0:
         die(f"Falló el build del frontend:\n{result.stdout}\n{result.stderr}")
     success("Frontend compilado.")
+
+
+def _install_backend_deps(project_root: Path) -> None:
+    """Editable-install the package so Python deps stay in sync.
+
+    pyproject.toml declares dependencies as dynamic, read from
+    docs/requirements.txt at build time. Re-running this picks up deps added
+    there since the last install (that file is a shared stack synced across
+    repos). On the very first run it is a no-op: install.sh already did it.
+    """
+    if not (project_root / "pyproject.toml").exists():
+        warn(f"  pyproject.toml not found at {project_root} - skipping backend install")
+        return
+
+    info("  Installing backend deps (python -m pip install -e .)...")
+    # sys.executable, not bare `pip`: guarantees the same interpreter that runs
+    # yappy, so deps and the CLI entry point never land in different envs.
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-e", str(project_root)],
+        check=False,
+    )
+    if result.returncode == 0:
+        success("  Backend (yappy-cli-manager) installed in editable mode")
+    else:
+        warn(
+            f"  Backend install failed (exit {result.returncode}) - see the pip output above"
+        )
+
+
+def _install_frontend_deps(frontend: Path) -> None:
+    """Install frontend/node_modules with `npm install`.
+
+    Always runs: npm install is idempotent, resolves from package.json, and
+    self-heals drift between package.json, package-lock.json and node_modules.
+    """
+    if not (frontend / "package.json").exists():
+        warn(f"  frontend/package.json not found at {frontend} - skipping")
+        return
+
+    npm = shutil.which("npm")
+    if not npm:
+        warn("  npm not found - install Node.js (>=24.15) to build the frontend")
+        return
+
+    info("  Installing frontend deps (npm install) - this may take a few minutes...")
+    result = subprocess.run([npm, "install"], cwd=str(frontend), check=False)
+    if result.returncode == 0:
+        success("  Frontend deps installed (npm install)")
+    else:
+        warn(f"  Frontend install failed (npm install, exit {result.returncode})")
 
 
 @app.command()
@@ -473,7 +525,7 @@ def setup():
     # 1. Ensure Python Scripts directory is on PATH
     bashrc = Path.home() / ".bashrc"
     scripts_dir = Path(sys.executable).parent / "Scripts"
-    scripts_posix = _win_to_posix(str(scripts_dir))
+    scripts_posix = win_to_posix(str(scripts_dir))
     path_export = f'export PATH="$PATH:{scripts_posix}"'
 
     bashrc_content = bashrc.read_text() if bashrc.exists() else ""
@@ -519,13 +571,23 @@ def setup():
     print()
     info("Dependencies:")
 
-    # Upgrade pip first
-    subprocess.run(
+    # 4.1 pip upgrade
+    pip_upgrade = subprocess.run(
         [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
         capture_output=True,
     )
-    success("  pip upgraded")
+    if pip_upgrade.returncode == 0:
+        success("  pip upgraded")
+    else:
+        warn("  pip upgrade failed — continuing with the current pip")
 
+    # 4.2 Backend: editable install resolves deps from docs/requirements.txt
+    _install_backend_deps(project_root)
+
+    # 4.3 Frontend: node_modules for the Angular app
+    _install_frontend_deps(project_root / "frontend")
+
+    # 4.4 External tools (not installed by pip)
     for cmd_name in ("aws", "session-manager-plugin"):
         result = subprocess.run(
             ["where", cmd_name] if sys.platform == "win32" else ["which", cmd_name],

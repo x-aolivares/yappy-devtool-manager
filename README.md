@@ -65,10 +65,17 @@ La herramienta la instala y mantiene el maintainer. **No clonés ni instalés na
 ```bash
 git clone git@github.com:x-aolivares/yappy-cli-manager.git
 cd yappy-cli-manager
-bash install.sh           # Instala + configura PATH automáticamente
+bash install.sh           # Bootstrap: instala el paquete + configura PATH
 source ~/.bashrc
-yappy setup               # Configura shell, verifica dependencias, crea config/env.base
+yappy setup               # Instala deps (backend + frontend), config, kafka
 ```
+
+`install.sh` es **solo bootstrap**: su único trabajo es hacer que el comando `yappy`
+exista. No instala dependencias, porque eso vive en `yappy setup`
+(`yappy_cli/cli.py`) y duplicar esa lógica en un script la haría divergir del
+código. La primera corrida de `pip install -e .` tiene que vivir en el script por
+la paradoja de bootstrap: el comando que instalaría las dependencias no puede
+correr hasta que el comando mismo existe.
 
 Después de cada commit:
 
@@ -80,8 +87,11 @@ yappy update              # git pull + pip install -e .
 
 1. **Shell integration** — agrega `eval "$(yappy init bash)"` al `.bashrc`
 2. **Config files** — crea `config/env.base` desde `config/env.base.example` si no existe (los archivos de entorno como `env.dev`/`env.qa` deben crearse manualmente copiando un `.example`)
-3. **Dependencias** — verifica que `aws` y `session-manager-plugin` estén instalados
-4. **Perfil AWS** — verifica que el perfil configurado exista
+3. **Dependencias backend** — `python -m pip install -e .` (resuelve desde `docs/requirements.txt`, declarado dinámico en `pyproject.toml`)
+4. **Dependencias frontend** — `npm install` en `frontend/` (resuelve desde `frontend/package.json`)
+5. **Herramientas externas** — verifica que `aws` y `session-manager-plugin` estén instalados
+6. **Kafka** — descarga server + UI si no están
+7. **Perfil AWS** — verifica que el perfil configurado exista
 
 Después del setup, editá los archivos de config con tus valores:
 
