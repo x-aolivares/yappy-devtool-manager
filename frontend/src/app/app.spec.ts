@@ -32,7 +32,7 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('.brand')?.textContent).toContain('Yappy RegionSync');
+    expect(compiled.querySelector('.brand')?.textContent).toContain('Yappy DevTool');
   });
 
   it('exposes an accessible control to switch theme modes', () => {
