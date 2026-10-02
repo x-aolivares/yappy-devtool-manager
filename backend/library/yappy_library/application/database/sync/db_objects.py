@@ -32,6 +32,22 @@ WHERE SCHEMA_NAME NOT IN ('information_schema', 'mysql', 'performance_schema', '
 ORDER BY SCHEMA_NAME
 """
 
+_TABLES_SQL = """
+SELECT TABLE_NAME
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_SCHEMA = %s AND TABLE_TYPE = 'BASE TABLE'
+  AND TABLE_SCHEMA NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
+ORDER BY TABLE_NAME
+"""
+
+_PROCEDURES_SQL = """
+SELECT ROUTINE_NAME
+FROM INFORMATION_SCHEMA.ROUTINES
+WHERE ROUTINE_SCHEMA = %s AND ROUTINE_TYPE = 'PROCEDURE'
+  AND ROUTINE_SCHEMA NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
+ORDER BY ROUTINE_NAME
+"""
+
 
 def quote_ident(name: str) -> str:
     return "`" + name.replace("`", "``") + "`"
@@ -98,6 +114,29 @@ def list_schemas(conn) -> list[str]:
     """
     with conn.cursor() as cur:
         cur.execute(_SYSTEM_SCHEMAS_SQL)
+        return [row[0] for row in cur.fetchall()]
+
+
+def list_tables(conn, schema: str) -> list[str]:
+    """Return the base tables of one schema, alphabetically.
+
+    Views are left out on purpose: only ``BASE TABLE`` rows are objects that can
+    be compared with ``SHOW CREATE TABLE`` and altered by a compile. Shares
+    ``list_schemas``' cost profile — one connection, one query.
+    """
+    with conn.cursor() as cur:
+        cur.execute(_TABLES_SQL, (schema,))
+        return [row[0] for row in cur.fetchall()]
+
+
+def list_procedures(conn, schema: str) -> list[str]:
+    """Return the stored procedures of one schema, alphabetically.
+
+    Functions are left out on purpose: ``list_tables`` and this are the two kinds
+    ``SHOW CREATE`` and the compile flow understand.
+    """
+    with conn.cursor() as cur:
+        cur.execute(_PROCEDURES_SQL, (schema,))
         return [row[0] for row in cur.fetchall()]
 
 

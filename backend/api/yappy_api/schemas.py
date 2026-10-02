@@ -90,18 +90,19 @@ class CompileRequest(BaseModel):
 
 
 class CompileResponse(BaseModel):
+    """The generated script. Compiling never writes: the caller decides whether
+    and when to send ``script`` to ``/api/execute/sql``."""
+
     env_b: str
     env_a: str
     object_type: str
     schema_name: str
     object_name: str
     status: str
+    code_a: str | None = None
     code_b: str | None = None
     script: str | None = None
     notes: list[str] = []
-    results: list[StatementResultInfo] = []
-    ok_count: int = 0
-    err_count: int = 0
 
 
 class QueryRequest(BaseModel):
@@ -236,6 +237,19 @@ class ExecuteSqlResponse(BaseModel):
 class SchemasResponse(BaseModel):
     env: str
     schemas: list[str] = []
+
+
+class DbObjectsResponse(BaseModel):
+    """The tables or stored procedures of one schema, to feed the object picker.
+
+    Named ``schema_name`` like every other model of this contract: ``schema``
+    would shadow the deprecated ``BaseModel.schema`` and warn on import.
+    """
+
+    env: str
+    schema_name: str
+    object_type: str
+    objects: list[str] = []
 
 
 class ParamsDiffResponse(BaseModel):

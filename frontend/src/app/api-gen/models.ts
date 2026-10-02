@@ -8,6 +8,7 @@ export type { CompileResponse } from './models/compile-response';
 export type { CreateMultiParamsRequest } from './models/create-multi-params-request';
 export type { CreateSessionRequest } from './models/create-session-request';
 export type { DbDiffRequest } from './models/db-diff-request';
+export type { DbObjectsResponse } from './models/db-objects-response';
 export type { DeleteResponse } from './models/delete-response';
 export type { DiffResponse } from './models/diff-response';
 export type { EnvironmentInfo } from './models/environment-info';

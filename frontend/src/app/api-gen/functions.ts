@@ -7,6 +7,8 @@ export type { DiffDbObject$Params as DiffDbObject$Params } from './fn/db/diff-db
 export { diffDbObject as diffDbObject } from './fn/db/diff-db-object';
 export type { ListDbSchemas$Params as ListDbSchemas$Params } from './fn/db/list-db-schemas';
 export { listDbSchemas as listDbSchemas } from './fn/db/list-db-schemas';
+export type { ListDbObjects$Params as ListDbObjects$Params } from './fn/db/list-db-objects';
+export { listDbObjects as listDbObjects } from './fn/db/list-db-objects';
 export type { ExecuteSql$Params as ExecuteSql$Params } from './fn/db/execute-sql';
 export { executeSql as executeSql } from './fn/db/execute-sql';
 export type { CompileDbObject$Params as CompileDbObject$Params } from './fn/db/compile-db-object';

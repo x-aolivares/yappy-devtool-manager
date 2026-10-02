@@ -4,6 +4,7 @@ import {
   compileDbObject,
   diffDbObject,
   executeSql,
+  listDbObjects,
   listDbSchemas,
   migrateDbData,
   queryDb,
@@ -12,6 +13,7 @@ import {
   CompileRequest,
   CompileResponse,
   DbDiffRequest,
+  DbObjectsResponse,
   DiffResponse,
   ExecuteRequest,
   ExecuteSqlResponse,
@@ -38,7 +40,11 @@ export class DbService {
     return this.api.invoke(listDbSchemas, { env });
   }
 
-  /** Compile an object from one environment into another (origen -> destino). */
+  /** The tables ("table") or stored procedures ("procedure") of one schema. */
+  listObjects(env: string, schema: string, objectType: string): Promise<DbObjectsResponse> {
+    return this.api.invoke(listDbObjects, { env, schema, object_type: objectType });
+  }
+  /** Generate the script that would take an object from source into destination. */
   compile(request: CompileRequest): Promise<CompileResponse> {
     return this.api.invoke(compileDbObject, { body: request });
   }

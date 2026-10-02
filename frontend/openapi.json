@@ -111,12 +111,74 @@
         }
       }
     },
+    "/api/db/objects": {
+      "get": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Api Db Objects",
+        "description": "List the tables or stored procedures of one schema, to feed the object picker.\n\nThe schema comes from :func:`api_db_schemas`, so it is already free of system\nschemas; the connection cost is the same one that listing schemas paid.",
+        "operationId": "list_db_objects",
+        "parameters": [
+          {
+            "name": "env",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Env"
+            }
+          },
+          {
+            "name": "schema",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Schema"
+            }
+          },
+          {
+            "name": "object_type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DbObjectsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/execute/sql": {
       "post": {
         "tags": [
           "db"
         ],
         "summary": "Api Execute Sql",
+        "description": "Run a SQL/DDL script against an environment.\n\nThis is the only write path: ``/api/compile`` merely generates. ``code`` is\nwhatever the user is looking at, so it may be a generated script, an edited\nversion of it, or free-form SQL pasted from anywhere.",
         "operationId": "execute_sql",
         "requestBody": {
           "content": {
@@ -158,7 +220,7 @@
           "db"
         ],
         "summary": "Api Compile",
-        "description": "Compile an object from the source environment into the destination one.\n\nA stored procedure is recreated wholesale from the source definition\n(``CREATE OR REPLACE``). A table is not overwritten: only the columns and\nindexes that differ are emitted, as ``ALTER TABLE``, so destination data and\nits identity survive.",
+        "description": "Generate the script that would take an object from source into destination.\n\nNothing is written here: both environments are opened read-only to compare\nthem and the script comes back in the response. The caller decides whether to\nsend it to ``/api/execute/sql``, possibly after editing it.\n\nA stored procedure is recreated wholesale from the source definition\n(``CREATE OR REPLACE``). A table is not overwritten: only the columns and\nindexes that differ are emitted, as ``ALTER TABLE``, so destination data and\nits identity survive.\n\n``code_b`` (source) and ``code_a`` (destination) come back for every branch\nso the caller can seed the editor even when there is no script to apply:\n``script`` stays ``None`` when both sides are equal and ``\"\"`` when the DDL\ntext differs but the structure does not.",
         "operationId": "compile_db_object",
         "requestBody": {
           "content": {
@@ -1010,6 +1072,17 @@
             "type": "string",
             "title": "Status"
           },
+          "code_a": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code A"
+          },
           "code_b": {
             "anyOf": [
               {
@@ -1039,24 +1112,6 @@
             "type": "array",
             "title": "Notes",
             "default": []
-          },
-          "results": {
-            "items": {
-              "$ref": "#/components/schemas/StatementResultInfo"
-            },
-            "type": "array",
-            "title": "Results",
-            "default": []
-          },
-          "ok_count": {
-            "type": "integer",
-            "title": "Ok Count",
-            "default": 0
-          },
-          "err_count": {
-            "type": "integer",
-            "title": "Err Count",
-            "default": 0
           }
         },
         "type": "object",
@@ -1068,7 +1123,8 @@
           "object_name",
           "status"
         ],
-        "title": "CompileResponse"
+        "title": "CompileResponse",
+        "description": "The generated script. Compiling never writes: the caller decides whether\nand when to send ``script`` to ``/api/execute/sql``."
       },
       "CreateMultiParamsRequest": {
         "properties": {
@@ -1214,6 +1270,38 @@
           "object_name"
         ],
         "title": "DbDiffRequest"
+      },
+      "DbObjectsResponse": {
+        "properties": {
+          "env": {
+            "type": "string",
+            "title": "Env"
+          },
+          "schema_name": {
+            "type": "string",
+            "title": "Schema Name"
+          },
+          "object_type": {
+            "type": "string",
+            "title": "Object Type"
+          },
+          "objects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Objects",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "env",
+          "schema_name",
+          "object_type"
+        ],
+        "title": "DbObjectsResponse",
+        "description": "The tables or stored procedures of one schema, to feed the object picker.\n\nNamed ``schema_name`` like every other model of this contract: ``schema``\nwould shadow the deprecated ``BaseModel.schema`` and warn on import."
       },
       "DeleteResponse": {
         "properties": {

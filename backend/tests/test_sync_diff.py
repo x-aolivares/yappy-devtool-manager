@@ -171,9 +171,11 @@ class _SchemaCursor:
     def __init__(self, rows):
         self._rows = rows
         self.executed = None
+        self.params = None
 
     def execute(self, sql, params=None):
         self.executed = sql
+        self.params = params
 
     def fetchall(self):
         return self._rows
@@ -203,5 +205,29 @@ def test_list_schemas_excludes_system_schemas():
     obj.list_schemas(conn)
     sql = conn._cursor.executed
     assert "INFORMATION_SCHEMA.SCHEMATA" in sql
+    for system in ("information_schema", "mysql", "performance_schema", "sys"):
+        assert f"'{system}'" in sql
+
+
+def test_list_tables_returns_base_tables_of_the_schema():
+    conn = _SchemaConn([("orders",), ("users",)])
+    assert obj.list_tables(conn, "yappy") == ["orders", "users"]
+    sql, params = conn._cursor.executed, conn._cursor.params
+    assert "INFORMATION_SCHEMA.TABLES" in sql
+    assert "TABLE_TYPE = 'BASE TABLE'" in sql
+    assert "ORDER BY TABLE_NAME" in sql
+    assert params == ("yappy",)
+    for system in ("information_schema", "mysql", "performance_schema", "sys"):
+        assert f"'{system}'" in sql
+
+
+def test_list_procedures_returns_procedures_of_the_schema():
+    conn = _SchemaConn([("sp_calc",)])
+    assert obj.list_procedures(conn, "yappy") == ["sp_calc"]
+    sql, params = conn._cursor.executed, conn._cursor.params
+    assert "INFORMATION_SCHEMA.ROUTINES" in sql
+    assert "ROUTINE_TYPE = 'PROCEDURE'" in sql
+    assert "ORDER BY ROUTINE_NAME" in sql
+    assert params == ("yappy",)
     for system in ("information_schema", "mysql", "performance_schema", "sys"):
         assert f"'{system}'" in sql

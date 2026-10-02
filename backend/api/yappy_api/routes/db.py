@@ -16,6 +16,7 @@ from ..schemas import (
     CompileRequest,
     CompileResponse,
     DbDiffRequest,
+    DbObjectsResponse,
     DiffResponse,
     ExecuteRequest,
     ExecuteSqlResponse,
@@ -150,8 +151,43 @@ def api_db_schemas(env: str):
         raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
 
 
+@router.get("/api/db/objects", operation_id="list_db_objects", response_model=DbObjectsResponse)
+def api_db_objects(env: str, schema: str, object_type: str):
+    """List the tables or stored procedures of one schema, to feed the object picker.
+
+    The schema comes from :func:`api_db_schemas`, so it is already free of system
+    schemas; the connection cost is the same one that listing schemas paid.
+    """
+    if object_type not in ("table", "procedure"):
+        raise HTTPException(status_code=400, detail="object_type debe ser 'table' o 'procedure'")
+    if not schema.strip():
+        raise HTTPException(status_code=400, detail="Completá el schema.")
+
+    schema = schema.strip()
+    cfg = env_config(env)
+    lister = obj.list_tables if object_type == "table" else obj.list_procedures
+    try:
+        with connect(cfg) as conn:
+            return {
+                "env": env,
+                "schema_name": schema,
+                "object_type": object_type,
+                "objects": lister(conn, schema),
+            }
+    except SyncError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
+
+
 @router.post("/api/execute/sql", operation_id="execute_sql", response_model=ExecuteSqlResponse)
 def api_execute_sql(req: ExecuteRequest):
+    """Run a SQL/DDL script against an environment.
+
+    This is the only write path: ``/api/compile`` merely generates. ``code`` is
+    whatever the user is looking at, so it may be a generated script, an edited
+    version of it, or free-form SQL pasted from anywhere.
+    """
     if req.object_type not in ("table", "procedure"):
         raise HTTPException(status_code=400, detail="object_type debe ser 'table' o 'procedure'")
     if not req.code or not req.code.strip():
@@ -178,12 +214,21 @@ def api_execute_sql(req: ExecuteRequest):
 
 @router.post("/api/compile", operation_id="compile_db_object", response_model=CompileResponse)
 def api_compile(req: CompileRequest):
-    """Compile an object from the source environment into the destination one.
+    """Generate the script that would take an object from source into destination.
+
+    Nothing is written here: both environments are opened read-only to compare
+    them and the script comes back in the response. The caller decides whether to
+    send it to ``/api/execute/sql``, possibly after editing it.
 
     A stored procedure is recreated wholesale from the source definition
     (``CREATE OR REPLACE``). A table is not overwritten: only the columns and
     indexes that differ are emitted, as ``ALTER TABLE``, so destination data and
     its identity survive.
+
+    ``code_b`` (source) and ``code_a`` (destination) come back for every branch
+    so the caller can seed the editor even when there is no script to apply:
+    ``script`` stays ``None`` when both sides are equal and ``""`` when the DDL
+    text differs but the structure does not.
     """
     if req.env_a == req.env_b:
         raise HTTPException(status_code=400, detail="El origen y el destino deben ser distintos")
@@ -195,6 +240,7 @@ def api_compile(req: CompileRequest):
     cfg_b = env_config(req.env_b)  # origen
     cfg_a = env_config(req.env_a)  # destino
     schema, name = req.schema_name.strip(), req.object_name.strip()
+    code_a = None
 
     try:
         with connect(cfg_b) as conn_b, connect(cfg_a) as conn_a:
@@ -204,6 +250,7 @@ def api_compile(req: CompileRequest):
                     status, script = "none", None
                     notes = [f"El stored procedure no existe en {req.env_b} (origen)."]
                 else:
+                    code_a = obj.show_create_procedure(conn_a, schema, name)
                     status, script = "different", ddl.replace_procedure_script(code_b)
                     notes = [
                         f"Se recompila {schema}.{name} en {req.env_a} (destino) "
@@ -253,10 +300,6 @@ def api_compile(req: CompileRequest):
                                     f"en {req.env_a} (destino) para igualarla a {req.env_b}."
                                 ]
 
-            results: list = []
-            if script:
-                results = syncexec.execute_sql(cfg_a, schema, script)
-
         return {
             "env_b": req.env_b,
             "env_a": req.env_a,
@@ -264,12 +307,10 @@ def api_compile(req: CompileRequest):
             "schema_name": schema,
             "object_name": name,
             "status": status,
+            "code_a": code_a,
             "code_b": code_b,
             "script": script,
             "notes": notes,
-            "results": [r.__dict__ for r in results],
-            "ok_count": sum(1 for r in results if r.ok),
-            "err_count": sum(1 for r in results if not r.ok),
         }
     except SyncError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

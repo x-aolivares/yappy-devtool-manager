@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from yappy_api.routes.db import (
     api_compile,
     api_db_diff,
+    api_db_objects,
     api_db_schemas,
     api_migrate,
     api_query,
@@ -1066,6 +1067,44 @@ def _two_envs(monkeypatch, envs=("dev", "qa")):
     monkeypatch.setattr("yappy_api.routes.db.connect", _fake_connect)
 
 
+# --- Objects: tablas / stored procedures de un schema ------------------------
+
+
+def test_api_db_objects_lists_tables_and_procedures(monkeypatch):
+    _two_envs(monkeypatch)
+    monkeypatch.setattr(obj, "list_tables", lambda conn, schema: ["orders", "users"])
+    monkeypatch.setattr(obj, "list_procedures", lambda conn, schema: ["sp_calc"])
+
+    tables = api_db_objects(env="dev", schema="yappy", object_type="table")
+    assert tables == {
+        "env": "dev",
+        "schema_name": "yappy",
+        "object_type": "table",
+        "objects": ["orders", "users"],
+    }
+
+    procedures = api_db_objects(env="dev", schema="yappy", object_type="procedure")
+    assert procedures["objects"] == ["sp_calc"]
+
+
+def test_api_db_objects_rejects_unknown_object_type(monkeypatch):
+    _two_envs(monkeypatch)
+
+    with pytest.raises(HTTPException) as exc:
+        api_db_objects(env="dev", schema="yappy", object_type="view")
+    assert exc.value.status_code == 400
+    assert "object_type" in str(exc.value.detail)
+
+
+def test_api_db_objects_rejects_empty_schema(monkeypatch):
+    _two_envs(monkeypatch)
+
+    with pytest.raises(HTTPException) as exc:
+        api_db_objects(env="dev", schema="  ", object_type="table")
+    assert exc.value.status_code == 400
+    assert "schema" in str(exc.value.detail)
+
+
 def test_api_compile_rejects_same_source_and_target(monkeypatch):
     _two_envs(monkeypatch)
     with pytest.raises(HTTPException) as exc:
@@ -1106,12 +1145,11 @@ def test_api_compile_procedure_is_replaced_from_the_source(monkeypatch):
     _two_envs(monkeypatch, ("dev", "local"))
     monkeypatch.setattr(
         obj, "show_create_procedure",
-        lambda conn, schema, name: "CREATE PROCEDURE `p`() BEGIN SELECT 1; END",
-    )
-    # Guard so the route never needs the destination's procedure definition.
-    monkeypatch.setattr(
-        "yappy_api.routes.db.connect",
-        lambda cfg: _FakeConn(cfg._env),
+        lambda conn, schema, name: (
+            "CREATE PROCEDURE `p`() BEGIN SELECT 1; END"
+            if conn.env == "dev"
+            else "CREATE PROCEDURE `p`() BEGIN SELECT 2; END"
+        ),
     )
     executed = []
     monkeypatch.setattr(
@@ -1126,10 +1164,52 @@ def test_api_compile_procedure_is_replaced_from_the_source(monkeypatch):
         )
     )
 
-    # The destination is the environment that gets written.
     assert payload["status"] == "different"
     assert "CREATE OR REPLACE PROCEDURE" in payload["script"]
-    assert executed == [("local", "s", payload["script"])]
+    assert "SELECT 1" in payload["script"]
+    # El destino también se consulta, para poder mostrar qué definición hay hoy.
+    assert payload["code_a"] == "CREATE PROCEDURE `p`() BEGIN SELECT 2; END"
+    assert payload["code_b"] == "CREATE PROCEDURE `p`() BEGIN SELECT 1; END"
+    # Compiling only generates: nothing reaches the destination yet.
+    assert executed == []
+
+
+def test_api_compile_never_executes_anywhere(monkeypatch):
+    """Regression for the generate-only contract: ``/api/compile`` must not write.
+
+    Every other compile test patches ``execute_sql`` to satisfy the old signature;
+    this one asserts on a path that would raise loudly if the route called it, so
+    a future re-introduction of the execution fails here instead of silently
+    writing to a real destination.
+    """
+    _two_envs(monkeypatch, ("dev", "local"))
+    monkeypatch.setattr(obj, "show_create_table", lambda conn, s, n: "CREATE TABLE `t` (`id` INT)")
+    monkeypatch.setattr(
+        obj, "table_columns",
+        lambda conn, s, n: [{"COLUMN_NAME": "id", "COLUMN_TYPE": "INT", "IS_NULLABLE": "NO",
+                            "COLUMN_DEFAULT": None, "EXTRA": "", "CHARACTER_SET_NAME": None,
+                            "COLLATION_NAME": None, "COLUMN_COMMENT": ""}],
+    )
+    monkeypatch.setattr(obj, "table_indexes", lambda conn, s, n: [])
+
+    def _must_not_run(*args, **kwargs):
+        raise AssertionError("/api/compile intentó ejecutar SQL: debe solo generar.")
+
+    monkeypatch.setattr("yappy_api.routes.db.syncexec.execute_sql", _must_not_run)
+
+    payload = api_compile(
+        CompileRequest(
+            env_b="dev", env_a="local", object_type="table",
+            schema_name="s", object_name="t",
+        )
+    )
+
+    assert payload["status"] == "equal"
+    assert payload["script"] is None
+    # The generate-only response carries no execution bookkeeping.
+    assert "results" not in payload
+    assert "ok_count" not in payload
+    assert "err_count" not in payload
 
 
 def test_api_compile_table_alters_only_the_differences(monkeypatch):
@@ -1174,12 +1254,17 @@ def test_api_compile_table_alters_only_the_differences(monkeypatch):
 
     assert payload["status"] == "different"
     assert "ADD COLUMN `newcol` INT" in payload["script"]
-    assert executed[0][0] == "local"
+    assert payload["code_b"] == "CREATE TABLE `t` (`id` INT, `newcol` INT)"
+    assert payload["code_a"] == "CREATE TABLE `t` (`id` INT)"
+    assert executed == []
 
 
 def test_api_compile_table_missing_in_destination_is_created(monkeypatch):
     _two_envs(monkeypatch, ("dev", "local"))
-    monkeypatch.setattr(obj, "show_create_table", lambda conn, s, n: "CREATE TABLE `t` (`id` INT)")
+    monkeypatch.setattr(
+        obj, "show_create_table",
+        lambda conn, s, n: "CREATE TABLE `t` (`id` INT)" if conn.env == "dev" else None,
+    )
 
     def columns(conn, schema, name):
         if conn.env == "local":
@@ -1190,7 +1275,11 @@ def test_api_compile_table_missing_in_destination_is_created(monkeypatch):
 
     monkeypatch.setattr(obj, "table_columns", columns)
     monkeypatch.setattr(obj, "table_indexes", lambda conn, s, n: [])
-    monkeypatch.setattr("yappy_api.routes.db.syncexec.execute_sql", lambda *a: [])
+    executed = []
+    monkeypatch.setattr(
+        "yappy_api.routes.db.syncexec.execute_sql",
+        lambda cfg, schema, code: executed.append((cfg._env, code)) or [],
+    )
 
     payload = api_compile(
         CompileRequest(
@@ -1200,6 +1289,10 @@ def test_api_compile_table_missing_in_destination_is_created(monkeypatch):
     )
     assert payload["status"] == "missing_in_a"
     assert payload["script"].startswith("CREATE TABLE")
+    assert payload["code_b"].startswith("CREATE TABLE")
+    # El destino no tiene el objeto: no hay definición propia que ofrecer.
+    assert payload["code_a"] is None
+    assert executed == []
 
 
 def test_api_compile_identical_table_produces_nothing(monkeypatch):
@@ -1213,7 +1306,11 @@ def test_api_compile_identical_table_produces_nothing(monkeypatch):
                             "COLLATION_NAME": None, "COLUMN_COMMENT": ""}],
     )
     monkeypatch.setattr(obj, "table_indexes", lambda conn, s, n: [])
-    monkeypatch.setattr("yappy_api.routes.db.syncexec.execute_sql", lambda *a: [])
+    executed = []
+    monkeypatch.setattr(
+        "yappy_api.routes.db.syncexec.execute_sql",
+        lambda cfg, schema, code: executed.append((cfg._env, code)) or [],
+    )
 
     payload = api_compile(
         CompileRequest(
@@ -1223,6 +1320,49 @@ def test_api_compile_identical_table_produces_nothing(monkeypatch):
     )
     assert payload["status"] == "equal"
     assert payload["script"] is None
+    # Sin script igual hay algo que mostrar: el editor se siembra con la definición
+    # del origen para que el usuario escriba arriba el cambio que quiere aplicar.
+    assert payload["code_b"] == ddl
+    assert payload["code_a"] == ddl
+    assert executed == []
+
+
+def test_api_compile_table_ddl_text_diff_but_same_structure_returns_both_codes(monkeypatch):
+    """El otro caso sin script: el DDL difiere (comentario de tabla) pero columnas
+    e índices son los mismos. ``script`` queda vacío y el editor se siembra igual."""
+    _two_envs(monkeypatch, ("dev", "local"))
+    monkeypatch.setattr(
+        obj, "show_create_table",
+        lambda conn, schema, name: (
+            "CREATE TABLE `t` (`id` INT) COMMENT='nueva'"
+            if conn.env == "dev"
+            else "CREATE TABLE `t` (`id` INT) COMMENT='vieja'"
+        ),
+    )
+    monkeypatch.setattr(
+        obj, "table_columns",
+        lambda conn, s, n: [{"COLUMN_NAME": "id", "COLUMN_TYPE": "INT", "IS_NULLABLE": "NO",
+                            "COLUMN_DEFAULT": None, "EXTRA": "", "CHARACTER_SET_NAME": None,
+                            "COLLATION_NAME": None, "COLUMN_COMMENT": ""}],
+    )
+    monkeypatch.setattr(obj, "table_indexes", lambda conn, s, n: [])
+    executed = []
+    monkeypatch.setattr(
+        "yappy_api.routes.db.syncexec.execute_sql",
+        lambda cfg, schema, code: executed.append((cfg._env, code)) or [],
+    )
+
+    payload = api_compile(
+        CompileRequest(
+            env_b="dev", env_a="local", object_type="table",
+            schema_name="s", object_name="t",
+        )
+    )
+    assert payload["status"] == "different"
+    assert payload["script"] == ""
+    assert payload["code_b"] == "CREATE TABLE `t` (`id` INT) COMMENT='nueva'"
+    assert payload["code_a"] == "CREATE TABLE `t` (`id` INT) COMMENT='vieja'"
+    assert executed == []
 
 
 def test_api_compile_object_missing_in_source_reports_none(monkeypatch):
@@ -1237,6 +1377,9 @@ def test_api_compile_object_missing_in_source_reports_none(monkeypatch):
     )
     assert payload["status"] == "none"
     assert payload["script"] is None
+    # La rama `none` ni consulta el destino: la clave está, pero vacía.
+    assert "code_a" in payload
+    assert payload["code_a"] is None
 
 
 # --- Query: consultar --------------------------------------------------------
