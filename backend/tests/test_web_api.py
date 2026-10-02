@@ -6,6 +6,7 @@ from yappy_api.routes.db import (
     api_db_diff,
     api_db_objects,
     api_db_schemas,
+    api_execute_sql,
     api_migrate,
     api_query,
 )
@@ -32,6 +33,7 @@ from yappy_api.schemas import (
     CreateSessionRequest,
     DbDiffRequest,
     ExecuteParamsRequest,
+    ExecuteRequest,
     MigrationRequest,
     ParamsDiffRequest,
     QueryRequest,
@@ -40,6 +42,7 @@ from yappy_api.schemas import (
 )
 from yappy_library.adapters.database.connection import SyncError
 from yappy_library.application.database.sync import db_objects as obj
+from yappy_library.application.database.sync import exec as syncexec
 from yappy_library.application.database.sync import migrate as dbmig
 from yappy_library.application.database.sync import params as p
 from yappy_library.application.database.sync import query as dbquery
@@ -1387,6 +1390,74 @@ def test_api_compile_object_missing_in_source_reports_none(monkeypatch):
     # La rama `none` ni consulta el destino: la clave está, pero vacía.
     assert "code_a" in payload
     assert payload["code_a"] is None
+
+
+# --- Execute: el paso que escribe -------------------------------------------
+
+
+def _fake_statements(ok=True):
+    return [
+        syncexec.StatementResult(index=1, sql="ALTER TABLE `t` ADD `c` INT", ok=ok, ms=1.0)
+    ]
+
+
+def test_api_execute_sql_writes_the_text_it_is_given(monkeypatch):
+    """Con origen = script el SQL no viene de un objeto con nombre propio."""
+    _two_envs(monkeypatch, ("dev",))
+    calls = []
+    monkeypatch.setattr(
+        "yappy_api.routes.db.syncexec.execute_sql",
+        lambda cfg, schema, code: calls.append((cfg._env, schema, code))
+        or _fake_statements(),
+    )
+
+    payload = api_execute_sql(
+        ExecuteRequest(
+            env="dev", object_type="script", schema_name="", code="ALTER TABLE `t` ADD `c` INT;"
+        )
+    )
+
+    # Sin schema no hay USE: el texto tiene que venir con los nombres calificados.
+    assert calls == [("dev", "", "ALTER TABLE `t` ADD `c` INT;")]
+    assert payload["env"] == "dev"
+    # Se devuelve tal cual vino, para no etiquetar como tabla lo que no lo es.
+    assert payload["object_type"] == "script"
+    assert payload["ok_count"] == 1
+    assert payload["err_count"] == 0
+
+
+def test_api_execute_sql_uses_the_schema_as_use(monkeypatch):
+    _two_envs(monkeypatch, ("dev",))
+    calls = []
+    monkeypatch.setattr(
+        "yappy_api.routes.db.syncexec.execute_sql",
+        lambda cfg, schema, code: calls.append((schema, code)) or _fake_statements(),
+    )
+
+    api_execute_sql(
+        ExecuteRequest(
+            env="dev", object_type="script", schema_name="yappy", code="CREATE TABLE `t` (`id` INT);"
+        )
+    )
+
+    assert calls == [("yappy", "CREATE TABLE `t` (`id` INT);")]
+
+
+def test_api_execute_sql_rejects_unknown_object_type(monkeypatch):
+    _two_envs(monkeypatch, ("dev",))
+    with pytest.raises(HTTPException) as exc:
+        api_execute_sql(
+            ExecuteRequest(env="dev", object_type="view", code="SELECT 1")
+        )
+    assert exc.value.status_code == 400
+    assert "object_type" in str(exc.value.detail)
+
+
+def test_api_execute_sql_rejects_empty_code(monkeypatch):
+    _two_envs(monkeypatch, ("dev",))
+    with pytest.raises(HTTPException) as exc:
+        api_execute_sql(ExecuteRequest(env="dev", object_type="script", code="  \n -- nada\n"))
+    assert "vacío" in str(exc.value.detail)
 
 
 # --- Query: consultar --------------------------------------------------------

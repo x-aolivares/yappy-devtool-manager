@@ -178,7 +178,7 @@
           "db"
         ],
         "summary": "Api Execute Sql",
-        "description": "Run a SQL/DDL script against an environment.\n\nThis is the only write path: ``/api/compile`` merely generates. ``code`` is\nwhatever the user is looking at, so it may be a generated script, an edited\nversion of it, or free-form SQL pasted from anywhere.",
+        "description": "Run a SQL/DDL script against an environment.\n\nThis is the only write path: ``/api/compile`` merely generates. ``code`` is\nwhatever the user is looking at, so it may be a generated script, an edited\nversion of it, or free-form SQL pasted from anywhere.\n\n``object_type`` labels the run and is echoed back; nothing branches on it,\nbecause the splitter runs whatever text it is given. Besides ``table`` and\n``procedure`` it accepts ``script``: the Compile page sends it when the SQL\ncomes from the user instead of from an object of a source environment, and in\nthat case there is no single object to name — claiming ``table`` would just\nbe a lie in the response.",
         "operationId": "execute_sql",
         "requestBody": {
           "content": {

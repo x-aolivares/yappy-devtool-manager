@@ -6,22 +6,27 @@ import { toApiError } from '../core/services/api-error';
 import { objectLabel } from '../core/format';
 import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
+import { EnvControlsComponent } from '../shared/env-controls';
 import { RegionControlsComponent } from '../shared/region-controls';
 import { SchemaSelectComponent } from '../shared/schema-select';
 
 /**
- * Compilar: llevar un objeto de un ambiente a otro, en dos pasos.
+ * Compilar: ejecutar SQL contra un ambiente, tomando el SQL de donde sea.
  *
- * El sentido siempre es origen -> destino. Lo usual es tomar el objeto de un
- * ambiente real y compilarlo en el local, pero nada acá lo asume: los dos
- * ambientes son eligeibles y el origen siempre es el que manda.
+ * Lo único que cambia es el **origen**:
  *
- * - **Generar** solo arma el script: lee el origen, compara con el destino y
- *   devuelve el texto. No escribe en ninguna base. Cuando no hay nada que
- *   aplicar (ya son iguales, o el DDL difiere pero la estructura no), deja el
- *   editor sembrado con la definición que ya tiene el destino.
- * - **Compilar** ejecuta el texto del editor contra el destino. Como el texto es
- *   libre (generado, editado a mano o pegado desde donde sea), va con confirmación.
+ * - **Ambiente** — se leen dos ambientes, origen y destino. **Generar** compara el
+ *   objeto del origen contra el de destino y deja el script en el editor.
+ * - **Script** — un solo ambiente, el destino. El SQL es el que pega el usuario;
+ *   no hay nada que generar ni con qué comparar.
+ *
+ * El destino siempre es `envA`, en los dos modos: en modo ambiente viene del par
+ * de `app-region-controls`, en modo script del picker de un solo ambiente. Por eso
+ * `canExecute` y el botón de Compilar no necesitan saber en qué modo están.
+ *
+ * En ambos casos la escritura es **Compilar**. **Generar** solo arma texto: no
+ * escribe en ninguna base. El editor no distingue un script generado de uno
+ * escrito a mano — se ejecuta tal cual está, previa confirmación.
  *
  * - Stored procedure: se recompila entero desde la definición del origen.
  * - Tabla: no se sobrescribe. Se emiten solo las diferencias de columnas e
@@ -29,136 +34,213 @@ import { SchemaSelectComponent } from '../shared/schema-select';
  */
 @Component({
   selector: 'app-compile-page',
-  imports: [RegionControlsComponent, SchemaSelectComponent, StatusBadge, CopyButton],
+  imports: [
+    EnvControlsComponent,
+    RegionControlsComponent,
+    SchemaSelectComponent,
+    StatusBadge,
+    CopyButton,
+  ],
   template: `
     <h1>Compilar</h1>
     <p class="muted">
-      <strong>Generar</strong> arma el script sin tocar ninguna base: lee el objeto del ambiente de
-      <strong>origen</strong>, lo compara con el de <strong>destino</strong> y te deja el SQL en el
-      editor. <strong>Compilar</strong> es lo que lo ejecuta, ya sobre el destino — y podés editar el
-      script o escribir uno propio desde cero.
+      Elegí el ambiente donde compilar y de dónde sale el SQL: de un
+      <strong>ambiente de origen</strong> —se lee el objeto y se compara con el destino— o de un
+      <strong>script</strong> que pegás vos. En los dos casos lo que escribe en la base es
+      <strong>Compilar</strong>.
     </p>
 
     <div class="panel">
-      <app-region-controls
-        [environments]="environments()"
-        [withService]="false"
-        envLabel="Ambientes"
-        hint="Elegí dos: el primero es el de origen y el segundo el de destino."
-        [(envB)]="envB"
-        [(envA)]="envA"
-      />
-
-      <div class="section-title"><strong>1 · Esquema (del origen)</strong></div>
-      <div class="form-grid">
-        <div>
-          <label for="compile-schema">Esquema</label>
-          <app-schema-select
-            controlId="compile-schema"
-            [env]="envB()"
-            [(value)]="schema"
-            emptyLabel="Seleccione un esquema del origen"
-          />
-          @if (!envB()) {
-            <p class="muted" style="margin-top:0.375rem; font-size:0.75rem;">
-              Elegí el ambiente de origen para ver sus esquemas.
-            </p>
-          }
-        </div>
-      </div>
-
-      <div class="section-title"><strong>2 · Tipo de objeto</strong></div>
-      <div class="radio-row">
-        <label [style.opacity]="schema() ? 1 : 0.5">
-          <input
-            type="radio"
-            name="object-type"
-            value="table"
-            [disabled]="!schema()"
-            [checked]="objectType() === 'table'"
-            (change)="objectType.set('table')"
-          />
-          Tabla
-        </label>
-        <label [style.opacity]="schema() ? 1 : 0.5">
-          <input
-            type="radio"
-            name="object-type"
-            value="procedure"
-            [disabled]="!schema()"
-            [checked]="objectType() === 'procedure'"
-            (change)="objectType.set('procedure')"
-          />
-          Stored procedure
-        </label>
-      </div>
-      <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
-        @if (!schema()) {
-          Elegí un esquema antes.
-        } @else if (objectType() === 'procedure') {
-          Se recompila la definición completa en el destino.
-        } @else {
-          Se generan ALTER TABLE solo con lo que difiere; los datos del destino quedan.
+      <div class="section-title"><strong>1 · Ambiente donde compilar (destino)</strong></div>
+      @if (source() === 'env') {
+        <app-region-controls
+          [environments]="environments()"
+          [withService]="false"
+          envLabel="Ambientes"
+          hint="Elegí dos: el primero es el de origen y el segundo el de destino."
+          [(envB)]="envB"
+          [(envA)]="envA"
+        />
+      } @else {
+        <app-env-controls
+          [environments]="environments()"
+          [max]="1"
+          envLabel="Ambiente"
+          hint="Es el único ambiente: el SQL del editor ya viene listo."
+          [envs]="destEnvs()"
+          (envsChange)="onDestEnvChange($event)"
+        />
+        @if (envA()) {
+          <div class="form-grid">
+            <div>
+              <label for="compile-script-schema">Esquema (opcional)</label>
+              <app-schema-select
+                controlId="compile-script-schema"
+                [env]="envA()"
+                [(value)]="schema"
+                [optional]="true"
+                emptyLabel="Sin USE — usá nombres calificados"
+              />
+              <p class="muted" style="margin-top:0.375rem; font-size:0.75rem;">
+                Si lo elegís, el script arranca con <code>USE {{ schema() }}</code>. Si lo dejás
+                vacío, los objetos tienen que venir con el esquema en el nombre.
+              </p>
+            </div>
+          </div>
         }
-      </p>
-
-      <div class="section-title"><strong>3 · Objeto</strong></div>
-      <div class="form-grid">
-        <div>
-          <label for="compile-object">Nombre del objeto</label>
-          <select
-            id="compile-object"
-            [disabled]="!schema() || objectsLoading()"
-            [value]="objectName()"
-            (change)="objectName.set($any($event.target).value)"
-          >
-            <option value="" [selected]="!objectName()" disabled>
-              {{ objectPlaceholder() }}
-            </option>
-            @for (o of objects() ?? []; track o) {
-              <option [value]="o" [selected]="objectName() === o">{{ o }}</option>
-            }
-          </select>
-          @if (objectsLoading()) {
-            <p class="muted" style="margin-top:0.25rem; font-size:0.75rem;">
-              <span class="spinner"></span> Cargando {{ objectTypePlural() }} de {{ schema() }} en
-              {{ envB() }}...
-            </p>
-          } @else if (objectsError()) {
-            <p class="muted hint-error" style="margin-top:0.25rem; font-size:0.75rem;">
-              No se pudieron leer los {{ objectTypePlural() }} de {{ schema() }}: {{ objectsError() }}
-            </p>
-          } @else if (!schema()) {
-            <p class="muted" style="margin-top:0.25rem; font-size:0.75rem;">
-              Elegí un esquema para ver sus objetos.
-            </p>
-          }
-        </div>
-        <div class="actions" style="align-items:flex-end; justify-content:flex-end;">
-          <button type="button" [disabled]="busy() || !canGenerate()" (click)="generate()">
-            Generar
-          </button>
-        </div>
-      </div>
+      }
       @if (sameEnv()) {
         <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
           El origen y el destino no pueden ser el mismo ambiente.
         </p>
-      } @else if (!canGenerate() && schema() && objectName()) {
+      }
+
+      <div class="section-title"><strong>2 · Origen del SQL</strong></div>
+      <div class="radio-row">
+        <label>
+          <input
+            type="radio"
+            name="compile-source"
+            value="env"
+            [checked]="source() === 'env'"
+            (change)="setSource('env')"
+          />
+          Ambiente de origen
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="compile-source"
+            value="script"
+            [checked]="source() === 'script'"
+            (change)="setSource('script')"
+          />
+          Script
+        </label>
+      </div>
+      <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
+        @if (source() === 'env') {
+          Se lee el objeto del ambiente de origen, se compara con el de destino y
+          <strong>Generar</strong> deja el SQL en el editor.
+        } @else {
+          No hay nada que generar ni comparar: el SQL del editor es el origen y se compila en el
+          destino, tal cual está.
+        }
+      </p>
+
+      @if (source() === 'env') {
+        <div class="section-title"><strong>3 · Esquema (del origen)</strong></div>
+        <div class="form-grid">
+          <div>
+            <label for="compile-schema">Esquema</label>
+            <app-schema-select
+              controlId="compile-schema"
+              [env]="envB()"
+              [(value)]="schema"
+              emptyLabel="Seleccione un esquema del origen"
+            />
+            @if (!envB()) {
+              <p class="muted" style="margin-top:0.375rem; font-size:0.75rem;">
+                Elegí el ambiente de origen para ver sus esquemas.
+              </p>
+            }
+          </div>
+        </div>
+
+        <div class="section-title"><strong>4 · Tipo de objeto</strong></div>
+        <div class="radio-row">
+          <label [style.opacity]="schema() ? 1 : 0.5">
+            <input
+              type="radio"
+              name="object-type"
+              value="table"
+              [disabled]="!schema()"
+              [checked]="objectType() === 'table'"
+              (change)="objectType.set('table')"
+            />
+            Tabla
+          </label>
+          <label [style.opacity]="schema() ? 1 : 0.5">
+            <input
+              type="radio"
+              name="object-type"
+              value="procedure"
+              [disabled]="!schema()"
+              [checked]="objectType() === 'procedure'"
+              (change)="objectType.set('procedure')"
+            />
+            Stored procedure
+          </label>
+        </div>
         <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
-          Falta elegir el ambiente de destino para poder generar.
+          @if (!schema()) {
+            Elegí un esquema antes.
+          } @else if (objectType() === 'procedure') {
+            Se recompila la definición completa en el destino.
+          } @else {
+            Se generan ALTER TABLE solo con lo que difiere; los datos del destino quedan.
+          }
         </p>
+
+        <div class="section-title"><strong>5 · Objeto</strong></div>
+        <div class="form-grid">
+          <div>
+            <label for="compile-object">Nombre del objeto</label>
+            <select
+              id="compile-object"
+              [disabled]="!schema() || objectsLoading()"
+              [value]="objectName()"
+              (change)="objectName.set($any($event.target).value)"
+            >
+              <option value="" [selected]="!objectName()" disabled>
+                {{ objectPlaceholder() }}
+              </option>
+              @for (o of objects() ?? []; track o) {
+                <option [value]="o" [selected]="objectName() === o">{{ o }}</option>
+              }
+            </select>
+            @if (objectsLoading()) {
+              <p class="muted" style="margin-top:0.25rem; font-size:0.75rem;">
+                <span class="spinner"></span> Cargando {{ objectTypePlural() }} de {{ schema() }} en
+                {{ envB() }}...
+              </p>
+            } @else if (objectsError()) {
+              <p class="muted hint-error" style="margin-top:0.25rem; font-size:0.75rem;">
+                No se pudieron leer los {{ objectTypePlural() }} de {{ schema() }}: {{ objectsError() }}
+              </p>
+            } @else if (!schema()) {
+              <p class="muted" style="margin-top:0.25rem; font-size:0.75rem;">
+                Elegí un esquema para ver sus objetos.
+              </p>
+            }
+          </div>
+          <div class="actions" style="align-items:flex-end; justify-content:flex-end;">
+            <button type="button" [disabled]="busy() || !canGenerate()" (click)="generate()">
+              Generar
+            </button>
+          </div>
+        </div>
+        @if (!canGenerate() && schema() && objectName()) {
+          <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
+            Falta elegir el ambiente de destino para poder generar.
+          </p>
+        }
       }
     </div>
 
     <div class="panel">
       <div class="section-title">
-        <strong>4 · Script a ejecutar en {{ envA() || 'el destino' }}</strong>
+        <strong>{{ source() === 'env' ? '6' : '3' }} · Script a ejecutar en {{ envA() || 'el destino' }}</strong>
       </div>
       <p class="muted" style="margin-bottom:0.5rem; font-size:0.75rem;">
-        Acá va el SQL que <strong>Compilar</strong> ejecuta en {{ envA() || 'el destino' }}, tal
-        cual está. Si no hay nada que aplicar, queda sembrado con la definición que ya tiene el
-        destino, para editarla a mano.
+        @if (source() === 'env') {
+          Acá va el SQL que <strong>Compilar</strong> ejecuta en {{ envA() || 'el destino' }}, tal
+          cual está. Si no hay nada que aplicar, queda sembrado con la definición que ya tiene el
+          destino, para editarla a mano.
+        } @else {
+          Este es el origen de la compilación: pegá el SQL que querés llevar a
+          {{ envA() || 'el destino' }}. Se ejecuta tal cual está, statement por statement.
+        }
       </p>
       <textarea
         id="compile-script"
@@ -166,7 +248,11 @@ import { SchemaSelectComponent } from '../shared/schema-select';
         rows="12"
         [value]="script()"
         (input)="script.set($any($event.target).value)"
-        placeholder="Generá el script con el botón de arriba, o pegá acá el SQL que quieras ejecutar."
+        [placeholder]="
+          source() === 'env'
+            ? 'Generá el script con el botón de arriba, o pegá acá el SQL que quieras ejecutar.'
+            : 'Pegá el SQL a compilar: un CREATE TABLE, un ALTER, un CREATE PROCEDURE...'
+        "
       ></textarea>
       @if (prefillNotice(); as aviso) {
         <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
@@ -180,18 +266,18 @@ import { SchemaSelectComponent } from '../shared/schema-select';
 
       <div class="actions" style="margin-top:0.75rem; justify-content:space-between; flex-wrap:wrap; gap:0.625rem;">
         <app-copy-button [text]="script()" />
-        <button
-          type="button"
-          [disabled]="busy() || !canExecute()"
-          (click)="run()"
-        >
+        <button type="button" [disabled]="busy() || !canExecute()" (click)="run()">
           Compilar en {{ envA() || '…' }}
         </button>
       </div>
       @if (!canExecute() && envA()) {
         <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
-          Escribí o generá un script para poder ejecutarlo. No hace falta elegir un objeto: alcanza
-          con el SQL.
+          @if (source() === 'env') {
+            Escribí o generá un script para poder ejecutarlo. No hace falta elegir un objeto:
+            alcanza con el SQL.
+          } @else {
+            Pegá el SQL que querés compilar para habilitar el botón.
+          }
         </p>
       }
     </div>
@@ -267,8 +353,10 @@ export class CompilePage {
   protected readonly objectLabel = objectLabel;
 
   readonly environments = signal<EnvironmentInfo[] | null>(null);
-  readonly envB = signal(''); // origen
-  readonly envA = signal(''); // destino
+  /** De dónde sale el SQL: otro ambiente, o un script del usuario. */
+  readonly source = signal<'env' | 'script'>('env');
+  readonly envB = signal(''); // origen; solo tiene sentido en modo ambiente
+  readonly envA = signal(''); // destino: donde compila, en los dos modos
   readonly schema = signal('');
   readonly objectName = signal('');
   readonly objectType = signal<'table' | 'procedure'>('table');
@@ -288,7 +376,9 @@ export class CompilePage {
   readonly result = signal<CompileResponse | null>(null);
   readonly executed = signal<ExecuteSqlResponse | null>(null);
 
-  readonly direction = computed(() => `${this.envB() || '…'} → ${this.envA() || '…'}`);
+  /** `app-env-controls` habla arrays y `envA` es un string: se adapta acá. */
+  protected readonly destEnvs = computed(() => (this.envA() ? [this.envA()] : []));
+
   readonly objectTypePlural = computed(() =>
     this.objectType() === 'procedure' ? 'stored procedures' : 'tablas',
   );
@@ -297,7 +387,14 @@ export class CompilePage {
     return `Sin ${this.objectTypePlural()} en ${this.schema() || 'el esquema'}`;
   });
 
-  readonly sameEnv = computed(() => !!this.envB() && this.envB() === this.envA());
+  /**
+   * Solo tiene sentido con dos ambientes: en modo script el destino es único y
+   * cualquier coincidencia con el `envB` que quedó del otro modo es historia
+   * vieja, no un error que haya que mostrar.
+   */
+  readonly sameEnv = computed(
+    () => this.source() === 'env' && !!this.envB() && this.envB() === this.envA(),
+  );
 
   /** Generar needs the whole chain: origin + destination, schema, type, object. */
   readonly canGenerate = computed(
@@ -310,7 +407,11 @@ export class CompilePage {
       !!this.objectName(),
   );
 
-  /** Compilar does NOT need the object chain: it runs whatever is in the editor. */
+  /**
+   * Compilar does NOT need the object chain: it runs whatever is in the editor.
+   * It does need the destination, and that is `envA` in both modes — which is why
+   * this check and the button don't care which origin is selected.
+   */
   readonly canExecute = computed(() => !!this.envA() && this.script().trim().length > 0);
 
   /**
@@ -345,9 +446,10 @@ export class CompilePage {
     );
 
     // La lista de objetos depende del origen, del esquema y del tipo: se recarga
-    // entera y se descarta la selección, que ya no existe en la nueva lista.
+    // entera y se descarta la selección, que ya no existe en la nueva lista. En
+    // modo script no hay ambiente de origen, así que no hay nada que listar.
     effect(() => {
-      const env = this.envB();
+      const env = this.source() === 'env' ? this.envB() : '';
       const schema = this.schema();
       const objectType = this.objectType();
 
@@ -356,9 +458,11 @@ export class CompilePage {
     });
 
     // Un script generado describe un objeto y un destino concretos. Si el usuario
-    // cambia cualquiera de los dos, ejecutarlo sería correrlo en el lugar
-    // equivocado, así que se descarta. Un script escrito a mano es suyo: no se toca.
+    // cambia cualquiera de los dos —o el origen entero—, ejecutarlo sería correrlo
+    // en el lugar equivocado, así que se descarta. Un script escrito a mano es
+    // suyo: no se toca.
     effect(() => {
+      this.source();
       this.envA();
       this.envB();
       this.schema();
@@ -402,6 +506,28 @@ export class CompilePage {
         this.objectsLoading.set(false);
       },
     );
+  }
+
+  /**
+   * Cambia el origen del SQL. Es un corte y no un ajuste: lo que había en el
+   * editor describía un objeto de un ambiente de origen, así que se descarta en
+   * vez de quedar ahí listo para ejecutarse en otro lado. El esquema también se
+   * va porque cambia de significado —de "el del objeto de origen" a "el USE
+   * opcional"— y dejarlo puesto mandaría la ejecución a un schema callado.
+   */
+  setSource(source: 'env' | 'script'): void {
+    if (source === this.source()) return;
+    this.source.set(source);
+    this.schema.set('');
+    this.generated.set(false);
+    this.script.set('');
+    this.result.set(null);
+    this.executed.set(null);
+  }
+
+  /** En modo script el destino es el único ambiente: va al mismo `envA`. */
+  onDestEnvChange(envs: string[]): void {
+    this.envA.set(envs.length === 1 ? envs[0] : '');
   }
 
   generate() {
@@ -465,10 +591,11 @@ export class CompilePage {
       return;
     }
 
+    const fromScript = this.source() === 'script';
     const schema = this.schema();
     const objectName = this.objectName();
     const target =
-      schema && objectName ? `${schema}.${objectName} en ${env}` : `el script en ${env}`;
+      !fromScript && schema && objectName ? `${schema}.${objectName} en ${env}` : `el script en ${env}`;
     if (!confirm(`¿Ejecutar ${target}?\nCorre exactamente lo que está en el editor.`)) return;
 
     this.busy.set(true);
@@ -478,7 +605,9 @@ export class CompilePage {
     this.dbService
       .executeSql({
         env: env,
-        object_type: this.objectType(),
+        // En modo script el texto no viene de un objeto con nombre propio: se
+        // declara como lo que es para no etiquetar mal la respuesta.
+        object_type: fromScript ? 'script' : this.objectType(),
         schema_name: schema,
         code: code,
       })

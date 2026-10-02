@@ -74,7 +74,7 @@ class CreateMultiParamsRequest(BaseModel):
 
 class ExecuteRequest(BaseModel):
     env: str
-    object_type: str  # "table" | "procedure"
+    object_type: str  # "table" | "procedure" | "script" (SQL libre, sin objeto único)
     schema_name: str = ""
     code: str
 

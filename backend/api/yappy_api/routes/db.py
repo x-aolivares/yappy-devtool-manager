@@ -187,9 +187,18 @@ def api_execute_sql(req: ExecuteRequest):
     This is the only write path: ``/api/compile`` merely generates. ``code`` is
     whatever the user is looking at, so it may be a generated script, an edited
     version of it, or free-form SQL pasted from anywhere.
+
+    ``object_type`` labels the run and is echoed back; nothing branches on it,
+    because the splitter runs whatever text it is given. Besides ``table`` and
+    ``procedure`` it accepts ``script``: the Compile page sends it when the SQL
+    comes from the user instead of from an object of a source environment, and in
+    that case there is no single object to name — claiming ``table`` would just
+    be a lie in the response.
     """
-    if req.object_type not in ("table", "procedure"):
-        raise HTTPException(status_code=400, detail="object_type debe ser 'table' o 'procedure'")
+    if req.object_type not in ("table", "procedure", "script"):
+        raise HTTPException(
+            status_code=400, detail="object_type debe ser 'table', 'procedure' o 'script'"
+        )
     if not req.code or not req.code.strip():
         raise HTTPException(status_code=400, detail="El código a ejecutar no puede estar vacío.")
 
