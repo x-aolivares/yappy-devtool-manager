@@ -39,11 +39,13 @@ Estructura esperada en disco (configurable vía `KAFKA_PATH` en `backend/config/
 {KAFKA_PATH}/temp-logs/         # logs de los procesos
 ```
 
-Por defecto Kafka se instala dentro del repo (bajo `devkit/kafka`):
+Por defecto Kafka se instala dentro del repo (bajo `devkit/kafka`), sin rutas
+absolutas: la ubicación vale para cualquier checkout.
 
 ```
-/c/Development/yappy-cli-manager/devkit/kafka/kafka-core/
-/c/Development/yappy-cli-manager/devkit/kafka/kafka-ui/
+devkit/kafka/kafka-core/         # bin/, config/, libs/
+devkit/kafka/kafka-ui/           # main.jar (Kafdrop)
+devkit/kafka/temp-logs/          # logs de los procesos
 ```
 
 ### 5. Java 17+ (solo para Kafdrop UI)

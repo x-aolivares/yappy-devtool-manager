@@ -33,6 +33,16 @@ def _package_root_config() -> Path:
     return project_config_dir()
 
 
+def default_kafka_path() -> str:
+    """Where Kafka lives when nothing overrides it: project-local `devkit/kafka`.
+
+    Separate from :attr:`Config.kafka_path` on purpose: this is the *default*, with
+    no `KAFKA_PATH` override applied. The docs describe the default, so what a
+    given machine happens to override must not decide whether they are right.
+    """
+    return str(project_root() / "devkit" / "kafka")
+
+
 class Config:
     _config_dir: Path | None = None
 
@@ -196,8 +206,7 @@ class Config:
     def kafka_path(self) -> str:
         # Project-local by default: <project_root>/devkit/kafka
         # Override with KAFKA_PATH env var if needed
-        default = str(project_root() / "devkit" / "kafka")
-        return self.get("KAFKA_PATH", default)
+        return self.get("KAFKA_PATH") or default_kafka_path()
 
     @property
     def kafka_core_path(self) -> str:
