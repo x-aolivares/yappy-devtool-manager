@@ -159,6 +159,20 @@ class Config:
         return self.get("AWS_ENDPOINT_URL")
 
     @property
+    def is_local(self) -> bool:
+        """True when this environment is NOT an AWS environment.
+
+        A local environment is reached directly (a MySQL container over TCP), so
+        it has no meaningful region, profile, SSM parameter store or Secrets
+        Manager: anything AWS-shaped must be refused instead of silently falling
+        back to the inherited `base-profile` credentials.
+
+        The flag is the `DB_MODE=local` key already declared in
+        `backend/config/env.local`.
+        """
+        return (self.get("DB_MODE") or "").strip().lower() == "local"
+
+    @property
     def instance(self) -> str | None:
         return self.get("AWS_INSTANCE")
 

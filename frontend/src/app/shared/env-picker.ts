@@ -33,7 +33,12 @@ import { EnvironmentInfo } from '../api-gen/models';
           <span class="env-check" aria-hidden="true">{{ isSelected(e.env) ? '✓' : '' }}</span>
           <span class="env-text">
             <span class="env-name">{{ e.env }}</span>
-            <span class="env-meta">{{ e.region || '—' }} · {{ e.profile || '—' }}</span>
+            @if (e.is_local) {
+              <!-- Sin región ni profile reales: mostrarlos sería inventar datos. -->
+              <span class="env-meta">local · base de datos directa</span>
+            } @else {
+              <span class="env-meta">{{ e.region || '—' }} · {{ e.profile || '—' }}</span>
+            }
             @if (e.load_error) {
               <span class="env-error">{{ e.load_error }}</span>
             }

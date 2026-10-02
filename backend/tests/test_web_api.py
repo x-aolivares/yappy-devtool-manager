@@ -58,6 +58,10 @@ class _FakeConfig:
     def profile(self):
         return "prof-" + self._env
 
+    @property
+    def is_local(self):
+        return self._env == "local"
+
 
 def _fake_with_env(env):
     if env == "broken":
@@ -1165,7 +1169,10 @@ def test_api_compile_procedure_is_replaced_from_the_source(monkeypatch):
     )
 
     assert payload["status"] == "different"
-    assert "CREATE OR REPLACE PROCEDURE" in payload["script"]
+    # MySQL no acepta CREATE OR REPLACE PROCEDURE: el reemplazo es DROP + CREATE.
+    assert "CREATE OR REPLACE" not in payload["script"]
+    assert payload["script"].startswith("DROP PROCEDURE IF EXISTS `s`.`p`;")
+    assert "CREATE PROCEDURE `p`()" in payload["script"]
     assert "SELECT 1" in payload["script"]
     # El destino también se consulta, para poder mostrar qué definición hay hoy.
     assert payload["code_a"] == "CREATE PROCEDURE `p`() BEGIN SELECT 2; END"

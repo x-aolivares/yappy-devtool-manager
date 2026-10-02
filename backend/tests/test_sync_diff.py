@@ -150,14 +150,57 @@ def test_create_table_script_passthrough():
     assert not ddl.create_table_script(create).endswith(";")
 
 
-def test_replace_procedure_script_strips_definer():
+def test_replace_procedure_script_drops_then_creates():
+    """MySQL has no CREATE OR REPLACE PROCEDURE, so replacing is DROP + CREATE.
+
+    Regression: this used to emit ``CREATE OR REPLACE PROCEDURE``, which the
+    server rejects with a 1064 -- compiling a procedure never worked. The old
+    test asserted ``startswith("CREATE OR REPLACE PROCEDURE")`` and therefore
+    pinned the defect as intended behavior.
+    """
     create = (
         "CREATE DEFINER=`u`@`h` PROCEDURE `calc`(x int)\n"
         "BEGIN\nSET @a = x;\nEND"
     )
-    script = ddl.replace_procedure_script(create)
-    assert script.startswith("CREATE OR REPLACE PROCEDURE `calc`(x int)")
+    script = ddl.replace_procedure_script(create, "yappy", "calc")
+    assert script.startswith("DROP PROCEDURE IF EXISTS `yappy`.`calc`;")
+    assert "CREATE OR REPLACE" not in script
     assert "DEFINER" not in script
+    assert script.splitlines()[1].startswith("CREATE PROCEDURE `calc`(x int)")
+
+
+def test_replace_procedure_script_keeps_line_structure():
+    """Stripping DEFINER must not flatten the body onto a single line.
+
+    Regression: the old ``re.sub(r"\\s+", " ", text)`` collapse produced one
+    unreadable line, which is useless in a textarea the user has to edit.
+    """
+    create = (
+        "CREATE DEFINER=`root`@`%` PROCEDURE `calc`(\n"
+        "  IN  x INT,\n"
+        "  OUT y DECIMAL(12,2)\n"
+        ")\n"
+        "BEGIN\n"
+        "  DECLARE v DECIMAL(12,2) DEFAULT 0.00;\n"
+        "\n"
+        "  SELECT COALESCE(SUM(x), 0)\n"
+        "    INTO v;\n"
+        "\n"
+        "  SET y = v;\n"
+        "END"
+    )
+    script = ddl.replace_procedure_script(create, "yappy", "calc")
+
+    assert script.startswith("DROP PROCEDURE IF EXISTS `yappy`.`calc`;\n")
+    assert "DEFINER" not in script
+    # The signature stays spread over its own lines.
+    assert "\n  IN  x INT,\n" in script
+    assert "\n  OUT y DECIMAL(12,2)\n" in script
+    # The body keeps its newlines and the blank line that separates the DECLARE.
+    assert "\n  DECLARE v DECIMAL(12,2) DEFAULT 0.00;\n\n" in script
+    assert "\n    INTO v;\n" in script
+    assert script.endswith("END")
+    assert script.count("\n") >= 10
 
 
 def test_create_procedure_script_keeps_create():

@@ -479,8 +479,10 @@ def migrate(
             if not keep:
                 result.ok = False
                 result.error = (
-                    f"Ninguna columna de {target.name} existe en "
-                    f"{dest_schema}.{dest_table}; no se copió ninguna fila."
+                    f"Ninguna columna de {target.schema}.{target.table} "
+                    f"(origen: {cfg_source.env}) existe en "
+                    f"{dest_schema}.{dest_table} (destino: {cfg_target.env}); "
+                    f"no se copió ninguna fila."
                 )
                 results.append(result)
                 continue

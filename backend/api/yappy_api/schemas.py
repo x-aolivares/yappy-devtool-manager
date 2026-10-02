@@ -195,6 +195,8 @@ class EnvironmentInfo(BaseModel):
     region: str | None = None
     profile: str | None = None
     load_error: str | None = None
+    """DB_MODE=local: reached directly, no AWS. The client hides it from AWS pages."""
+    is_local: bool = False
 
 
 class EnvironmentsResponse(BaseModel):

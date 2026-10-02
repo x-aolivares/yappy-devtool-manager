@@ -3,6 +3,7 @@ import { EnvironmentInfo, MultiResultInfo, ParamsMultiResponse } from '../api-ge
 import { EnvironmentService } from '../core/services/environment.service';
 import { ParamsService } from '../core/services/params.service';
 import { toApiError } from '../core/services/api-error';
+import { awsEnvironments } from '../core/format';
 import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
 import { EnvControlsComponent, ServiceOption } from '../shared/env-controls';
@@ -22,7 +23,7 @@ import { EnvControlsComponent, ServiceOption } from '../shared/env-controls';
     <div class="panel">
       <div style="margin-bottom:1rem;">
         <app-env-controls
-          [environments]="environments()"
+          [environments]="awsEnvironments()"
           [services]="createServices"
           envLabel="Regiones destino"
           [(envs)]="selectedEnvs"
@@ -195,6 +196,8 @@ export class ParamsCreatePage {
   private readonly paramsService = inject(ParamsService);
 
   readonly environments = signal<EnvironmentInfo[] | null>(null);
+  /** `local` no es un ambiente de AWS: esta página solo ofrece los que lo son. */
+  readonly awsEnvironments = computed(() => awsEnvironments(this.environments()));
   readonly envLoadError = signal<string | null>(null);
   /**
    * Las píldoras no tienen opción "sin elegir", así que el modo arranca en SSM

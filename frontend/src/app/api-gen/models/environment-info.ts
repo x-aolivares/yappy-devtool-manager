@@ -3,6 +3,7 @@
 
 export interface EnvironmentInfo {
   env: string;
+  is_local?: boolean;
   load_error?: (string | null);
   profile?: (string | null);
   region?: (string | null);

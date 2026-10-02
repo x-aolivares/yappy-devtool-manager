@@ -10,6 +10,15 @@ from .diff import ColumnOp
 
 
 def _strip_definer(sql: str) -> str:
+    """Remove the DEFINER clause while keeping MySQL's own line structure.
+
+    This used to end with ``re.sub(r"\\s+", " ", text)``, which collapsed every
+    whitespace run -- newlines included -- and turned a multi-line procedure
+    into a single unreadable line. The point of the function is to drop the
+    DEFINER, so now that is all it does: line breaks and the parameter
+    alignment MySQL emits are left alone, and only whitespace left behind by
+    the removal is tidied.
+    """
     text = re.sub(
         r"DEFINER\s*=\s*`[^`]+`@`[^`]+`",
         " ",
@@ -24,7 +33,12 @@ def _strip_definer(sql: str) -> str:
         flags=re.IGNORECASE,
         count=1,
     )
-    return re.sub(r"\s+", " ", text).strip()
+    # Trailing whitespace per line, and blank-line runs, without joining lines.
+    text = "\n".join(line.rstrip() for line in text.splitlines())
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    # Removing DEFINER leaves "CREATE   PROCEDURE"; only the header is squeezed,
+    # so the alignment inside the parameter list survives.
+    return re.sub(r"(?i)^(CREATE)\s+PROCEDURE\b", r"\1 PROCEDURE", text, count=1)
 
 
 def create_table_script(show_create_b: str) -> str:
@@ -47,15 +61,18 @@ def drop_procedure_script(schema: str, name: str) -> str:
     return f"DROP PROCEDURE {obj.quote_ident(schema)}.{obj.quote_ident(name)};"
 
 
-def replace_procedure_script(show_create_b: str) -> str:
-    """DDL to replace, in A, a procedure whose body differs from B."""
-    sql = _strip_definer(show_create_b)
-    return re.sub(
-        r"(?i)^CREATE\s+PROCEDURE\b",
-        "CREATE OR REPLACE PROCEDURE",
-        sql,
-        count=1,
-    )
+def replace_procedure_script(show_create_b: str, schema: str, name: str) -> str:
+    """DDL to replace, in A, a procedure whose body differs from B.
+
+    MySQL has no ``CREATE OR REPLACE PROCEDURE``: that spelling exists for
+    views and stored functions, and against a procedure server the parser stops
+    at ``PROCEDURE`` with a 1064. Replacing one is ``DROP`` + ``CREATE``, which
+    is the documented idiom and is safe here because a procedure holds no data.
+    ``_strip_definer`` already leaves the header as ``CREATE PROCEDURE``.
+    """
+    body = _strip_definer(show_create_b)
+    target = f"{obj.quote_ident(schema)}.{obj.quote_ident(name)}"
+    return f"DROP PROCEDURE IF EXISTS {target};\n{body}"
 
 
 def _render_default(row: dict) -> str:

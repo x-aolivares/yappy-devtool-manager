@@ -23,6 +23,17 @@ from ..schemas import (
 router = APIRouter(tags=["params"])
 
 
+def _aws_error(exc: Exception, prefix: str) -> HTTPException:
+    """Map a library exception to a 4xx the UI can show verbatim.
+
+    A local environment is not a failure of AWS, so its message goes through
+    untouched instead of being buried under an "Error de AWS" prefix.
+    """
+    if isinstance(exc, p.LocalEnvHasNoAws):
+        return HTTPException(status_code=400, detail=str(exc))
+    return HTTPException(status_code=400, detail=f"{prefix}: {exc}")
+
+
 def _has_paired_secret(cfg_a, cfg_b, name: str) -> bool:
     """True when an SSM param is backed by a secret in either region.
 
@@ -96,7 +107,7 @@ def api_params_diff(req: ParamsDiffRequest):
                 ]
         return result.to_dict()
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Error de AWS: {exc}") from exc
+        raise _aws_error(exc, "Error de AWS") from exc
 
 
 @router.post(
@@ -220,7 +231,7 @@ def api_params_apply_execute(req: ExecuteParamsRequest):
             else:
                 result = p.delete_secret(cfg_a, req.name)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Error de ejecución: {exc}") from exc
+        raise _aws_error(exc, "Error de ejecución") from exc
 
     return {
         "ok": True,
@@ -346,7 +357,7 @@ def api_params_get(env: str, name: str):
             status_code=404, detail=f"No existe el parámetro '{name}' en {env}."
         ) from exc
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Error de AWS: {exc}") from exc
+        raise _aws_error(exc, "Error de AWS") from exc
     return {"env": env, "name": name, "value": value, "value_type": type_}
 
 

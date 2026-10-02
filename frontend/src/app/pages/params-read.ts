@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   CreateMultiParamsRequest,
@@ -10,7 +10,7 @@ import { EnvironmentService } from '../core/services/environment.service';
 import { ParamsService } from '../core/services/params.service';
 import { SessionService } from '../core/services/session.service';
 import { toApiError } from '../core/services/api-error';
-import { formatValue } from '../core/format';
+import { awsEnvironments, formatValue } from '../core/format';
 import { EnvControlsComponent, PARAM_SERVICES } from '../shared/env-controls';
 import { StatusBadge } from '../shared/status-badge';
 
@@ -47,7 +47,7 @@ interface EnvPanel {
 
     <div class="panel">
       <app-env-controls
-        [environments]="environments()"
+        [environments]="awsEnvironments()"
         [services]="services"
         [(envs)]="envs"
         [(service)]="service"
@@ -150,6 +150,11 @@ export class ParamsReadPage {
   private readonly sessionService = inject(SessionService);
 
   readonly environments = signal<EnvironmentInfo[] | null>(null);
+  /**
+   * `local` no es un ambiente de AWS: esta página solo ofrece los que lo son. La
+   * búsqueda de metadatos del env elegido sigue usando la lista completa.
+   */
+  readonly awsEnvironments = computed(() => awsEnvironments(this.environments()));
   readonly envs = signal<string[]>([]);
   readonly service = signal('ssm');
   readonly name = signal('');

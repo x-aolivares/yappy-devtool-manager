@@ -3,6 +3,7 @@ import { EnvironmentInfo } from '../api-gen/models';
 import { EnvironmentService } from '../core/services/environment.service';
 import { ParamsService } from '../core/services/params.service';
 import { toApiError } from '../core/services/api-error';
+import { awsEnvironments } from '../core/format';
 import { EnvControlsComponent } from '../shared/env-controls';
 
 @Component({
@@ -19,7 +20,7 @@ import { EnvControlsComponent } from '../shared/env-controls';
     </p>
 
     <div class="panel">
-      <app-env-controls [environments]="environments()" [max]="1" [(envs)]="envs" />
+      <app-env-controls [environments]="awsEnvironments()" [max]="1" [(envs)]="envs" />
 
       <label for="name" style="margin-top:1rem;">Nombre del parámetro</label>
       <input
@@ -134,6 +135,8 @@ export class ParamsEditPage {
   private readonly paramsService = inject(ParamsService);
 
   readonly environments = signal<EnvironmentInfo[] | null>(null);
+  /** `local` no es un ambiente de AWS: esta página solo ofrece los que lo son. */
+  readonly awsEnvironments = computed(() => awsEnvironments(this.environments()));
   readonly envs = signal<string[]>([]);
   readonly name = signal('');
   readonly value = signal('');

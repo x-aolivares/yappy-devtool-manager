@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { EnvironmentInfo } from '../api-gen/models';
+import { awsEnvironments } from '../core/format';
 import { EnvPickerComponent } from './env-picker';
 
 const ENVS: EnvironmentInfo[] = [
@@ -128,5 +129,54 @@ describe('EnvPickerComponent', () => {
     const el = fixture.nativeElement as HTMLElement;
     expect(el.querySelector('.env-item')).toBeNull();
     expect(el.textContent).toContain('No se encontraron ambientes');
+  });
+
+  it('does not show a region or profile for a local environment', async () => {
+    // Un ambiente local no tiene región ni profile: hereda `us-west-2` y
+    // `base-profile` de env.base, que son defaults con forma de AWS. Mostrarlos
+    // sería inventar datos, y `base-profile` existe de verdad en la máquina.
+    await TestBed.configureTestingModule({ imports: [EnvPickerComponent] }).compileComponents();
+    const fixture = TestBed.createComponent(EnvPickerComponent);
+    fixture.componentRef.setInput('environments', [{ env: 'local', is_local: true }]);
+    fixture.detectChanges();
+
+    const meta = fixture.nativeElement.querySelector('.env-meta')?.textContent?.trim();
+    expect(meta).toBe('local · base de datos directa');
+    expect(meta).not.toContain('base-profile');
+    expect(meta).not.toContain('us-west-2');
+  });
+
+  it('still shows region and profile for a normal environment', async () => {
+    const fixture = await setup();
+
+    const metas = buttons(fixture).map((b) => b.querySelector('.env-meta')?.textContent?.trim());
+    expect(metas).toEqual([
+      'us-west-2 · localstack',
+      'us-west-1 · localstack',
+      'us-east-1 · base-profile',
+    ]);
+  });
+});
+
+describe('awsEnvironments', () => {
+  it('drops local environments and keeps the rest in order', () => {
+    const list: EnvironmentInfo[] = [
+      { env: 'dev', region: 'us-west-2', profile: 'localstack' },
+      { env: 'local', is_local: true },
+      { env: 'qa', region: 'us-west-1', profile: 'localstack' },
+    ];
+
+    expect((awsEnvironments(list) ?? []).map((e) => e.env)).toEqual(['dev', 'qa']);
+  });
+
+  it('passes null and undefined through instead of crashing', () => {
+    expect(awsEnvironments(null)).toBeNull();
+    expect(awsEnvironments(undefined)).toBeNull();
+  });
+
+  it('keeps environments whose flag is absent, since that means "not local"', () => {
+    const list: EnvironmentInfo[] = [{ env: 'dev', region: 'us-west-2' }];
+
+    expect((awsEnvironments(list) ?? []).map((e) => e.env)).toEqual(['dev']);
   });
 });

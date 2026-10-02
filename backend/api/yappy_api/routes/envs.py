@@ -18,11 +18,18 @@ def api_envs():
     found = Config.known_environments()
     environments = []
     for env in found:
-        entry = {"env": env, "region": None, "profile": None, "load_error": None}
+        entry = {
+            "env": env,
+            "region": None,
+            "profile": None,
+            "load_error": None,
+            "is_local": False,
+        }
         try:
             cfg = Config.with_env(env)
             entry["region"] = cfg.region
             entry["profile"] = cfg.profile
+            entry["is_local"] = getattr(cfg, "is_local", False)
         except Exception as exc:
             # Never drop an environment: keep it visible and explain the failure.
             entry["load_error"] = str(exc)

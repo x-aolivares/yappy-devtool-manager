@@ -103,11 +103,11 @@ def api_db_diff(req: DbDiffRequest):
             else:
                 status = "different"
                 if req.object_type == "procedure":
-                    script = ddl.replace_procedure_script(code_b)
+                    script = ddl.replace_procedure_script(code_b, schema, name)
                     notes = [
                         "El stored procedure difiere — se regenera con "
-                        "CREATE OR REPLACE (Aurora MySQL 3 / MySQL 8; "
-                        "para MySQL 5.7 ejecutar DROP + CREATE)."
+                        "DROP + CREATE (MySQL no tiene CREATE OR REPLACE "
+                        "para procedures)."
                     ]
                 else:
                     script = ddl.alter_table_script(schema, name, col_ops, index_ops)
@@ -251,7 +251,7 @@ def api_compile(req: CompileRequest):
                     notes = [f"El stored procedure no existe en {req.env_b} (origen)."]
                 else:
                     code_a = obj.show_create_procedure(conn_a, schema, name)
-                    status, script = "different", ddl.replace_procedure_script(code_b)
+                    status, script = "different", ddl.replace_procedure_script(code_b, schema, name)
                     notes = [
                         f"Se recompila {schema}.{name} en {req.env_a} (destino) "
                         f"tomando la definición de {req.env_b} (origen)."

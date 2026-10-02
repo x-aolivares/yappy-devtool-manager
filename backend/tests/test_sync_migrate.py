@@ -222,6 +222,8 @@ def fake_connections(monkeypatch):
     class Cfg:
         def __init__(self, tag):
             self.tag = tag
+            # El Config real lo tiene, y el mensaje de error por tabla lo nombra.
+            self.env = tag
 
     state = {}
 
@@ -410,3 +412,32 @@ def test_rows_are_written_in_batches(fake_connections):
 
     assert results[0].replaced == 250
     assert [len(b) for b in dst.batches] == [100, 100, 50]
+
+def test_migrate_error_names_origin_and_destination(fake_connections):
+    """Cuando no hay columnas en común, el error tiene que dizer cuál es cuál.
+
+    Antes decía "Ninguna columna de yappy.orders existe en yappy.orders": el
+    mismo nombre dos veces, sin distinguir origen de destino, y se leía como un
+    bug del migrador en vez de como "estas dos tablas no se parecen en nada".
+    """
+    src = FakeConn(
+        tables={"yappy.orders": [{"COLUMN_NAME": "order_id"}, {"COLUMN_NAME": "channel"}]},
+        rows={"SELECT DISTINCT `yappy`.`orders`.*": [{"order_id": 1, "channel": "web"}]},
+    )
+    dst = FakeConn(tables={"yappy.orders": [{"COLUMN_NAME": "id"}]})
+    cfg_b, cfg_a = fake_connections(src, dst)
+
+    plan = parse_select("SELECT * FROM yappy.orders")
+    results = m.migrate(cfg_b, cfg_a, plan)
+
+    assert results[0].ok is False
+    err = results[0].error
+    assert "origen: src" in err
+    assert "destino: dst" in err
+    # La tabla se nombra dos veces, pero cada vez con su rol explícito.
+    assert err.count("yappy.orders") == 2
+    assert "no se copió ninguna fila" in err
+    # Las columnas del origen que no existen en el destino se reportan aparte.
+    assert sorted(results[0].skipped_columns) == ["channel", "order_id"]
+    # No se intentó escribir nada.
+    assert dst.batches == []

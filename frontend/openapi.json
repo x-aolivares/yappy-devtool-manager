@@ -1433,6 +1433,11 @@
               }
             ],
             "title": "Load Error"
+          },
+          "is_local": {
+            "type": "boolean",
+            "title": "Is Local",
+            "default": false
           }
         },
         "type": "object",

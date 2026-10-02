@@ -17,6 +17,10 @@ class ParamNotFound(ValueError):
     pass
 
 
+class LocalEnvHasNoAws(ValueError):
+    """Raised when AWS is asked for on an environment that is not an AWS one."""
+
+
 def _boto_session(profile: str, region: str):
     import boto3
 
@@ -24,6 +28,18 @@ def _boto_session(profile: str, region: str):
 
 
 def _boto_client(service: str, cfg):
+    # Every AWS call in this module goes through here, so this is the single place
+    # that decides whether an environment may talk to AWS at all. A local
+    # environment (DB_MODE=local) has no SSM and no Secrets Manager: without this
+    # guard the inherited `base-profile` would be used and the call would hit real
+    # AWS. Refusing before the session exists is the point — nothing is contacted.
+    if getattr(cfg, "is_local", False):
+        raise LocalEnvHasNoAws(
+            f"El ambiente '{cfg.env}' es local y no es un ambiente de AWS: "
+            "no tiene Parameter Store ni Secrets Manager. "
+            "Usá un ambiente de AWS para esta operación, o las páginas de base de datos "
+            "para trabajar contra el MySQL local."
+        )
     session = _boto_session(cfg.profile, cfg.region)
     endpoint = getattr(cfg, "endpoint_url", None)
     if endpoint is None and cfg.profile == "localstack":

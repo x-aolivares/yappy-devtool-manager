@@ -5,7 +5,7 @@ import { EnvironmentService } from '../core/services/environment.service';
 import { ParamsService } from '../core/services/params.service';
 import { SessionService } from '../core/services/session.service';
 import { toApiError } from '../core/services/api-error';
-import { formatValue } from '../core/format';
+import { awsEnvironments, formatValue } from '../core/format';
 import { serializeMerged } from '../core/params-merge';
 import type { ChangeRow } from '../core/params-merge';
 import { ParamsDiffResponse, UpdateSessionItemRequest } from '../api-gen/models';
@@ -59,7 +59,7 @@ type PairKey = 'param' | 'secret';
 
     <div class="panel">
       <app-region-controls
-        [environments]="environments()"
+        [environments]="awsEnvironments()"
         [withName]="true"
         hint="Elegí dos: el primero es el de origen y el segundo el de destino."
         [(envB)]="envB"
@@ -397,6 +397,8 @@ export class ParamsDiffPage {
   private readonly sessionService = inject(SessionService);
 
   readonly environments = signal<EnvironmentInfo[] | null>(null);
+  /** `local` no es un ambiente de AWS: esta página solo ofrece los que lo son. */
+  readonly awsEnvironments = computed(() => awsEnvironments(this.environments()));
   readonly envA = signal('');
   readonly envB = signal('');
   readonly service = signal<string>('');
