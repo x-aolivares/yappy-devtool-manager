@@ -225,19 +225,30 @@ def api_execute_sql(req: ExecuteRequest):
 def api_compile(req: CompileRequest):
     """Generate the script that would take an object from source into destination.
 
-    Nothing is written here: both environments are opened read-only to compare
+    Nothing is written here: both environments are opened read-only to look at
     them and the script comes back in the response. The caller decides whether to
     send it to ``/api/execute/sql``, possibly after editing it.
 
-    A stored procedure is recreated wholesale from the source definition
-    (``CREATE OR REPLACE``). A table is not overwritten: only the columns and
-    indexes that differ are emitted, as ``ALTER TABLE``, so destination data and
-    its identity survive.
+    Both object types are a **replace**, not a merge: the source is the truth and
+    the script makes the destination look exactly like it. MySQL has no
+    ``CREATE OR REPLACE`` for procedures nor for tables, so both are
+    ``DROP ... IF EXISTS`` + ``CREATE``. One script, the same whether or not the
+    object is already in the destination — that is the whole point, since a script
+    that depended on what it was going to find is a script that ends in ``1050``
+    or ``1305`` halfway through.
 
-    ``code_b`` (source) and ``code_a`` (destination) come back for every branch
-    so the caller can seed the editor even when there is no script to apply:
-    ``script`` stays ``None`` when both sides are equal and ``""`` when the DDL
-    text differs but the structure does not.
+    For a table that means ``DROP TABLE`` takes the destination's rows with it.
+    Whoever wants to keep them has the other page: ``/api/db/diff`` emits only the
+    ``ALTER``s that are missing.
+
+    ``status`` says what is going to happen in the destination:
+    ``replace_in_a`` (exists there and is about to be dropped),
+    ``missing_in_a`` (does not exist; the ``DROP`` has nothing to do),
+    ``different`` (a procedure whose body is regenerated) or ``none`` (the object
+    is not in the source, so there is nothing to compile).
+
+    ``code_b`` (source) and ``code_a`` (destination) come back for every branch so
+    the caller can show what each side has today.
     """
     if req.env_a == req.env_b:
         raise HTTPException(status_code=400, detail="El origen y el destino deben ser distintos")
@@ -263,7 +274,8 @@ def api_compile(req: CompileRequest):
                     status, script = "different", ddl.replace_procedure_script(code_b, schema, name)
                     notes = [
                         f"Se recompila {schema}.{name} en {req.env_a} (destino) "
-                        f"tomando la definición de {req.env_b} (origen)."
+                        f"tomando la definición de {req.env_b} (origen). "
+                        "El DROP previo se lleva el procedure anterior, si había uno."
                     ]
             else:
                 code_b = obj.show_create_table(conn_b, schema, name)
@@ -272,42 +284,37 @@ def api_compile(req: CompileRequest):
                     notes = [f"La tabla no existe en {req.env_b} (origen)."]
                 else:
                     code_a = obj.show_create_table(conn_a, schema, name)
-                    cols_a = obj.table_columns(conn_a, schema, name)
-                    idx_a = obj.table_indexes(conn_a, schema, name)
 
-                    if not cols_a:
-                        status, script = "missing_in_a", ddl.create_table_script(code_b)
+                    # Un solo script para los dos casos: si está, se reemplaza; si
+                    # no, el DROP IF EXISTS no tiene nada que borrar.
+                    script = ddl.replace_table_script(code_b, schema, name)
+
+                    if code_a is None:
+                        status = "missing_in_a"
                         notes = [
                             f"La tabla no existe en {req.env_a} (destino): "
-                            f"se crea desde {req.env_b} (origen)."
+                            f"se crea desde {req.env_b} (origen). "
+                            "El DROP inicial no tiene nada que borrar."
+                        ]
+                    elif obj.normalize_ddl(code_a) == obj.normalize_ddl(code_b):
+                        status = "replace_in_a"
+                        notes = [
+                            f"La tabla de {req.env_a} (destino) ya es idéntica a la del "
+                            f"origen, pero igual se reemplaza entera: el script compila "
+                            f"la definición de {req.env_b} sin importar qué haya allá. "
+                            f"El DROP borra la tabla y todas sus filas en {req.env_a}. "
+                            "Para conserving los datos del destino, usá el Diff de base "
+                            "de datos, que arma solo los ALTER que faltan."
                         ]
                     else:
-                        cols_b = obj.table_columns(conn_b, schema, name)
-                        idx_b = obj.table_indexes(conn_b, schema, name)
-                        col_ops, index_ops = db_diff.diff_tables(cols_a, cols_b, idx_a, idx_b)
-
-                        same_ddl = (
-                            code_a is not None
-                            and obj.normalize_ddl(code_a) == obj.normalize_ddl(code_b)
-                        )
-                        if same_ddl and not col_ops and not index_ops:
-                            status, script = "equal", None
-                            notes = [
-                                "Sin cambios: la tabla del destino ya es igual a la del origen."
-                            ]
-                        else:
-                            status = "different"
-                            script = ddl.alter_table_script(schema, name, col_ops, index_ops)
-                            if not script:
-                                notes = [
-                                    "El texto del DDL difiere pero la estructura "
-                                    "(columnas e índices) es idéntica: no hay nada que aplicar."
-                                ]
-                            else:
-                                notes = [
-                                    f"Se actualizan columnas e índices de {schema}.{name} "
-                                    f"en {req.env_a} (destino) para igualarla a {req.env_b}."
-                                ]
+                        status = "replace_in_a"
+                        notes = [
+                            f"Se reemplaza {schema}.{name} en {req.env_a} (destino) con la "
+                            f"definición de {req.env_b} (origen). El DROP borra la tabla y "
+                            f"todas sus filas en {req.env_a}. Para conservar los datos del "
+                            "destino, usá el Diff de base de datos, que arma solo los ALTER "
+                            "que faltan."
+                        ]
 
         return {
             "env_b": req.env_b,

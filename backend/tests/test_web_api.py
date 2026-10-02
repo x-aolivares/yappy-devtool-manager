@@ -1194,13 +1194,6 @@ def test_api_compile_never_executes_anywhere(monkeypatch):
     """
     _two_envs(monkeypatch, ("dev", "local"))
     monkeypatch.setattr(obj, "show_create_table", lambda conn, s, n: "CREATE TABLE `t` (`id` INT)")
-    monkeypatch.setattr(
-        obj, "table_columns",
-        lambda conn, s, n: [{"COLUMN_NAME": "id", "COLUMN_TYPE": "INT", "IS_NULLABLE": "NO",
-                            "COLUMN_DEFAULT": None, "EXTRA": "", "CHARACTER_SET_NAME": None,
-                            "COLLATION_NAME": None, "COLUMN_COMMENT": ""}],
-    )
-    monkeypatch.setattr(obj, "table_indexes", lambda conn, s, n: [])
 
     def _must_not_run(*args, **kwargs):
         raise AssertionError("/api/compile intentó ejecutar SQL: debe solo generar.")
@@ -1214,15 +1207,23 @@ def test_api_compile_never_executes_anywhere(monkeypatch):
         )
     )
 
-    assert payload["status"] == "equal"
-    assert payload["script"] is None
+    # El script sale igual aunque las dos bases tengan lo mismo: contiene un DROP
+    # destructivo, y por eso este test también verifica que nada se ejecutó.
+    assert payload["status"] == "replace_in_a"
+    assert payload["script"].startswith("DROP TABLE IF EXISTS `s`.`t`;")
     # The generate-only response carries no execution bookkeeping.
     assert "results" not in payload
     assert "ok_count" not in payload
     assert "err_count" not in payload
 
 
-def test_api_compile_table_alters_only_the_differences(monkeypatch):
+def test_api_compile_table_replaces_the_destination_wholesale(monkeypatch):
+    """El destino tiene una versión vieja: el script la reemplaza entera.
+
+    Antes esto armaba un `ALTER TABLE` con las diferencias y dejaba los datos del
+    destino intactos. Compilar es un reemplazo, así que va `DROP` + `CREATE` con la
+    definición del origen, sin importar qué columnas falten.
+    """
     _two_envs(monkeypatch, ("dev", "local"))
     # The destination lacks `newcol`; the origin has it.
     monkeypatch.setattr(
@@ -1233,22 +1234,6 @@ def test_api_compile_table_alters_only_the_differences(monkeypatch):
             else "CREATE TABLE `t` (`id` INT)"
         ),
     )
-    monkeypatch.setattr(
-        obj, "table_columns",
-        lambda conn, schema, name: (
-            [{"COLUMN_NAME": "id", "COLUMN_TYPE": "INT", "IS_NULLABLE": "NO",
-              "COLUMN_DEFAULT": None, "EXTRA": "", "CHARACTER_SET_NAME": None,
-              "COLLATION_NAME": None, "COLUMN_COMMENT": ""},
-             {"COLUMN_NAME": "newcol", "COLUMN_TYPE": "INT", "IS_NULLABLE": "YES",
-              "COLUMN_DEFAULT": None, "EXTRA": "", "CHARACTER_SET_NAME": None,
-              "COLLATION_NAME": None, "COLUMN_COMMENT": ""}]
-            if conn.env == "dev"
-            else [{"COLUMN_NAME": "id", "COLUMN_TYPE": "INT", "IS_NULLABLE": "NO",
-                   "COLUMN_DEFAULT": None, "EXTRA": "", "CHARACTER_SET_NAME": None,
-                   "COLLATION_NAME": None, "COLUMN_COMMENT": ""}]
-        ),
-    )
-    monkeypatch.setattr(obj, "table_indexes", lambda conn, schema, name: [])
     executed = []
     monkeypatch.setattr(
         "yappy_api.routes.db.syncexec.execute_sql",
@@ -1262,10 +1247,14 @@ def test_api_compile_table_alters_only_the_differences(monkeypatch):
         )
     )
 
-    assert payload["status"] == "different"
-    assert "ADD COLUMN `newcol` INT" in payload["script"]
+    assert payload["status"] == "replace_in_a"
+    assert payload["script"] == (
+        "DROP TABLE IF EXISTS `s`.`t`;\nCREATE TABLE `t` (`id` INT, `newcol` INT)"
+    )
     assert payload["code_b"] == "CREATE TABLE `t` (`id` INT, `newcol` INT)"
     assert payload["code_a"] == "CREATE TABLE `t` (`id` INT)"
+    # El aviso de que se borran las filas no es opcional: va en la respuesta.
+    assert any("filas" in n for n in payload["notes"])
     assert executed == []
 
 
@@ -1275,16 +1264,6 @@ def test_api_compile_table_missing_in_destination_is_created(monkeypatch):
         obj, "show_create_table",
         lambda conn, s, n: "CREATE TABLE `t` (`id` INT)" if conn.env == "dev" else None,
     )
-
-    def columns(conn, schema, name):
-        if conn.env == "local":
-            return []
-        return [{"COLUMN_NAME": "id", "COLUMN_TYPE": "INT", "IS_NULLABLE": "NO",
-                 "COLUMN_DEFAULT": None, "EXTRA": "", "CHARACTER_SET_NAME": None,
-                 "COLLATION_NAME": None, "COLUMN_COMMENT": ""}]
-
-    monkeypatch.setattr(obj, "table_columns", columns)
-    monkeypatch.setattr(obj, "table_indexes", lambda conn, s, n: [])
     executed = []
     monkeypatch.setattr(
         "yappy_api.routes.db.syncexec.execute_sql",
@@ -1298,24 +1277,26 @@ def test_api_compile_table_missing_in_destination_is_created(monkeypatch):
         )
     )
     assert payload["status"] == "missing_in_a"
-    assert payload["script"].startswith("CREATE TABLE")
+    # Mismo script que cuando la tabla está: el `IF EXISTS` no tiene nada que borrar.
+    assert payload["script"] == (
+        "DROP TABLE IF EXISTS `s`.`t`;\nCREATE TABLE `t` (`id` INT)"
+    )
     assert payload["code_b"].startswith("CREATE TABLE")
     # El destino no tiene el objeto: no hay definición propia que ofrecer.
     assert payload["code_a"] is None
     assert executed == []
 
 
-def test_api_compile_identical_table_produces_nothing(monkeypatch):
+def test_api_compile_identical_table_still_replaces(monkeypatch):
+    """El caso que tiraba 1050: el destino ya era idéntico y el editor quedaba
+    sembrado con un `CREATE TABLE` pelado.
+
+    Ahora compila igual, con `DROP TABLE IF EXISTS` adelante, así que el destino
+    queda igual al origen y el statement nunca choca con lo que ya estaba.
+    """
     _two_envs(monkeypatch, ("dev", "local"))
     ddl = "CREATE TABLE `t` (`id` INT)"
     monkeypatch.setattr(obj, "show_create_table", lambda conn, s, n: ddl)
-    monkeypatch.setattr(
-        obj, "table_columns",
-        lambda conn, s, n: [{"COLUMN_NAME": "id", "COLUMN_TYPE": "INT", "IS_NULLABLE": "NO",
-                            "COLUMN_DEFAULT": None, "EXTRA": "", "CHARACTER_SET_NAME": None,
-                            "COLLATION_NAME": None, "COLUMN_COMMENT": ""}],
-    )
-    monkeypatch.setattr(obj, "table_indexes", lambda conn, s, n: [])
     executed = []
     monkeypatch.setattr(
         "yappy_api.routes.db.syncexec.execute_sql",
@@ -1328,18 +1309,19 @@ def test_api_compile_identical_table_produces_nothing(monkeypatch):
             schema_name="s", object_name="t",
         )
     )
-    assert payload["status"] == "equal"
-    assert payload["script"] is None
-    # Sin script igual hay algo que mostrar: el editor se siembra con la definición
-    # del origen para que el usuario escriba arriba el cambio que quiere aplicar.
+    assert payload["status"] == "replace_in_a"
+    assert payload["script"] == "DROP TABLE IF EXISTS `s`.`t`;\n" + ddl
     assert payload["code_b"] == ddl
     assert payload["code_a"] == ddl
     assert executed == []
 
 
-def test_api_compile_table_ddl_text_diff_but_same_structure_returns_both_codes(monkeypatch):
-    """El otro caso sin script: el DDL difiere (comentario de tabla) pero columnas
-    e índices son los mismos. ``script`` queda vacío y el editor se siembra igual."""
+def test_api_compile_table_ddl_text_diff_but_same_structure_still_replaces(monkeypatch):
+    """El DDL difiere (comentario de tabla) pero columnas e índices son los mismos.
+
+    Con el diff estructural esto salía script vacío; ahora va el reemplazo entero,
+    que es lo único que puede llevar ese COMMENT al destino.
+    """
     _two_envs(monkeypatch, ("dev", "local"))
     monkeypatch.setattr(
         obj, "show_create_table",
@@ -1349,13 +1331,6 @@ def test_api_compile_table_ddl_text_diff_but_same_structure_returns_both_codes(m
             else "CREATE TABLE `t` (`id` INT) COMMENT='vieja'"
         ),
     )
-    monkeypatch.setattr(
-        obj, "table_columns",
-        lambda conn, s, n: [{"COLUMN_NAME": "id", "COLUMN_TYPE": "INT", "IS_NULLABLE": "NO",
-                            "COLUMN_DEFAULT": None, "EXTRA": "", "CHARACTER_SET_NAME": None,
-                            "COLLATION_NAME": None, "COLUMN_COMMENT": ""}],
-    )
-    monkeypatch.setattr(obj, "table_indexes", lambda conn, s, n: [])
     executed = []
     monkeypatch.setattr(
         "yappy_api.routes.db.syncexec.execute_sql",
@@ -1368,8 +1343,8 @@ def test_api_compile_table_ddl_text_diff_but_same_structure_returns_both_codes(m
             schema_name="s", object_name="t",
         )
     )
-    assert payload["status"] == "different"
-    assert payload["script"] == ""
+    assert payload["status"] == "replace_in_a"
+    assert "COMMENT='nueva'" in payload["script"]
     assert payload["code_b"] == "CREATE TABLE `t` (`id` INT) COMMENT='nueva'"
     assert payload["code_a"] == "CREATE TABLE `t` (`id` INT) COMMENT='vieja'"
     assert executed == []

@@ -9,8 +9,8 @@
 SET NAMES utf8mb4;
 
 -- ---------------------------------------------------------------------------
--- clientes -> idéntica en el destino. Rama `equal`: no hay nada que aplicar,
--- pero el editor igual se siembra con esta definición para editarla a mano.
+-- clientes -> idéntica en el destino. Rama `replace_in_a`: compila igual, con
+-- `DROP TABLE IF EXISTS` adelante, así que no choca con la tabla que ya está.
 -- ---------------------------------------------------------------------------
 DROP TABLE IF EXISTS clientes;
 CREATE TABLE clientes (
@@ -75,8 +75,8 @@ INSERT INTO lineas_pedido (pedido_id, producto, cantidad, precio_unit) VALUES
 
 -- ---------------------------------------------------------------------------
 -- config_app -> misma estructura, distinto COMMENT de tabla. El DDL difiere pero
--- columnas e índices son idénticos: rama `different` con script vacío, que es el
--- tercer caso donde el editor tiene que sembrarse igual.
+-- columnas e índices son idénticos: con el diff estructural esto salía vacío, y
+-- con el reemplazo entero es el caso que lleva ese COMMENT al destino.
 -- ---------------------------------------------------------------------------
 DROP TABLE IF EXISTS config_app;
 CREATE TABLE config_app (

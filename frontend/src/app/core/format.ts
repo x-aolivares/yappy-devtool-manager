@@ -3,6 +3,7 @@ import { EnvironmentInfo } from '../api-gen/models';
 export const STATUS_LABELS: Record<string, string> = {
   equal: 'Sin cambios',
   different: 'Hay cambios',
+  replace_in_a: 'Se reemplaza en la región Destino',
   missing_in_a: 'Falta en la región Destino',
   missing_in_b: 'Falta en la región de Origen',
   none: 'No existe en ninguna región',

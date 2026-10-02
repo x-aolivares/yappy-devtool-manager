@@ -11,14 +11,14 @@ const BASE: Record<string, any> = {
   object_type: 'table',
   schema_name: 'yappy',
   object_name: 'orders',
-  status: 'equal',
+  status: 'replace_in_a',
   code_a: 'CREATE TABLE `orders` (`id` INT)',
   code_b: 'CREATE TABLE `orders` (`id` INT, `newcol` INT)',
-  script: null,
+  script: 'DROP TABLE IF EXISTS `yappy`.`orders`;\nCREATE TABLE `orders` (`id` INT, `newcol` INT)',
   notes: [],
 };
 
-describe('CompilePage prefill del editor', () => {
+describe('CompilePage script generado', () => {
   let mockCompile: () => Promise<Record<string, any>>;
 
   beforeEach(async () => {
@@ -60,29 +60,30 @@ describe('CompilePage prefill del editor', () => {
 
   it('usa el script cuando viene informado', async () => {
     const { comp } = await generate({
-      status: 'different',
-      script: 'ALTER TABLE `orders` ADD COLUMN `newcol` INT;',
+      status: 'replace_in_a',
+      script: 'DROP TABLE IF EXISTS `yappy`.`orders`;\nCREATE TABLE `orders` (`id` INT);',
     });
-    expect(comp.script()).toBe('ALTER TABLE `orders` ADD COLUMN `newcol` INT;');
+    expect(comp.script()).toBe(
+      'DROP TABLE IF EXISTS `yappy`.`orders`;\nCREATE TABLE `orders` (`id` INT);',
+    );
   });
 
-  it('cae a code_b cuando script es null (destino ya igual)', async () => {
-    const { comp } = await generate({ status: 'equal', script: null });
-    expect(comp.script()).toBe('CREATE TABLE `orders` (`id` INT, `newcol` INT)');
-  });
-
-  it('cae a code_b cuando script es string vacío (DDL difiere, estructura igual)', async () => {
-    const { comp } = await generate({ status: 'different', script: '' });
-    expect(comp.script()).toBe('CREATE TABLE `orders` (`id` INT, `newcol` INT)');
+  it('cae a code_b cuando script es null (objeto que no está en el origen)', async () => {
+    const { comp } = await generate({
+      status: 'none',
+      script: null,
+      code_b: 'CREATE TABLE `x` (`id` INT)',
+    });
+    expect(comp.script()).toBe('CREATE TABLE `x` (`id` INT)');
   });
 
   it('deja el editor vacío cuando no hay script ni code_b', async () => {
-    const { comp } = await generate({ status: 'none', code_b: null, code_a: null });
+    const { comp } = await generate({ status: 'none', script: null, code_b: null, code_a: null });
     expect(comp.script()).toBe('');
   });
 
   it('deja el botón Compilar habilitado con el contenido sembrado', async () => {
-    const { comp, el } = await generate({ status: 'equal', script: null });
+    const { comp, el } = await generate({ status: 'replace_in_a' });
     expect(comp.canExecute()).toBe(true);
     const run = Array.from(el.querySelectorAll('button')).find((b) =>
       (b.textContent ?? '').includes('Compilar en'),
@@ -90,23 +91,30 @@ describe('CompilePage prefill del editor', () => {
     expect(run.disabled).toBe(false);
   });
 
-  it('avisa que no hay nada que aplicar y que corría sin editar falla', async () => {
-    const { comp, el } = await generate({ status: 'equal', script: null });
-    expect(comp.prefillNotice()).toContain('ya es idéntico al origen');
-    expect(comp.prefillNotice()).toContain('va a fallar');
-    expect(el.textContent).toContain('editala con el cambio que quieras llevar');
+  it('avisa que compilar una tabla borra las filas del destino', async () => {
+    const { comp, el } = await generate({ status: 'replace_in_a' });
+    expect(comp.replaceNotice()).toContain('borra la tabla y todas sus filas en local');
+    expect(comp.replaceNotice()).toContain('Diff de base de datos');
+    expect(el.textContent).toContain('borra la tabla y todas sus filas en local');
   });
 
-  it('no avisa cuando hay un script que aplicar', async () => {
+  it('no avisa de borrado cuando la tabla no está en el destino', async () => {
+    const { comp, el } = await generate({ status: 'missing_in_a' });
+    expect(comp.replaceNotice()).toBeNull();
+    expect(el.textContent).not.toContain('borra la tabla y todas sus filas');
+  });
+
+  it('no avisa de borrado para un stored procedure', async () => {
     const { comp } = await generate({
       status: 'different',
-      script: 'ALTER TABLE `orders` ADD COLUMN `newcol` INT;',
+      object_type: 'procedure',
+      script: 'DROP PROCEDURE IF EXISTS `yappy`.`p`;\nCREATE PROCEDURE `p`() BEGIN SELECT 1; END',
     });
-    expect(comp.prefillNotice()).toBeNull();
+    expect(comp.replaceNotice()).toBeNull();
   });
 
   it('descarta el contenido sembrado cuando cambia un selector', async () => {
-    const { fixture, comp } = await generate({ status: 'equal', script: null });
+    const { fixture, comp } = await generate({ status: 'replace_in_a' });
     expect(comp.script()).not.toBe('');
 
     comp.objectName.set('other');
@@ -308,5 +316,39 @@ describe('CompilePage origen = script', () => {
     expect(window.confirm).toHaveBeenCalledWith(
       expect.stringContaining('yappy.proc_calcular en local'),
     );
+  });
+
+  it('la confirmación avisa que el DROP se lleva lo que haya en el destino', async () => {
+    const fixture = TestBed.createComponent(CompilePage);
+    const comp = fixture.componentInstance as any;
+    comp.envB.set('dev');
+    comp.envA.set('local');
+    comp.script.set('DROP TABLE IF EXISTS `yappy`.`ledger`;\nCREATE TABLE `ledger` (`id` INT);');
+    await settle(fixture);
+
+    comp.run();
+    await settle(fixture);
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('el script borra lo que haya en local'),
+    );
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('todas sus filas'),
+    );
+  });
+
+  it('no mete el aviso de DROP cuando el script no borra nada', async () => {
+    const fixture = TestBed.createComponent(CompilePage);
+    const comp = fixture.componentInstance as any;
+    comp.envA.set('local');
+    comp.source.set('script');
+    comp.script.set('ALTER TABLE `ledger` ADD COLUMN `canal` VARCHAR(10);');
+    await settle(fixture);
+
+    comp.run();
+    await settle(fixture);
+
+    const mensaje = (window.confirm as unknown as { mock: { calls: string[][] } }).mock.calls[0][0];
+    expect(mensaje).not.toContain('borra lo que haya');
   });
 });

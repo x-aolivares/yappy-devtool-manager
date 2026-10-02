@@ -2,14 +2,18 @@
 --
 -- Mismo origen, DESVÍO deliberado. Cada diferencia cubre una rama de /api/compile:
 --
---   | objeto           | desvío                                | rama              | script        |
---   |------------------|---------------------------------------|-------------------|---------------|
---   | clientes         | ninguno                               | equal             | null          |
---   | pedidos          | falta `canal` + `idx_pedidos_canal`   | different         | ALTER TABLE   |
---   | config_app       | solo el COMMENT de tabla              | different         | "" (vacío)    |
---   | lineas_pedido    | no existe                            | missing_in_a      | CREATE TABLE  |
---   | auditoria        | existe solo acá                       | none              | null          |
---   | proc_...         | cuerpo levemente distinto             | different         | CREATE OR REPL |
+--   | objeto           | desvío                                | rama              | script              |
+--   |------------------|---------------------------------------|-------------------|---------------------|
+--   | clientes         | ninguno                               | replace_in_a      | DROP + CREATE       |
+--   | pedidos          | falta `canal` + `idx_pedidos_canal`   | replace_in_a      | DROP + CREATE       |
+--   | config_app       | solo el COMMENT de tabla              | replace_in_a      | DROP + CREATE       |
+--   | lineas_pedido    | no existe                            | missing_in_a      | DROP + CREATE       |
+--   | auditoria        | existe solo acá                       | none              | null                |
+--   | proc_...         | cuerpo levemente distinto             | different         | DROP + CREATE       |
+--
+-- Las tablas se reemplazan enteras: el `DROP` se lleva las filas del destino.
+-- Para un cambio que conserve los datos está la otra página, /api/db/diff, que
+-- arma solo los ALTER que faltan.
 --
 -- Aplicar:  docker exec -i yappy-mysql-qa mysql -uroot -p<PASS> yappy < devkit/mysql/seed-destino.sql
 
@@ -57,7 +61,8 @@ INSERT INTO pedidos (cliente_id, total, estado) VALUES
 
 -- ---------------------------------------------------------------------------
 -- config_app -> misma estructura, COMMENT de tabla VIEJO. DDL distinto,
--- columnas e índices idénticos -> el script sale vacío.
+-- columnas e índices idénticos: el reemplazo entero es lo que lleva el COMMENT
+-- nuevo al destino.
 -- ---------------------------------------------------------------------------
 DROP TABLE IF EXISTS config_app;
 CREATE TABLE config_app (

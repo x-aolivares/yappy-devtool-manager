@@ -15,8 +15,8 @@ import { SchemaSelectComponent } from '../shared/schema-select';
  *
  * Lo único que cambia es el **origen**:
  *
- * - **Ambiente** — se leen dos ambientes, origen y destino. **Generar** compara el
- *   objeto del origen contra el de destino y deja el script en el editor.
+ * - **Ambiente** — se leen dos ambientes, origen y destino. **Generar** arma el
+ *   script desde el objeto del origen y lo deja en el editor.
  * - **Script** — un solo ambiente, el destino. El SQL es el que pega el usuario;
  *   no hay nada que generar ni con qué comparar.
  *
@@ -28,9 +28,12 @@ import { SchemaSelectComponent } from '../shared/schema-select';
  * escribe en ninguna base. El editor no distingue un script generado de uno
  * escrito a mano — se ejecuta tal cual está, previa confirmación.
  *
- * - Stored procedure: se recompila entero desde la definición del origen.
- * - Tabla: no se sobrescribe. Se emiten solo las diferencias de columnas e
- *   índices como ALTER TABLE, para no perder los datos del destino.
+ * Compilar un objeto es un **reemplazo**, no una fusión: el origen es la verdad y
+ * el script deja el destino igual al origen. Por eso todo lleva un
+ * `DROP ... IF EXISTS` adelante y por eso el aviso de `replaceNotice` está a la
+ * vista: el DROP de una tabla se lleva sus filas. Quien quiere conservar los datos
+ * del destino tiene la otra página, *Diff de base de datos*, que arma solo los
+ * ALTER que faltan.
  */
 @Component({
   selector: 'app-compile-page',
@@ -45,9 +48,10 @@ import { SchemaSelectComponent } from '../shared/schema-select';
     <h1>Compilar</h1>
     <p class="muted">
       Elegí el ambiente donde compilar y de dónde sale el SQL: de un
-      <strong>ambiente de origen</strong> —se lee el objeto y se compara con el destino— o de un
-      <strong>script</strong> que pegás vos. En los dos casos lo que escribe en la base es
-      <strong>Compilar</strong>.
+      <strong>ambiente de origen</strong> —se arma el script desde el objeto que hay allá— o de
+      un <strong>script</strong> que pegás vos. En los dos casos lo que escribe en la base es
+      <strong>Compilar</strong>, y compila siempre el mismo SQL: el destino queda igual al
+      origen.
     </p>
 
     <div class="panel">
@@ -120,11 +124,11 @@ import { SchemaSelectComponent } from '../shared/schema-select';
       </div>
       <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
         @if (source() === 'env') {
-          Se lee el objeto del ambiente de origen, se compara con el de destino y
-          <strong>Generar</strong> deja el SQL en el editor.
+          Se lee el objeto del ambiente de origen y <strong>Generar</strong> deja en el editor
+          el SQL que lo deja igual en el destino, exista o no exista allá.
         } @else {
-          No hay nada que generar ni comparar: el SQL del editor es el origen y se compila en el
-          destino, tal cual está.
+          No hay nada que generar: el SQL del editor es el origen y se compila en el destino,
+          tal cual está.
         }
       </p>
 
@@ -178,7 +182,11 @@ import { SchemaSelectComponent } from '../shared/schema-select';
           } @else if (objectType() === 'procedure') {
             Se recompila la definición completa en el destino.
           } @else {
-            Se generan ALTER TABLE solo con lo que difiere; los datos del destino quedan.
+            Se reemplaza la tabla entera en el destino
+            @if (envA()) {
+              (se lleva sus filas en {{ envA() }})
+            }
+            .
           }
         </p>
 
@@ -235,8 +243,8 @@ import { SchemaSelectComponent } from '../shared/schema-select';
       <p class="muted" style="margin-bottom:0.5rem; font-size:0.75rem;">
         @if (source() === 'env') {
           Acá va el SQL que <strong>Compilar</strong> ejecuta en {{ envA() || 'el destino' }}, tal
-          cual está. Si no hay nada que aplicar, queda sembrado con la definición que ya tiene el
-          destino, para editarla a mano.
+          cual está. Arranca con un <code>DROP ... IF EXISTS</code>, así que el mismo script
+          funciona exista o no exista el objeto allá.
         } @else {
           Este es el origen de la compilación: pegá el SQL que querés llevar a
           {{ envA() || 'el destino' }}. Se ejecuta tal cual está, statement por statement.
@@ -254,8 +262,8 @@ import { SchemaSelectComponent } from '../shared/schema-select';
             : 'Pegá el SQL a compilar: un CREATE TABLE, un ALTER, un CREATE PROCEDURE...'
         "
       ></textarea>
-      @if (prefillNotice(); as aviso) {
-        <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
+      @if (replaceNotice(); as aviso) {
+        <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
           {{ aviso }}
         </p>
       }
@@ -415,24 +423,26 @@ export class CompilePage {
   readonly canExecute = computed(() => !!this.envA() && this.script().trim().length > 0);
 
   /**
-   * Aviso para cuando no hay script que aplicar: el destino ya tiene el objeto con
-   * la misma estructura y el editor quedó sembrado con su definición actual. No es
-   * una barrera — el botón sigue habilitado — pero hay que decirlo: correr ese
-   * texto tal cual falla porque el objeto ya existe en el destino.
+   * Aviso de reemplazo: compilar borra el objeto del destino y lo vuelve a crear.
+   *
+   * Para una tabla eso arrastra las filas, y es el motivo por el que este aviso
+   * no es un detalle de la letra chica del `DROP`. También reemplaza el aviso
+   * anterior ("no hay nada que aplicar"), que ya no puede darse: con
+   * `DROP ... IF EXISTS` adelante hay script siempre, y era justamente ese aviso
+   * el que dejaba al usuario mirando un `CREATE TABLE` pelado contra una tabla
+   * que ya estaba, para que terminara en 1050.
    */
-  readonly prefillNotice = computed<string | null>(() => {
+  readonly replaceNotice = computed<string | null>(() => {
     const r = this.result();
-    if (!r || !r.code_b) return null;
-    if (r.status !== 'equal' && !(r.status === 'different' && !r.script)) return null;
-    const estado =
-      r.status === 'equal'
-        ? 'El destino ya es idéntico al origen, así que no hay nada que aplicar. '
-        : 'El texto del DDL difiere pero la estructura ya es idéntica, así que no hay ' +
-          'nada que aplicar. ';
+    if (!r) return null;
+    if (r.status === 'missing_in_a') return null; // no hay nada que borrar
+    if (r.object_type !== 'table') return null; // un procedure no tiene filas
+
     return (
-      estado +
-      'Abajo tenés la definición que ya tiene el destino: editala con el cambio que ' +
-      'quieras llevar. Si la ejecutás sin editar, va a fallar porque el objeto ya existe allá.'
+      `Compilar ${r.schema_name}.${r.object_name} borra la tabla y todas sus filas en ` +
+      `${r.env_a}, y la vuelve a crear con la definición de ${r.env_b}. ` +
+      'Si querés conservar los datos del destino, usá el Diff de base de datos: arma solo ' +
+      'los ALTER que faltan.'
     );
   });
 
@@ -596,7 +606,17 @@ export class CompilePage {
     const objectName = this.objectName();
     const target =
       !fromScript && schema && objectName ? `${schema}.${objectName} en ${env}` : `el script en ${env}`;
-    if (!confirm(`¿Ejecutar ${target}?\nCorre exactamente lo que está en el editor.`)) return;
+
+    // El script que genera Compilar arranca con un DROP, y hay que decirlo antes
+    // de que corra, no después. Un `DROP TABLE` se lleva las filas del destino.
+    const drops = /\bDROP\s+(TABLE|PROCEDURE|FUNCTION|TRIGGER)\b/i.test(code);
+    const aviso = drops
+      ? `\n\nOjo: el script borra lo que haya en ${env} — en una tabla, la tabla y todas sus ` +
+        'filas. Compilar reemplaza; para conservar los datos del destino usá el Diff de base ' +
+        'de datos.'
+      : '';
+    if (!confirm(`¿Ejecutar ${target}?\nCorre exactamente lo que está en el editor.${aviso}`))
+      return;
 
     this.busy.set(true);
     this.error.set(null);
