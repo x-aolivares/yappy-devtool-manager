@@ -24,6 +24,18 @@ def split_statements(code: str) -> list[str]:
 
     Handles ``;`` boundaries outside ``BEGIN ... END`` bodies, quoted strings,
     backticks, ``--``/``#``/``/* */`` comments and ``DELIMITER`` directives.
+
+    Two ``END``s are not the same thing, and mistaking one for the other is what
+    used to break routine compilation:
+
+    - the ``END`` that closes a ``BEGIN ... END`` block, which is what keeps the
+      ``;`` inside a routine body from splitting it;
+    - the ``END`` that closes a ``CASE ... END`` **expression**, which is part of
+      a statement and must not close any block.
+
+    They are told apart by counting ``CASE`` separately. A compound
+    ``CASE ... END CASE`` statement is what ``END CASE`` closes, and it is counted
+    in the same place, so both shapes balance out.
     """
     stmts: list[str] = []
     buf: list[str] = []
@@ -33,6 +45,7 @@ def split_statements(code: str) -> list[str]:
     quote = None
     escaped = False
     depth = 0
+    case_depth = 0
     line_start = True
 
     def flush() -> None:
@@ -40,6 +53,23 @@ def split_statements(code: str) -> list[str]:
         if text:
             stmts.append(text)
         buf.clear()
+
+    def _next_word(pos: int) -> str:
+        """The word after ``pos``, spaces skipped and lowercased ("" if none)."""
+        k = pos
+        while k < n and code[k].isspace():
+            k += 1
+        p = k
+        while p < n and (code[p].isalnum() or code[p] == "_"):
+            p += 1
+        return code[k:p].lower()
+
+    def _next_char(pos: int) -> str:
+        """The next non-space character at or after ``pos`` ("" at EOF)."""
+        k = pos
+        while k < n and code[k].isspace():
+            k += 1
+        return code[k] if k < n else ""
 
     _CLOSERS = {"if", "loop", "while", "repeat", "case"}
 
@@ -107,17 +137,23 @@ def split_statements(code: str) -> list[str]:
             if prev_ok and next_ok:
                 low = word.lower()
                 if low == "begin":
-                    depth += 1
+                    # A bare `BEGIN;` opens a transaction, not a block: nothing
+                    # ever closes it, and counting it would swallow every
+                    # statement after it into the first one.
+                    if _next_char(j) != ";":
+                        depth += 1
+                elif low == "case":
+                    case_depth += 1
                 elif low == "end":
-                    k, w = j, ""
-                    while k < n and code[k].isspace():
-                        k += 1
-                    p = k
-                    while p < n and (code[p].isalnum() or code[p] == "_"):
-                        p += 1
-                    w = code[k:p].lower()
+                    w = _next_word(j)
                     if w in _CLOSERS:
-                        pass  # END IF / END LOOP / ... does not close BEGIN blocks
+                        # END IF / END LOOP / END WHILE / END REPEAT close their
+                        # own block, which was never counted in `depth`.
+                        # END CASE closes the CASE statement counted above.
+                        if w == "case" and case_depth > 0:
+                            case_depth -= 1
+                    elif case_depth > 0:
+                        case_depth -= 1  # END of a CASE expression: not a block
                     elif depth > 0:
                         depth -= 1
                 elif low == "delimiter" and line_start:

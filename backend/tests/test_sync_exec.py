@@ -45,6 +45,83 @@ def test_procedure_with_end_if_does_not_close_depth():
     assert "END IF; SELECT x;" in stmts[0]
 
 
+def test_procedure_with_case_expression_stays_one_statement():
+    """The `END` of a CASE expression closes nothing.
+
+    Regression: every `(CASE ... END)` used to lower the BEGIN counter, and a
+    procedure with a handful of them fell back to depth 0 halfway through its
+    body — so the `;` inside the routine started splitting it and MySQL got a
+    `CREATE PROCEDURE` with the body cut in half. See the ledger procedure that
+    has one per SELECT.
+    """
+    code = (
+        "CREATE PROCEDURE p() BEGIN "
+        "DECLARE alias VARCHAR(64); "
+        "SELECT (CASE WHEN a = 1 THEN 'x' ELSE 'y' END) AS alias, "
+        "       (CASE WHEN b = 2 THEN 'z' ELSE 'w' END) AS other "
+        "FROM t; "
+        "SET alias = 'fin'; "
+        "END"
+    )
+    stmts = split_statements(code)
+    assert len(stmts) == 1
+    assert stmts[0].count(";") == 3
+
+
+def test_compound_case_statement_keeps_depth_balanced():
+    """`CASE ... END CASE` is a statement, not an expression: it is counted once
+    and closed by its own `END CASE`, leaving the BEGIN counter untouched."""
+    code = (
+        "CREATE PROCEDURE p() BEGIN "
+        "CASE WHEN a THEN SET x = 1; ELSE SET x = 2; END CASE; "
+        "SELECT CASE WHEN b THEN 1 END; "
+        "END"
+    )
+    stmts = split_statements(code)
+    assert len(stmts) == 1
+    assert "END CASE;" in stmts[0]
+
+
+def test_case_expression_outside_any_block():
+    code = "SELECT CASE WHEN a THEN 'x' ELSE 'y' END; SELECT 2;"
+    assert split_statements(code) == ["SELECT CASE WHEN a THEN 'x' ELSE 'y' END", "SELECT 2"]
+
+
+def test_bare_begin_is_a_transaction_and_does_not_swallow_the_script():
+    """`BEGIN;` never closes. Counting it would glue everything after it into
+    the first statement, which the server rejects."""
+    code = "BEGIN; INSERT INTO t VALUES (1); COMMIT; SELECT 2;"
+    assert split_statements(code) == [
+        "BEGIN",
+        "INSERT INTO t VALUES (1)",
+        "COMMIT",
+        "SELECT 2",
+    ]
+
+
+def test_procedure_body_with_handler_and_case_is_not_split():
+    """The shape that broke in production: a SQLEXCEPTION handler (a nested
+    BEGIN...END) plus CASE expressions in the same body."""
+    code = (
+        "CREATE PROCEDURE `yappy_payment`.`p`(IN i_date DATETIME)\n"
+        "BEGIN\n"
+        "    DECLARE w_code VARCHAR(10) DEFAULT 'TXN-000';\n"
+        "    DECLARE EXIT handler FOR SQLEXCEPTION\n"
+        "    BEGIN\n"
+        "        SET w_code = 'ERR';\n"
+        "    END;\n"
+        "    SELECT (CASE WHEN py_status = 'COMPLETED' THEN 1 ELSE 0 END) AS ok\n"
+        "    FROM yappy_payment.ledger\n"
+        "    WHERE l_cutoff_date = DATE(i_date);\n"
+        "    SET w_code = 'fin';\n"
+        "END"
+    )
+    stmts = split_statements(code)
+    assert len(stmts) == 1
+    assert stmts[0].startswith("CREATE PROCEDURE `yappy_payment`.`p`")
+    assert stmts[0].endswith("END")
+
+
 def test_delimiter_directive_custom_and_reset():
     code = (
         "DELIMITER $$\n"
