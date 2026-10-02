@@ -1046,14 +1046,14 @@ def test_api_db_schemas_reports_unreachable_env(monkeypatch):
     monkeypatch.setattr(Config, "with_env", staticmethod(lambda env: _FakeConfig(env)))
 
     def _boom(cfg):
-        raise SyncError("No reachable database for this environment.")
+        raise SyncError("No hay ninguna base de datos alcanzable para este ambiente.")
 
     monkeypatch.setattr("yappy_api.routes.db.connect", _boom)
 
     with pytest.raises(HTTPException) as exc_info:
         api_db_schemas("dev")
     assert exc_info.value.status_code == 400
-    assert "No reachable database" in str(exc_info.value.detail)
+    assert "base de datos alcanzable" in str(exc_info.value.detail)
 
 
 # --- Compile: origen -> destino ---------------------------------------------

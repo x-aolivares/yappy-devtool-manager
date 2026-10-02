@@ -54,7 +54,7 @@ def _wait_for_port(port: int, timeout: float = 20.0) -> None:
                 return
         except OSError:
             time.sleep(0.5)
-    raise SyncError(f"SSM tunnel did not open on localhost:{port}")
+    raise SyncError(f"El túnel SSM no se abrió en localhost:{port}")
 
 
 def _open(host: str, port: int, user: str, password: str) -> pymysql.connections.Connection:
@@ -81,8 +81,8 @@ def connect(cfg: Config) -> Iterator[pymysql.connections.Connection]:
     if direct_host:
         if not user:
             raise SyncError(
-                "DB_USER is required for direct connections "
-                "(DB_HOST is set but no user is configured)."
+                "DB_USER es obligatorio para conexiones directas "
+                "(DB_HOST está configurado pero no hay usuario)."
             )
         password = cfg.get("DB_PASSWORD") or local.get("DB_PASSWORD") or ""
         conn = _open(direct_host, int(cfg.get("DB_PORT", "3306")), user, password)
@@ -106,16 +106,16 @@ def connect(cfg: Config) -> Iterator[pymysql.connections.Connection]:
         if not user:
             missing.append("AWS_USER/_DB_USER")
         raise SyncError(
-            "No reachable database for this environment. Configure either:\n"
-            "  - Direct: DB_HOST + DB_USER (+ DB_PASSWORD)\n"
-            "  - Tunnel (real AWS): AWS_INSTANCE + AWS_HOST + AWS_PORT + AWS_USER\n"
-            f"Missing config: {', '.join(missing)}"
+            "No hay ninguna base de datos alcanzable para este ambiente. Configurá una de estas:\n"
+            "  - Directa: DB_HOST + DB_USER (+ DB_PASSWORD)\n"
+            "  - Túnel (AWS real): AWS_INSTANCE + AWS_HOST + AWS_PORT + AWS_USER\n"
+            f"Falta configurar: {', '.join(missing)}"
         )
 
     try:
         token = generate_token(cfg)
     except SystemExit as exc:
-        raise SyncError(f"Could not generate RDS auth token: {exc}") from exc
+        raise SyncError(f"No se pudo generar el token de autenticación de RDS: {exc}") from exc
 
     base = BaseCommand()
     local_port = cfg.db_port
