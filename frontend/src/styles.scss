@@ -289,45 +289,70 @@ h2 {
   margin-bottom: 0;
 }
 
-/* Fila repetida de un formulario: una unidad de una lista que lleva sus propios
-   controles adentro. La usa Migrar datos, donde cada tabla marcada tiene su
-   filtro de fechas.
+/* Tabla de filtros: la unidad de la lista es una fila —una tabla marcada y su
+   rango de fechas—, así que se lee como tabla y no como una pila de cajas.
 
-   Deliberadamente NO es `.stmt-row`: ese es el separador de resultados de una
-   ejecución —fila sin fondo, con borde abajo, para leer en vertical— y reciclarlo
-   para un formulario hacía que un control de entrada pareciera un resultado. Esta
-   es una caja: se distingue de un vistazo de dónde termina una fila de ejecución
-   y empieza la siguiente. */
-.pick-list {
+   Reemplaza a una pila de cajas por tabla, que con seis tablas marcadas ocupaba
+   media pantalla para repetir seis veces el mismo shape. La tabla deja comparar
+   de un vistazo qué tabla tiene rango y cuál no.
+
+   El `min-width` es lo que hace que el scroll horizontal sea la salida en
+   pantalla angosta en vez de que los `<input type="date">` se aplasten hasta
+   quedar ilegibles. */
+.filter-table {
+  width: 100%;
+  min-width: 44rem;
+  border-collapse: collapse;
+
+  th {
+    text-align: left;
+    padding: 0 0.625rem 0.4375rem;
+    border-bottom: 0.0625rem solid var(--border);
+    font-size: var(--text-xxs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  td {
+    vertical-align: top;
+    padding: 0.625rem;
+    border-bottom: 0.0625rem solid var(--border);
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  /* Una fila sin marcar no tiene filtro que mostrar. Se atenúa lo que no es la
+     casilla — la casilla queda a tope porque es el control que la activa. */
+  tbody tr.is-off td:not(:first-child) {
+    opacity: 0.5;
+  }
+
+  input[type='date'] {
+    min-width: 8.5rem;
+  }
+}
+
+/* Los dos límites del rango, en paralelo y alineados por la base: los labels
+   van arriba y los inputs abajo, así los dos tienen la misma altura. */
+.filter-table__range {
   display: flex;
-  flex-direction: column;
   gap: 0.5rem;
+  align-items: flex-end;
 }
 
-.pick-row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.75rem 0.875rem;
-  background: var(--panel);
-  border: 0.0625rem solid var(--border);
-  border-radius: var(--bb-border-radius);
-}
-
-.pick-row__head {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  flex-wrap: wrap;
-}
-
-/* Lista de casillas que se acomoda en columnas. Una tabla por renglón con cien
-   tablas es una barra de scroll larga sin ningún motivo: lo que se elige se
-   escanea, no se lee. */
-.check-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
-  gap: 0.125rem 0.875rem;
+/* Segmentado dentro de una celda: la versión chica, porque la columna se留给
+   los inputs de fecha. Comparte toda la lógica de estado con `.radio-row`. */
+.radio-row--tight {
+  label {
+    min-height: 0;
+    padding: 0 0.625rem;
+    font-size: var(--text-xs);
+  }
 }
 
 /* Título de panel sin la regla, para cuando los controles van en la misma línea

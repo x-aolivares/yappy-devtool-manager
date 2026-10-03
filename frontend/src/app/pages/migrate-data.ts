@@ -131,10 +131,17 @@ function blankState(table: string): TableState {
         <p class="muted" style="font-size:0.75rem;">
           {{ schema() }} no tiene tablas en {{ envB() }}: no hay nada para migrar.
         </p>
-      } @else if (tableList().length) {
-        <div class="field">
-          <div class="field-label">Tablas a migrar</div>
-          <div class="checkbox-row" style="gap:1.125rem; flex-wrap:wrap;">
+      }
+    </div>
+
+    @if (tableList().length) {
+      <div class="panel">
+        <div class="section-title section-title--plain">
+          <strong>Tablas a migrar</strong>
+          <span class="actions">
+            <span class="muted" style="font-size:0.75rem;">
+              {{ includedTables().length }} de {{ tableList().length }} marcadas
+            </span>
             <label class="checkbox-row" style="margin:0;">
               <input
                 type="checkbox"
@@ -142,144 +149,152 @@ function blankState(table: string): TableState {
                 [checked]="allIncluded()"
                 (change)="toggleAll($any($event.target).checked)"
               />
-              <span>Todas ({{ tableList().length }})</span>
+              <span>Todas</span>
             </label>
-            <span class="muted" style="font-size:0.75rem;">
-              {{ includedTables().length }} de {{ tableList().length }} marcadas
-            </span>
-          </div>
-
-          <div class="check-grid">
-            @for (t of tableList(); track t) {
-              <label class="checkbox-row" style="margin:0;" [for]="'migrate-table-' + t">
-                <input
-                  type="checkbox"
-                  [id]="'migrate-table-' + t"
-                  [checked]="isIncluded(t)"
-                  (change)="toggle(t, $any($event.target).checked)"
-                />
-                <span>{{ t }}</span>
-              </label>
-            }
-          </div>
+          </span>
         </div>
-      }
-    </div>
 
-    @if (includedTables().length) {
-      <div class="panel">
-        <div class="section-title"><strong>Filtro por tabla</strong></div>
-        <div class="pick-list">
-          @for (row of rows(); track row.state.table) {
-            <div class="pick-row">
-              <div class="pick-row__head">
-                <strong>{{ row.state.table }}</strong>
-                @if (row.state.columns?.length) {
-                  <span class="muted" style="font-size:0.75rem;">
-                    {{ row.state.columns!.length }} columna(s) de fecha
-                  </span>
-                }
-              </div>
-
-              @if (row.state.loading) {
-                <p class="muted" style="font-size:0.75rem;">
-                  <span class="spinner"></span> Buscando columnas de fecha de {{ row.state.table }}...
-                </p>
-              } @else if (row.state.error) {
-                <p class="muted hint-error" style="font-size:0.75rem;">
-                  No se pudieron leer las columnas de fecha de {{ row.state.table }}:
-                  {{ row.state.error }}. La tabla no se puede migrar hasta saber si tiene o no, porque
-                  mandarla sin filtro la copia entera.
-                </p>
-              } @else if (!row.state.columns?.length) {
-                <p class="muted" style="font-size:0.75rem;">
-                  Sin columnas de fecha: se migra completa. No hay forma de acotarla por un rango de
-                  fechas.
-                </p>
-              } @else {
-                <div class="form-grid" style="margin:0;">
-                  <div>
-                    <label class="field-label" [for]="'migrate-date-column-' + row.state.table">
-                      Columna de fecha
-                    </label>
-                    <select
-                      [id]="'migrate-date-column-' + row.state.table"
-                      [value]="row.state.column"
-                      (change)="setColumn(row.state.table, $any($event.target).value)"
+        <div class="table-scroll">
+          <table class="filter-table">
+            <thead>
+              <tr>
+                <th>Tabla</th>
+                <th>Columna de fecha</th>
+                <th>Modo</th>
+                <th>Rango</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of allRows(); track row.table) {
+                <tr [class.is-off]="!row.state?.included">
+                  <td>
+                    <label
+                      class="checkbox-row"
+                      style="margin:0;"
+                      [for]="'migrate-table-' + row.table"
                     >
-                      <option value="" [selected]="!row.state.column">Todo (sin filtro)</option>
-                      @for (c of row.state.columns!; track c.name) {
-                        <option [value]="c.name" [selected]="row.state.column === c.name">
-                          {{ c.name }} ({{ c.type }})
-                        </option>
-                      }
-                    </select>
-                  </div>
+                      <input
+                        type="checkbox"
+                        [id]="'migrate-table-' + row.table"
+                        [checked]="row.state?.included ?? false"
+                        (change)="toggle(row.table, $any($event.target).checked)"
+                      />
+                      <span>{{ row.table }}</span>
+                    </label>
+                  </td>
 
-                  @if (row.state.column) {
-                    <div>
-                      <label class="checkbox-row" style="margin:0;">
-                        <input
-                          type="checkbox"
-                          [id]="'migrate-single-day-' + row.state.table"
-                          [checked]="row.state.singleDay"
-                          (change)="setSingleDay(row.state.table, $any($event.target).checked)"
-                        />
-                        <span>Un solo día</span>
-                      </label>
-                      @if (row.state.singleDay) {
-                        <input
-                          type="date"
-                          style="margin-top:0.375rem;"
-                          [id]="'migrate-day-' + row.state.table"
-                          [value]="row.state.dateFrom"
-                          (input)="setDay(row.state.table, $any($event.target).value)"
-                        />
-                      } @else {
-                        <div style="display:flex; gap:0.5rem; margin-top:0.375rem;">
-                          <div>
-                            <label
-                              class="field-label"
-                              [for]="'migrate-from-' + row.state.table"
-                            >
-                              Desde (inclusive)
-                            </label>
+                  @if (!row.state?.included) {
+                    <td colspan="3" class="muted" style="font-size:0.75rem;">
+                      Sin filtro: se copia la tabla entera.
+                    </td>
+                  } @else if (row.state.loading) {
+                    <td colspan="3" class="muted" style="font-size:0.75rem;">
+                      <span class="spinner"></span> Buscando columnas de fecha de
+                      {{ row.table }}...
+                    </td>
+                  } @else if (row.state.error) {
+                    <td colspan="3" class="muted hint-error" style="font-size:0.75rem;">
+                      No se pudieron leer las columnas de fecha de {{ row.table }}:
+                      {{ row.state.error }}. La tabla no se puede migrar hasta saber si tiene o no,
+                      porque mandarla sin filtro la copia entera.
+                    </td>
+                  } @else if (!row.state.columns?.length) {
+                    <td colspan="3" class="muted" style="font-size:0.75rem;">
+                      Sin columnas de fecha: se migra completa.
+                    </td>
+                  } @else {
+                    <td>
+                      <select
+                        [id]="'migrate-date-column-' + row.table"
+                        [value]="row.state.column"
+                        (change)="setColumn(row.table, $any($event.target).value)"
+                      >
+                        <option value="" [selected]="!row.state.column">Todo (sin filtro)</option>
+                        @for (c of row.state.columns!; track c.name) {
+                          <option [value]="c.name" [selected]="row.state.column === c.name">
+                            {{ c.name }} ({{ c.type }})
+                          </option>
+                        }
+                      </select>
+                    </td>
+
+                    <td>
+                      @if (row.state.column) {
+                        <div class="radio-row radio-row--tight">
+                          <label>
                             <input
-                              type="date"
-                              [id]="'migrate-from-' + row.state.table"
-                              [value]="row.state.dateFrom"
-                              (input)="setFrom(row.state.table, $any($event.target).value)"
+                              type="radio"
+                              [name]="'migrate-mode-' + row.table"
+                              [checked]="row.state.singleDay"
+                              (change)="setSingleDay(row.table, true)"
                             />
-                          </div>
-                          <div>
-                            <label class="field-label" [for]="'migrate-to-' + row.state.table">
-                              Hasta (inclusive)
-                            </label>
+                            Un solo día
+                          </label>
+                          <label>
                             <input
-                              type="date"
-                              [id]="'migrate-to-' + row.state.table"
-                              [value]="row.state.dateTo"
-                              (input)="setTo(row.state.table, $any($event.target).value)"
+                              type="radio"
+                              [name]="'migrate-mode-' + row.table"
+                              [checked]="!row.state.singleDay"
+                              (change)="setSingleDay(row.table, false)"
                             />
-                          </div>
+                            Rango
+                          </label>
                         </div>
                       }
-                      @if (isSameDay(row.state)) {
-                        <p class="muted" style="margin-top:0.375rem; font-size:0.75rem;">
-                          <strong>Un solo día: {{ row.state.dateFrom }}.</strong> Los dos límites
-                          quedan iguales porque la ventana es ese día entero.
-                        </p>
+                    </td>
+
+                    <td>
+                      @if (row.state.column) {
+                        @if (row.state.singleDay) {
+                          <input
+                            type="date"
+                            [id]="'migrate-day-' + row.table"
+                            [value]="row.state.dateFrom"
+                            (input)="setDay(row.table, $any($event.target).value)"
+                          />
+                        } @else {
+                          <div class="filter-table__range">
+                            <span>
+                              <label class="field-label" [for]="'migrate-from-' + row.table">
+                                Desde (inclusive)
+                              </label>
+                              <input
+                                type="date"
+                                [id]="'migrate-from-' + row.table"
+                                [value]="row.state.dateFrom"
+                                (input)="setFrom(row.table, $any($event.target).value)"
+                              />
+                            </span>
+                            <span>
+                              <label class="field-label" [for]="'migrate-to-' + row.table">
+                                Hasta (inclusive)
+                              </label>
+                              <input
+                                type="date"
+                                [id]="'migrate-to-' + row.table"
+                                [value]="row.state.dateTo"
+                                (input)="setTo(row.table, $any($event.target).value)"
+                              />
+                            </span>
+                          </div>
+                          @if (isSameDay(row.state)) {
+                            <p class="muted" style="margin-top:0.375rem; font-size:0.75rem;">
+                              <strong>Un solo día: {{ row.state.dateFrom }}.</strong> Los dos
+                              límites quedan iguales porque la ventana es ese día entero.
+                            </p>
+                          }
+                        }
+                      } @else {
+                        <span class="muted" style="font-size:0.75rem;">
+                          Sin columna de filtro: se copia la tabla entera.
+                        </span>
                       }
-                    </div>
-                  } @else {
-                    <p class="muted" style="font-size:0.75rem;">
-                      Sin columna de filtro: se copia la tabla entera de {{ envB() }}.
-                    </p>
+                    </td>
                   }
-                </div>
+                </tr>
               }
-            </div>
-          }
+            </tbody>
+          </table>
         </div>
       </div>
     }
@@ -412,8 +427,18 @@ export class MigrateDataPage {
   /** The marked tables, in the order the origin listed them. */
   readonly includedTables = computed(() => this.tableList().filter((t) => this.filters()[t]?.included));
 
-  readonly rows = computed(() =>
-    this.includedTables().map((table) => ({ table, state: this.filters()[table] })),
+  /**
+   * One row per table of the origin schema, marked or not — the shape the filter
+   * table renders. `state` is `undefined` until the user touches the table: that
+   * is what tells the template "no filter yet" apart from "asked and there are
+   * none", which are different answers and read differently.
+   *
+   * The date columns stay lazy. They are asked for when a table gets marked (see
+   * `toggle`), so a table the user never selected never costs a round trip; its
+   * row just shows the filter as not applying.
+   */
+  readonly allRows = computed(() =>
+    this.tableList().map((table) => ({ table, state: this.filters()[table] })),
   );
 
   readonly allIncluded = computed(

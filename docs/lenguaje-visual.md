@@ -152,17 +152,35 @@ mentiría sobre la semántica. Se quedan como `.checkbox-row` nativos.
 
 ## Fila repetida de un formulario
 
-`.pick-list` y `.pick-row` son para una **unidad de una lista que lleva sus
-propios controles adentro**: en Migrar datos, cada tabla marcada con su filtro de
-fechas.
+Cuando la unidad de una lista lleva sus propios controles adentro, la forma
+correcta es una **tabla**, no una pila de cajas. El caso es Migrar datos: cada
+tabla del origen es una fila con su casilla de selección y su filtro de fechas.
 
-Deliberadamente **no** es `.stmt-row`: ese es el separador de resultados de una
-ejecución —fila sin fondo, con borde abajo— y reciclarlo para un formulario hacía
-que un control de entrada pareciera un resultado. `.pick-row` es una caja, y se
-distingue de un vistazo de dónde termina una fila de ejecución.
+Lo que había antes era una caja por tabla marcada. Con seis tablas marcadas
+ocupaba media pantalla para repetir seis veces el mismo shape, y no dejaba
+comparar de un vistazo qué tabla tenía rango y cuál no.
 
-`.check-grid` es para listas de casillas que se escanean: una tabla por renglón
-con cien tablas es una barra de scroll larga sin motivo.
+**`.filter-table`** — cuatro columnas: `Tabla` (casilla + nombre), `Columna de
+fecha` (el `<select>`), `Modo` y `Rango`. Cada rama que no tiene nada que mostrar
+—sin marcar, cargando, error, sin columnas de fecha— usa `colspan="3"` para que
+el mensaje no quede aprisionado en una celda angosta.
+
+**El `min-width: 44rem` es lo que decide cómo se comporta en pantalla angosta**:
+por debajo de ese ancho la tabla hace scroll horizontal en vez de aplastar los
+`<input type="date">` hasta volverlos ilegibles. Va envuelta en `.table-scroll`.
+
+### El modo es UN booleano, no dos columnas
+
+El wireframe tenía "solo un día" y "rango de fecha" como dos columnas con un ✓ y
+un ✗. Son **el mismo booleano partido en dos**, y además el dibujo se
+contradecía: la fila con "un solo día ✓" mostraba dos campos de fecha y la de
+"rango ✓" mostraba uno.
+
+Quedó como **una columna `Modo`** con el mismo segmentado de `.radio-row` del
+resto de la app, en versión chica (`.radio-row--tight`). Menos columnas, misma
+información, y el ancho que sobraba queda para los campos de fecha, que son lo
+que se squeeze. Los radios usan `[name]="'migrate-mode-' + table"` para que cada
+fila sea un grupo propio.
 
 ## Título de panel con acciones a la derecha
 

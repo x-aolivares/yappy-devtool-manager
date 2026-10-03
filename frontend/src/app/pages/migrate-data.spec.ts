@@ -152,15 +152,30 @@ function optionsOf(el: HTMLElement, table: string): string[] {
 describe('MigrateDataPage tablas y columnas de fecha', () => {
   beforeEach(setup);
 
-  it('lista las tablas del esquema del origen', async () => {
+  it('lista las tablas del origen en la tabla de filtros', async () => {
     const { el } = await ready();
 
-    // Una casilla por tabla, con el id derivado del nombre. Se afirma sobre las
-    // casillas y no sobre el título del grupo: el título es copy y cambia con el
-    // rediseño, las casillas son el mecanismo.
+    // Una fila por tabla, con la casilla en la primera celda. Se afirma sobre
+    // las casillas y la fila, no sobre el título del panel: el título es copy y
+    // cambia con el rediseño, la fila es la estructura.
     expect(el.querySelector('#migrate-table-orders')).not.toBeNull();
     expect(el.querySelector('#migrate-table-config')).not.toBeNull();
-    expect(el.querySelectorAll('.check-grid input[type="checkbox"]').length).toBe(3);
+    expect(el.querySelectorAll('table.filter-table tbody tr').length).toBe(3);
+    expect(
+      el.querySelectorAll('table.filter-table tbody tr td:first-child input[type="checkbox"]')
+        .length,
+    ).toBe(3);
+  });
+
+  it('una fila sin marcar muestra que su filtro no aplica', async () => {
+    const { el } = await ready();
+
+    // La fila existe igual, con la casilla disponible, pero sin celdas de filtro:
+    // las columnas de fecha se piden cuando la tabla entra en la selección.
+    const filas = [...el.querySelectorAll('table.filter-table tbody tr')];
+    const sinMarcar = filas.filter((f) => f.classList.contains('is-off'));
+    expect(sinMarcar.length).toBe(3);
+    expect(sinMarcar[0].querySelector('#migrate-date-column-orders')).toBeNull();
   });
 
   it('no pregunta las columnas de fecha hasta que la tabla se marca', async () => {
