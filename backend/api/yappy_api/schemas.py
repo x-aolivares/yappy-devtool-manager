@@ -105,6 +105,43 @@ class CompileResponse(BaseModel):
     notes: list[str] = []
 
 
+class SchemaCompileRequest(BaseModel):
+    """Compile a whole schema from one environment into another (origen -> destino).
+
+    The bulk sibling of ``CompileRequest``: one script for every table and stored
+    procedure the origin has in that schema, ordered so MySQL accepts it. Both
+    flags default to ``True`` because "sync this schema" means the schema; the
+    flags exist to narrow the scope, and at least one of them must be on.
+    """
+
+    env_b: str  # origen
+    env_a: str  # destino
+    schema_name: str
+    include_tables: bool = True
+    include_procedures: bool = True
+
+
+class SchemaCompileResponse(BaseModel):
+    """One script for the whole schema. Compiling never writes: the caller decides
+    whether and when to send ``script`` to ``/api/execute/sql``.
+
+    ``left_alone`` is the answer to "what happens to the tables that are only in
+    the destination": nothing. They are reported so the user sees them before
+    running the script, and they never appear in it.
+    """
+
+    env_b: str
+    env_a: str
+    schema_name: str
+    status: str
+    create_schema: bool
+    tables: list[str] = []
+    procedures: list[str] = []
+    left_alone: list[str] = []
+    script: str
+    notes: list[str] = []
+
+
 class QueryRequest(BaseModel):
     env: str
     code: str

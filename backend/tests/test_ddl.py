@@ -36,6 +36,19 @@ def test_replace_table_script_keeps_the_source_ddl_verbatim():
     assert script.count("CREATE TABLE") == 1
 
 
+def test_drop_table_if_exists_script_is_the_same_wording_the_replace_uses():
+    """Una sincronización de schema entero suelta todos los DROP y después todos
+    los CREATE, así que la línea se pide sola. El texto tiene que ser idéntico al
+    de `replace_table_script`: si divergen, el mismo script deja de funcionar
+    según cómo se generó."""
+    assert ddl.drop_table_if_exists_script("s", "t") == "DROP TABLE IF EXISTS `s`.`t`;"
+    assert ddl.drop_table_if_exists_script("ya`ppy", "or`ders") == (
+        "DROP TABLE IF EXISTS `ya``ppy`.`or``ders`;"
+    )
+    replace = ddl.replace_table_script("CREATE TABLE `t` (`id` INT)", "s", "t")
+    assert replace == f"{ddl.drop_table_if_exists_script('s', 't')}\nCREATE TABLE `t` (`id` INT)"
+
+
 def test_replace_table_script_escapes_backticks():
     assert ddl.replace_table_script("CREATE TABLE `t` (`id` INT)", "ya`ppy", "or`ders") == (
         "DROP TABLE IF EXISTS `ya``ppy`.`or``ders`;\nCREATE TABLE `t` (`id` INT)"

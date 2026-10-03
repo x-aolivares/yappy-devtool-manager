@@ -11,6 +11,7 @@ from yappy_library.application.database.sync import diff as db_diff
 from yappy_library.application.database.sync import exec as syncexec
 from yappy_library.application.database.sync import migrate as dbmig
 from yappy_library.application.database.sync import query as dbquery
+from yappy_library.application.database.sync import schema_sync as dbschema
 from ..deps import env_config
 from ..schemas import (
     CompileRequest,
@@ -24,6 +25,8 @@ from ..schemas import (
     MigrationResponse,
     QueryRequest,
     QueryResponse,
+    SchemaCompileRequest,
+    SchemaCompileResponse,
     SchemasResponse,
 )
 
@@ -238,8 +241,8 @@ def api_compile(req: CompileRequest):
     or ``1305`` halfway through.
 
     For a table that means ``DROP TABLE`` takes the destination's rows with it.
-    Whoever wants to keep them has the other page: ``/api/db/diff`` emits only the
-    ``ALTER``s that are missing.
+    There is no non-destructive path left in the UI: whoever wants to keep them
+    writes the missing ``ALTER``s by hand and runs only those.
 
     ``status`` says what is going to happen in the destination:
     ``replace_in_a`` (exists there and is about to be dropped),
@@ -304,9 +307,9 @@ def api_compile(req: CompileRequest):
                                 f"{req.env_a} (destino): el destino la referencia con "
                                 f"{len(inbound)} foreign key(s): {children}. MySQL no "
                                 "permite reemplazar una tabla referenciada, y rehacerla "
-                                "dejaría a las filas de esas tablas sin padre. Usá el "
-                                "Diff de base de datos, que arma solo los ALTER que "
-                                "faltan."
+                                "dejaría a las filas de esas tablas sin padre. Para "
+                                "cambiar el esquema sin perder datos hay que escribir "
+                                "los ALTER a mano y ejecutar solo esos."
                             ),
                         )
 
@@ -337,8 +340,7 @@ def api_compile(req: CompileRequest):
                             f"Se reemplaza {schema}.{name} en {req.env_a} (destino) con la "
                             f"definición de {req.env_b} (origen). El DROP borra la tabla y "
                             f"todas sus filas en {req.env_a}. Para conservar los datos del "
-                            "destino, usá el Diff de base de datos, que arma solo los ALTER "
-                            "que faltan."
+                            "destino, editá el script y dejá solo los ALTER que faltan."
                         ]
 
         return {
@@ -360,6 +362,76 @@ def api_compile(req: CompileRequest):
         # "Error de base de datos: 400: ...".
         raise
     except SyncError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
+
+
+@router.post(
+    "/api/compile/schema", operation_id="compile_db_schema", response_model=SchemaCompileResponse
+)
+def api_compile_schema(req: SchemaCompileRequest):
+    """Generate ONE script that replaces a whole schema's objects with the origin's.
+
+    ``/api/compile`` does one table or one procedure; this does the schema, which
+    is the case that only makes sense as a single script: the tables reference
+    each other, and MySQL rejects a drop of a parent that a child still points at
+    (3730) and a create of a child whose parent does not exist yet. The script is
+    therefore ordered twice — drops by the destination's foreign keys, children
+    first; creates by the origin's, parents first.
+
+    What it replaces is exactly what the origin has. It does **not** delete what
+    only the destination has: those tables come back in ``left_alone`` and the
+    script never mentions them. A schema sync makes this environment's copy of the
+    origin's objects match; it is not "make the destination a clone".
+
+    Nothing is written here, and this route never calls ``/api/execute/sql``'s
+    ``execute_sql``: both environments are opened to be read and the script comes
+    back in the response. Nor is the script a transaction — it runs with
+    autocommit, so a statement that fails half way leaves the destination
+    partially migrated. ``notes`` always carries that warning along with the rest.
+
+    ``status`` is ``schema_sync`` for a schema with something to replace and
+    ``none`` when the origin has no tables and no procedures in it. ``script`` is
+    returned in both cases: it is a harmless no-op (the ``CREATE DATABASE``/
+    ``USE`` pair), and the caller should not have to special-case it.
+    """
+    if req.env_a == req.env_b:
+        raise HTTPException(status_code=400, detail="El origen y el destino deben ser distintos")
+    schema = req.schema_name.strip()
+    if not schema:
+        raise HTTPException(status_code=400, detail="Completá el schema.")
+    if not (req.include_tables or req.include_procedures):
+        raise HTTPException(
+            status_code=400,
+            detail="Marcá al menos tablas o stored procedures para sincronizar el schema.",
+        )
+
+    cfg_b = env_config(req.env_b)  # origen
+    cfg_a = env_config(req.env_a)  # destino
+
+    try:
+        with connect(cfg_b) as conn_b, connect(cfg_a) as conn_a:
+            schema_plan = dbschema.plan(
+                conn_b, conn_a, schema, req.include_tables, req.include_procedures
+            )
+            script = dbschema.build_script(conn_b, schema_plan)
+
+        return {
+            "env_b": req.env_b,
+            "env_a": req.env_a,
+            "schema_name": schema,
+            "status": "schema_sync" if (schema_plan.tables or schema_plan.procedures) else "none",
+            "create_schema": schema_plan.create_schema,
+            "tables": schema_plan.tables,
+            "procedures": schema_plan.procedures,
+            "left_alone": schema_plan.left_alone,
+            "script": script,
+            "notes": schema_plan.notes,
+        }
+    except SyncError as exc:
+        # Preconditions land here too: a schema that is not in the origin, or an
+        # object that disappeared between the listing and the SHOW CREATE.
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc

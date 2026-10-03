@@ -256,6 +256,48 @@
         }
       }
     },
+    "/api/compile/schema": {
+      "post": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Api Compile Schema",
+        "description": "Generate ONE script that replaces a whole schema's objects with the origin's.\n\n``/api/compile`` does one table or one procedure; this does the schema, which\nis the case that only makes sense as a single script: the tables reference\neach other, and MySQL rejects a drop of a parent that a child still points at\n(3730) and a create of a child whose parent does not exist yet. The script is\ntherefore ordered twice — drops by the destination's foreign keys, children\nfirst; creates by the origin's, parents first.\n\nWhat it replaces is exactly what the origin has. It does **not** delete what\nonly the destination has: those tables come back in ``left_alone`` and the\nscript never mentions them. A schema sync makes this environment's copy of the\norigin's objects match; it is not \"make the destination a clone\".\n\nNothing is written here, and this route never calls ``/api/execute/sql``'s\n``execute_sql``: both environments are opened to be read and the script comes\nback in the response. Nor is the script a transaction — it runs with\nautocommit, so a statement that fails half way leaves the destination\npartially migrated. ``notes`` always carries that warning along with the rest.\n\n``status`` is ``schema_sync`` for a schema with something to replace and\n``none`` when the origin has no tables and no procedures in it. ``script`` is\nreturned in both cases: it is a harmless no-op (the ``CREATE DATABASE``/\n``USE`` pair), and the caller should not have to special-case it.",
+        "operationId": "compile_db_schema",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchemaCompileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaCompileResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/query": {
       "post": {
         "tags": [
@@ -2455,6 +2497,111 @@
         },
         "type": "object",
         "title": "ReadParamsEntry"
+      },
+      "SchemaCompileRequest": {
+        "properties": {
+          "env_b": {
+            "type": "string",
+            "title": "Env B"
+          },
+          "env_a": {
+            "type": "string",
+            "title": "Env A"
+          },
+          "schema_name": {
+            "type": "string",
+            "title": "Schema Name"
+          },
+          "include_tables": {
+            "type": "boolean",
+            "title": "Include Tables",
+            "default": true
+          },
+          "include_procedures": {
+            "type": "boolean",
+            "title": "Include Procedures",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "env_b",
+          "env_a",
+          "schema_name"
+        ],
+        "title": "SchemaCompileRequest",
+        "description": "Compile a whole schema from one environment into another (origen -> destino).\n\nThe bulk sibling of ``CompileRequest``: one script for every table and stored\nprocedure the origin has in that schema, ordered so MySQL accepts it. Both\nflags default to ``True`` because \"sync this schema\" means the schema; the\nflags exist to narrow the scope, and at least one of them must be on."
+      },
+      "SchemaCompileResponse": {
+        "properties": {
+          "env_b": {
+            "type": "string",
+            "title": "Env B"
+          },
+          "env_a": {
+            "type": "string",
+            "title": "Env A"
+          },
+          "schema_name": {
+            "type": "string",
+            "title": "Schema Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "create_schema": {
+            "type": "boolean",
+            "title": "Create Schema"
+          },
+          "tables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tables",
+            "default": []
+          },
+          "procedures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Procedures",
+            "default": []
+          },
+          "left_alone": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Left Alone",
+            "default": []
+          },
+          "script": {
+            "type": "string",
+            "title": "Script"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "env_b",
+          "env_a",
+          "schema_name",
+          "status",
+          "create_schema",
+          "script"
+        ],
+        "title": "SchemaCompileResponse",
+        "description": "One script for the whole schema. Compiling never writes: the caller decides\nwhether and when to send ``script`` to ``/api/execute/sql``.\n\n``left_alone`` is the answer to \"what happens to the tables that are only in\nthe destination\": nothing. They are reported so the user sees them before\nrunning the script, and they never appear in it."
       },
       "SchemasResponse": {
         "properties": {

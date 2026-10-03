@@ -12,8 +12,8 @@
 --   | proc_...         | cuerpo levemente distinto             | different         | DROP + CREATE       |
 --
 -- Las tablas se reemplazan enteras: el `DROP` se lleva las filas del destino.
--- Para un cambio que conserve los datos está la otra página, /api/db/diff, que
--- arma solo los ALTER que faltan.
+-- Para un cambio que conserve los datos hay que escribir los ALTER a mano y
+-- ejecutar solo esos.
 --
 -- Aplicar:  docker exec -i yappy-mysql-qa mysql -uroot -p<PASS> yappy < devkit/mysql/seed-destino.sql
 

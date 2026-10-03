@@ -32,8 +32,8 @@ import { SchemaSelectComponent } from '../shared/schema-select';
  * el script deja el destino igual al origen. Por eso todo lleva un
  * `DROP ... IF EXISTS` adelante y por eso el aviso de `replaceNotice` está a la
  * vista: el DROP de una tabla se lleva sus filas. Quien quiere conservar los datos
- * del destino tiene la otra página, *Diff de base de datos*, que arma solo los
- * ALTER que faltan.
+ * del destino edita el script a mano y deja solo los ALTER que faltan: no queda
+ * una página que se los arme.
  */
 @Component({
   selector: 'app-compile-page',
@@ -441,7 +441,7 @@ export class CompilePage {
     return (
       `Compilar ${r.schema_name}.${r.object_name} borra la tabla y todas sus filas en ` +
       `${r.env_a}, y la vuelve a crear con la definición de ${r.env_b}. ` +
-      'Si querés conservar los datos del destino, usá el Diff de base de datos: arma solo ' +
+      'Si querés conservar los datos del destino, editá el script y dejá solo ' +
       'los ALTER que faltan.'
     );
   });

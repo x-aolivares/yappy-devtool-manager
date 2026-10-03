@@ -46,6 +46,19 @@ def create_table_script(show_create_b: str) -> str:
     return show_create_b.strip().rstrip(";")
 
 
+def drop_table_if_exists_script(schema: str, name: str) -> str:
+    """``DROP TABLE IF EXISTS`` for one schema-qualified table.
+
+    Split out from :func:`replace_table_script` because a whole-schema sync emits
+    every ``DROP`` first and every ``CREATE`` after: with the tables depending on
+    each other, the two halves cannot be interleaved per object. The wording --
+    schema-qualified target plus ``IF EXISTS`` -- has to be identical in both
+    shapes, so it lives here once.
+    """
+    target = f"{obj.quote_ident(schema)}.{obj.quote_ident(name)}"
+    return f"DROP TABLE IF EXISTS {target};"
+
+
 def replace_table_script(show_create_b: str, schema: str, name: str) -> str:
     """DDL to replace, in A, a table with B's definition, whatever A has.
 
@@ -54,10 +67,10 @@ def replace_table_script(show_create_b: str, schema: str, name: str) -> str:
     match the source exactly is to drop it and create it again.
 
     The cost, and it is the caller's to own: ``DROP TABLE`` takes the destination's
-    rows with it. Compiling a table is a *replace*, not a merge. The
-    non-destructive alternative is ``/api/db/diff``, which emits only the ALTERs
-    that are missing; this endpoint is the one that says "the source is the truth,
-    make the destination look like it".
+    rows with it. Compiling a table is a *replace*, not a merge. There is no
+    non-destructive alternative left in the UI — whoever wants to keep the rows
+    writes the missing ALTERs by hand; this endpoint is the one that says "the
+    source is the truth, make the destination look like it".
 
     The DROP carries ``IF EXISTS`` so one single script works whether or not the
     table is there: the user compiles what they picked without the script having
@@ -66,8 +79,7 @@ def replace_table_script(show_create_b: str, schema: str, name: str) -> str:
     leave you when the destination already matched.
     """
     body = create_table_script(show_create_b)
-    target = f"{obj.quote_ident(schema)}.{obj.quote_ident(name)}"
-    return f"DROP TABLE IF EXISTS {target};\n{body}"
+    return f"{drop_table_if_exists_script(schema, name)}\n{body}"
 
 
 def create_procedure_script(show_create_b: str) -> str:

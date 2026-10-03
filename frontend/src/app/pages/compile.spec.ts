@@ -94,7 +94,7 @@ describe('CompilePage script generado', () => {
   it('avisa que compilar una tabla borra las filas del destino', async () => {
     const { comp, el } = await generate({ status: 'replace_in_a' });
     expect(comp.replaceNotice()).toContain('borra la tabla y todas sus filas en local');
-    expect(comp.replaceNotice()).toContain('Diff de base de datos');
+    expect(comp.replaceNotice()).toContain('editá el script y dejá solo');
     expect(el.textContent).toContain('borra la tabla y todas sus filas en local');
   });
 

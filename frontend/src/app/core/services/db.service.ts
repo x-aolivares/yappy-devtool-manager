@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Api } from '../../api-gen/api';
 import {
   compileDbObject,
+  compileDbSchema,
   diffDbObject,
   executeSql,
   listDbObjects,
@@ -21,6 +22,8 @@ import {
   MigrationResponse,
   QueryRequest,
   QueryResponse,
+  SchemaCompileRequest,
+  SchemaCompileResponse,
   SchemasResponse,
 } from '../../api-gen/models';
 
@@ -47,6 +50,11 @@ export class DbService {
   /** Generate the script that would take an object from source into destination. */
   compile(request: CompileRequest): Promise<CompileResponse> {
     return this.api.invoke(compileDbObject, { body: request });
+  }
+
+  /** The bulk sibling of `compile`: one script for a whole schema. Also generate-only. */
+  compileSchema(request: SchemaCompileRequest): Promise<SchemaCompileResponse> {
+    return this.api.invoke(compileDbSchema, { body: request });
   }
 
   /** Run one read-only statement and return its rows. */

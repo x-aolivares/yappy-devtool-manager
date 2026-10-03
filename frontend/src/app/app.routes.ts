@@ -1,26 +1,25 @@
 import { Routes } from '@angular/router';
 
 import { CompilePage } from './pages/compile';
-import { DbDiffPage } from './pages/db-diff';
 import { HomePage } from './pages/home';
-import { ParamsCreatePage } from './pages/params-create';
-import { ParamsDiffPage } from './pages/params-diff';
-import { ParamsEditPage } from './pages/params-edit';
 import { ParamsReadPage } from './pages/params-read';
+import { SchemaSyncPage } from './pages/schema-sync';
 import { SessionDetailPage } from './pages/session-detail';
 import { SessionsPage } from './pages/sessions';
 import { SqlPage } from './pages/sql';
 
+// `/params-diff`, `/params-create`, `/params-edit` y `/db-diff` dejaron de estar
+// enrutadas: sus páginas siguen en el repo, pero ya no se llega a ellas por URL.
+// `/sessions` NO se sacó, a propósito — `params-read.ts` crea una sesión y tiene
+// un link a esa vista, así que dejarla en 404 sería romper la página que sí se
+// conserva.
 export const routes: Routes = [
   { path: '', pathMatch: 'full', component: HomePage },
   { path: 'params-read', component: ParamsReadPage },
   { path: 'sessions', component: SessionsPage },
   { path: 'sessions/:sessionId', component: SessionDetailPage },
-  { path: 'params-create', component: ParamsCreatePage },
-  { path: 'params-diff', component: ParamsDiffPage },
-  { path: 'params-edit', component: ParamsEditPage },
-  { path: 'db-diff', component: DbDiffPage },
   { path: 'compile', component: CompilePage },
+  { path: 'schema-sync', component: SchemaSyncPage },
   { path: 'sql', component: SqlPage },
   { path: '**', redirectTo: '' },
 ];

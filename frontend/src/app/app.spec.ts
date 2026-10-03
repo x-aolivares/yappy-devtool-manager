@@ -93,15 +93,9 @@ describe('App', () => {
     const hrefs = [...compiled.querySelectorAll('.section a')].map((el) =>
       el.getAttribute('href'),
     );
-    expect(hrefs).toEqual([
-      '/params-read',
-      '/params-diff',
-      '/params-create',
-      '/params-edit',
-      '/sessions',
-      '/db-diff',
-      '/compile',
-      '/sql',
-    ]);
+    // AWS quedó con una sola herramienta: Diff, Crear, Editar y Sesiones salen
+    // del menú. `/sessions` sigue enrutada aunque no esté acá, porque la página
+    // de leer parámetros enlaza a esa vista.
+    expect(hrefs).toEqual(['/params-read', '/compile', '/schema-sync', '/sql']);
   });
 });

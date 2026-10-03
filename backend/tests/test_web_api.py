@@ -3,6 +3,7 @@ from fastapi import HTTPException
 
 from yappy_api.routes.db import (
     api_compile,
+    api_compile_schema,
     api_db_diff,
     api_db_objects,
     api_db_schemas,
@@ -38,6 +39,7 @@ from yappy_api.schemas import (
     ParamsDiffRequest,
     QueryRequest,
     ReadParamsEntry,
+    SchemaCompileRequest,
     UpdateSessionItemRequest,
 )
 from yappy_library.adapters.database.connection import SyncError
@@ -1256,8 +1258,11 @@ def test_api_compile_table_refuses_when_the_destination_references_it(monkeypatc
     detail = str(exc_info.value.detail)
     assert exc_info.value.status_code == 400
     # El mensaje dice qué tabla y qué constraint bloquean, y ofrece la salida.
+    # La salida ya no puede ser "usá el Diff de base de datos": esa página salió
+    # del menú. Lo que queda es escribir los ALTER a mano.
     assert "yappy.orders" in detail and "fk_orders_customer" in detail
-    assert "Diff de base de datos" in detail
+    assert "ALTER" in detail
+    assert "Diff de base de datos" not in detail
     # Y no se reempaqueta como "Error de base de datos: 400: ...".
     assert not detail.startswith("Error de base de datos")
     assert executed == []
@@ -1439,6 +1444,237 @@ def test_api_compile_object_missing_in_source_reports_none(monkeypatch):
     # La rama `none` ni consulta el destino: la clave está, pero vacía.
     assert "code_a" in payload
     assert payload["code_a"] is None
+
+
+# --- Compile: schema entero -------------------------------------------------
+
+
+def _schema_world(
+    monkeypatch, *, schemas=None, tables=None, procedures=None, links=None, bodies=None
+):
+    """``db_objects`` fakeado por ambiente.
+
+    El route solo lee, y ``_FakeConn`` no tiene ``cursor()``: cada símbolo que
+    toca tiene que entrar por acá o la consulta real revienta.
+    """
+    _two_envs(monkeypatch, ("dev", "local"))  # dev = origen, local = destino
+    schemas = schemas if schemas is not None else {"dev": ["yappy"], "local": ["yappy"]}
+    tables = tables or {}
+    procedures = procedures or {}
+    links = links or {}
+    bodies = bodies or {}
+
+    monkeypatch.setattr(obj, "list_schemas", lambda conn: schemas.get(conn.env, []))
+    monkeypatch.setattr(obj, "list_tables", lambda conn, schema: tables.get(conn.env, []))
+    monkeypatch.setattr(
+        obj, "list_procedures", lambda conn, schema: procedures.get(conn.env, [])
+    )
+    monkeypatch.setattr(obj, "foreign_key_links", lambda conn: links.get(conn.env, []))
+    monkeypatch.setattr(
+        obj, "show_create_table", lambda conn, schema, name: bodies.get((conn.env, name))
+    )
+    monkeypatch.setattr(
+        obj,
+        "show_create_procedure",
+        lambda conn, schema, name: bodies.get((conn.env, name)),
+    )
+
+
+def _two_related_tables():
+    """`lines` referencia a `orders` en los dos ambientes: la misma arista, en
+    direcciones opuestas, es el motivo de las dos secciones del script."""
+    world = {
+        "tables": {"dev": ["lines", "orders"], "local": ["lines", "orders"]},
+        "procedures": {"dev": ["sp_calc"], "local": []},
+        "links": {
+            "dev": [("yappy", "lines", "yappy", "orders")],
+            "local": [("yappy", "lines", "yappy", "orders")],
+        },
+        "bodies": {
+            ("dev", "orders"): "CREATE TABLE `orders` (`id` int NOT NULL)",
+            ("dev", "lines"): "CREATE TABLE `lines` (`order_id` int NOT NULL)",
+            ("dev", "sp_calc"): (
+                "CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_calc`() BEGIN SELECT 1; END"
+            ),
+        },
+    }
+    return world
+
+
+def test_api_compile_schema_never_executes_anywhere(monkeypatch):
+    """El contrato es generar. El script es destructivo (`DROP TABLE` en tablas
+    reales del destino), así que este test falla fuerte si alguien lo manda a
+    `execute_sql` desde el route."""
+    _schema_world(monkeypatch, **_two_related_tables())
+
+    def _must_not_run(*args, **kwargs):
+        raise AssertionError("/api/compile/schema intentó ejecutar SQL: debe solo generar.")
+
+    monkeypatch.setattr("yappy_api.routes.db.syncexec.execute_sql", _must_not_run)
+
+    payload = api_compile_schema(
+        SchemaCompileRequest(env_b="dev", env_a="local", schema_name="yappy")
+    )
+
+    assert payload["status"] == "schema_sync"
+    assert payload["create_schema"] is False
+    assert payload["tables"] == ["lines", "orders"]
+    assert payload["procedures"] == ["sp_calc"]
+    # Hijas antes que padres en los DROP; padres antes que hijas en los CREATE.
+    drops = [ln for ln in payload["script"].splitlines() if ln.startswith("DROP TABLE")]
+    creates = [ln for ln in payload["script"].splitlines() if ln.startswith("CREATE TABLE")]
+    assert drops == [
+        "DROP TABLE IF EXISTS `yappy`.`lines`;",
+        "DROP TABLE IF EXISTS `yappy`.`orders`;",
+    ]
+    # The `;` is there because the script is a sequence, not because the
+    # definition has one: `SHOW CREATE` does not emit it, and two unterminated
+    # CREATEs reach MySQL glued into a single 1064.
+    assert creates == [
+        "CREATE TABLE `orders` (`id` int NOT NULL);",
+        "CREATE TABLE `lines` (`order_id` int NOT NULL);",
+    ]
+    assert payload["script"].index("CREATE TABLE `orders`") < payload["script"].index(
+        "DROP PROCEDURE"
+    )
+    assert "DEFINER" not in payload["script"]
+    # Y la respuesta no trae contabilidad de ejecución.
+    assert "results" not in payload
+    assert "ok_count" not in payload
+
+
+def test_api_compile_schema_without_procedures_emits_no_procedure_statements(monkeypatch):
+    _schema_world(monkeypatch, **_two_related_tables())
+
+    payload = api_compile_schema(
+        SchemaCompileRequest(
+            env_b="dev", env_a="local", schema_name="yappy", include_procedures=False
+        )
+    )
+
+    assert payload["procedures"] == []
+    assert "PROCEDURE" not in payload["script"]
+    assert "sp_calc" not in payload["script"]
+    assert "DROP TABLE IF EXISTS `yappy`.`orders`;" in payload["script"]
+
+
+def test_api_compile_schema_without_tables_emits_no_table_statements(monkeypatch):
+    _schema_world(monkeypatch, **_two_related_tables())
+
+    payload = api_compile_schema(
+        SchemaCompileRequest(
+            env_b="dev", env_a="local", schema_name="yappy", include_tables=False
+        )
+    )
+
+    assert payload["tables"] == []
+    assert "DROP TABLE" not in payload["script"]
+    assert "CREATE TABLE" not in payload["script"]
+    assert payload["procedures"] == ["sp_calc"]
+    assert "DROP PROCEDURE IF EXISTS `yappy`.`sp_calc`;" in payload["script"]
+
+
+def test_api_compile_schema_rejects_a_request_with_nothing_to_sync(monkeypatch):
+    _schema_world(monkeypatch, **_two_related_tables())
+
+    with pytest.raises(HTTPException) as exc:
+        api_compile_schema(
+            SchemaCompileRequest(
+                env_b="dev", env_a="local", schema_name="yappy",
+                include_tables=False, include_procedures=False,
+            )
+        )
+
+    assert exc.value.status_code == 400
+    detail = str(exc.value.detail)
+    assert "tablas" in detail or "procedures" in detail
+
+
+def test_api_compile_schema_rejects_same_source_and_target(monkeypatch):
+    _schema_world(monkeypatch, **_two_related_tables())
+
+    with pytest.raises(HTTPException) as exc:
+        api_compile_schema(
+            SchemaCompileRequest(env_b="dev", env_a="dev", schema_name="yappy")
+        )
+
+    assert exc.value.status_code == 400
+    assert "distintos" in str(exc.value.detail)
+
+
+def test_api_compile_schema_requires_a_schema(monkeypatch):
+    _schema_world(monkeypatch, **_two_related_tables())
+
+    with pytest.raises(HTTPException) as exc:
+        api_compile_schema(
+            SchemaCompileRequest(env_b="dev", env_a="local", schema_name="  ")
+        )
+
+    assert exc.value.status_code == 400
+    assert "schema" in str(exc.value.detail)
+
+
+def test_api_compile_schema_reports_a_schema_that_the_origin_does_not_have(monkeypatch):
+    _schema_world(monkeypatch, **_two_related_tables())
+    monkeypatch.setattr(obj, "list_schemas", lambda conn: ["yappy"] if conn.env == "local" else [])
+
+    with pytest.raises(HTTPException) as exc:
+        api_compile_schema(
+            SchemaCompileRequest(env_b="dev", env_a="local", schema_name="yappy")
+        )
+
+    # El mensaje de `plan` llega tal cual, sin reempaquetar como error de base.
+    assert exc.value.status_code == 400
+    assert "no existe en el origen" in str(exc.value.detail)
+    assert not str(exc.value.detail).startswith("Error de base de datos")
+
+
+def test_api_compile_schema_reports_the_tables_it_will_not_touch(monkeypatch):
+    world = _two_related_tables()
+    world["tables"]["local"] = ["legacy", "lines", "orders"]
+    _schema_world(monkeypatch, **world)
+
+    payload = api_compile_schema(
+        SchemaCompileRequest(env_b="dev", env_a="local", schema_name="yappy")
+    )
+
+    assert payload["left_alone"] == ["legacy"]
+    assert "legacy" not in payload["script"]
+
+
+def test_api_compile_schema_creates_the_schema_the_destination_lacks(monkeypatch):
+    world = _two_related_tables()
+    world["schemas"] = {"dev": ["yappy"], "local": []}
+    world["tables"] = {"dev": ["orders"], "local": []}
+    world["procedures"] = {"dev": [], "local": []}
+    world["links"] = {"dev": [], "local": []}
+    world["bodies"] = {("dev", "orders"): "CREATE TABLE `orders` (`id` int NOT NULL)"}
+    _schema_world(monkeypatch, **world)
+
+    payload = api_compile_schema(
+        SchemaCompileRequest(env_b="dev", env_a="local", schema_name="yappy")
+    )
+
+    assert payload["create_schema"] is True
+    assert "CREATE DATABASE IF NOT EXISTS `yappy`;" in payload["script"]
+    assert f"USE `yappy`;" in payload["script"]
+
+
+def test_api_compile_schema_with_an_empty_origin_reports_none_with_a_script(monkeypatch):
+    world = _two_related_tables()
+    world["tables"] = {"dev": [], "local": ["orders"]}
+    world["procedures"] = {"dev": [], "local": []}
+    _schema_world(monkeypatch, **world)
+
+    payload = api_compile_schema(
+        SchemaCompileRequest(env_b="dev", env_a="local", schema_name="yappy")
+    )
+
+    assert payload["status"] == "none"
+    # El script vuelve igual: es un no-op y el caller no tiene que tratar este caso.
+    assert "DROP TABLE" not in payload["script"]
+    assert payload["left_alone"] == ["orders"]
+    assert any("no tiene tablas" in note for note in payload["notes"])
 
 
 # --- Execute: el paso que escribe -------------------------------------------

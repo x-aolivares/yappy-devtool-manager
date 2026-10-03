@@ -26,31 +26,16 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   {
     id: 'aws',
     label: 'AWS',
+    // Diff, alta/edición y Sesiones salen del menú. No es que el código se haya
+    // ido: sigue acá, y `/sessions` sigue enrutada a propósito porque "Leer
+    // parámetros" crea una sesión y enlaza a esa vista. Si algún día se borran de
+    // verdad, hay queSACARLE a `params-read` el `SessionService`, el signal
+    // `sessionCreated` y el link "Abrir en Sesiones →" en el mismo cambio.
     items: [
       {
         link: '/params-read',
         label: 'Leer parámetros',
         hint: 'Lee parámetros de SSM y secretos de Secrets Manager',
-      },
-      {
-        link: '/params-diff',
-        label: 'Diff de parámetros',
-        hint: 'Compara un parámetro o secreto entre dos ambientes',
-      },
-      {
-        link: '/params-create',
-        label: 'Crear parámetro',
-        hint: 'Escribe un valor en varias regiones a la vez',
-      },
-      {
-        link: '/params-edit',
-        label: 'Editar parámetro',
-        hint: 'Modifica el valor de un parámetro existente',
-      },
-      {
-        link: '/sessions',
-        label: 'Sesiones',
-        hint: 'Revisa parámetros uno por uno con el progreso guardado',
       },
     ],
   },
@@ -59,14 +44,14 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     label: 'Database',
     items: [
       {
-        link: '/db-diff',
-        label: 'Diff de base de datos',
-        hint: 'Compara una tabla o stored procedure entre dos ambientes',
-      },
-      {
         link: '/compile',
         label: 'Compilar',
         hint: 'Compila una tabla o stored procedure de un ambiente a otro',
+      },
+      {
+        link: '/schema-sync',
+        label: 'Sincronizar schema',
+        hint: 'Lleva todas las tablas y stored procedures de un esquema a otro ambiente',
       },
       {
         link: '/sql',

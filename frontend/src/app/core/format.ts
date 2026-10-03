@@ -7,6 +7,7 @@ export const STATUS_LABELS: Record<string, string> = {
   missing_in_a: 'Falta en la región Destino',
   missing_in_b: 'Falta en la región de Origen',
   none: 'No existe en ninguna región',
+  schema_sync: 'Se sincroniza el schema en la región Destino',
 };
 
 export function statusLabel(status: string): string {

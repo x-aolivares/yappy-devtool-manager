@@ -13,6 +13,8 @@ export type { ExecuteSql$Params as ExecuteSql$Params } from './fn/db/execute-sql
 export { executeSql as executeSql } from './fn/db/execute-sql';
 export type { CompileDbObject$Params as CompileDbObject$Params } from './fn/db/compile-db-object';
 export { compileDbObject as compileDbObject } from './fn/db/compile-db-object';
+export type { CompileDbSchema$Params as CompileDbSchema$Params } from './fn/db/compile-db-schema';
+export { compileDbSchema as compileDbSchema } from './fn/db/compile-db-schema';
 export type { QueryDb$Params as QueryDb$Params } from './fn/db/query-db';
 export { queryDb as queryDb } from './fn/db/query-db';
 export type { MigrateDbData$Params as MigrateDbData$Params } from './fn/db/migrate-db-data';

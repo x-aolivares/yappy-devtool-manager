@@ -32,6 +32,8 @@ export type { QueryRequest } from './models/query-request';
 export type { QueryResponse } from './models/query-response';
 export type { ReadEntryResultInfo } from './models/read-entry-result-info';
 export type { ReadParamsEntry } from './models/read-params-entry';
+export type { SchemaCompileRequest } from './models/schema-compile-request';
+export type { SchemaCompileResponse } from './models/schema-compile-response';
 export type { SchemasResponse } from './models/schemas-response';
 export type { SessionDetailResponse } from './models/session-detail-response';
 export type { SessionItemInfo } from './models/session-item-info';
