@@ -160,3 +160,33 @@ def foreign_key_links(conn) -> list[tuple[str, str, str, str]]:
             for row in cur.fetchall()
             if row[0] and row[1] and row[2] and row[3]
         ]
+
+
+_INBOUND_FKS_SQL = """
+SELECT DISTINCT TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME
+FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+WHERE REFERENCED_TABLE_SCHEMA = %s AND REFERENCED_TABLE_NAME = %s
+  AND REFERENCED_TABLE_SCHEMA NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
+ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME
+"""
+
+
+def inbound_foreign_keys(conn, schema: str, table: str) -> list[tuple[str, str, str]]:
+    """Every ``(child_schema, child_table, constraint_name)`` FK pointing at
+    ``schema.table``, from any schema.
+
+    The mirror image of :func:`foreign_key_links`, and read from the
+    **destination** rather than the source. Those edges are exactly what a
+    ``DROP TABLE`` cannot cross: MySQL refuses to drop a table another one
+    references (error 3730), and ``IF EXISTS`` does not help, because it only
+    silences "unknown table" (1051). The ``CREATE`` that follows then collides
+    with 1050, so a compile aimed at a table with children cannot be a plain
+    ``DROP`` + ``CREATE``.
+
+    Asked before generating, not discovered while executing: the compile endpoint
+    only reads both environments, so this is the last moment where refusing costs
+    the user nothing.
+    """
+    with conn.cursor() as cur:
+        cur.execute(_INBOUND_FKS_SQL, (schema, table))
+        return [(row[0], row[1], row[2]) for row in cur.fetchall()]

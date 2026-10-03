@@ -9,6 +9,17 @@
 SET NAMES utf8mb4;
 
 -- ---------------------------------------------------------------------------
+-- Reset, para que el seed se pueda volver a correr. Primero se borran las
+-- tablas, hijas antes que padres: MySQL no deja dropear una tabla que otra
+-- referencia (error 3730) y el `IF EXISTS` de cada sección no lo evita, porque
+-- solo silencia el 1051 de "la tabla no existe". Sin este bloque, una segunda
+-- corrida moría en el DROP de `pedidos` con la `lineas_pedido` de la anterior
+-- todavía en pie.
+-- ---------------------------------------------------------------------------
+DROP TABLE IF EXISTS lineas_pedido;
+DROP TABLE IF EXISTS pedidos;
+
+-- ---------------------------------------------------------------------------
 -- clientes -> idéntica en el destino. Rama `replace_in_a`: compila igual, con
 -- `DROP TABLE IF EXISTS` adelante, así que no choca con la tabla que ya está.
 -- ---------------------------------------------------------------------------

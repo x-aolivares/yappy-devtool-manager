@@ -285,6 +285,31 @@ def api_compile(req: CompileRequest):
                 else:
                     code_a = obj.show_create_table(conn_a, schema, name)
 
+                    # Una tabla a la que el destino apunta con una FK no se puede
+                    # reemplazar con DROP + CREATE: MySQL rechaza el DROP (3730) y
+                    # el CREATE siguiente choca con 1050. Sin este chequeo el
+                    # usuario se lleva dos errores y ningún script que funcione,
+                    # después de haber aplicado la mitad. Se pregunta acá, mientras
+                    # no se ejecutó nada, y se dice qué tabla y constraint bloquean.
+                    inbound = obj.inbound_foreign_keys(conn_a, schema, name)
+                    if inbound:
+                        children = ", ".join(
+                            f"{child_schema}.{child_table} ({fk})"
+                            for child_schema, child_table, fk in inbound
+                        )
+                        raise HTTPException(
+                            status_code=400,
+                            detail=(
+                                f"No se puede compilar {schema}.{name} en "
+                                f"{req.env_a} (destino): el destino la referencia con "
+                                f"{len(inbound)} foreign key(s): {children}. MySQL no "
+                                "permite reemplazar una tabla referenciada, y rehacerla "
+                                "dejaría a las filas de esas tablas sin padre. Usá el "
+                                "Diff de base de datos, que arma solo los ALTER que "
+                                "faltan."
+                            ),
+                        )
+
                     # Un solo script para los dos casos: si está, se reemplaza; si
                     # no, el DROP IF EXISTS no tiene nada que borrar.
                     script = ddl.replace_table_script(code_b, schema, name)
@@ -328,6 +353,12 @@ def api_compile(req: CompileRequest):
             "script": script,
             "notes": notes,
         }
+    except HTTPException:
+        # Los rechazos por precondición (origen == destino, objeto inexistente en el
+        # origen, tabla referenciada por una FK) ya son 400 con su propio mensaje.
+        # Sin esta línea el `except Exception` de abajo los reempaquetaría como
+        # "Error de base de datos: 400: ...".
+        raise
     except SyncError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

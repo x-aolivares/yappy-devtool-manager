@@ -15,6 +15,22 @@
 SET NAMES utf8mb4;
 
 -- ---------------------------------------------------------------------------
+-- Reset, para que el seed se pueda volver a correr. Primero se borran TODAS las
+-- tablas, hijas antes que padres: MySQL no deja dropear una tabla que otra
+-- referencia (error 3730) y el `IF EXISTS` de cada sección no lo evita, porque
+-- solo silencia el 1051 de "la tabla no existe".
+--
+-- `orders` entra igual aunque hoy no declare FKs: una base sembrada con la
+-- versión anterior de este seed sí las tenía, y sin esta línea el DROP de
+-- `clientes` de la línea siguiente moría con 3730.
+-- ---------------------------------------------------------------------------
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS lineas_pedido;
+DROP TABLE IF EXISTS pedidos;
+DROP TABLE IF EXISTS clientes;
+DROP TABLE IF EXISTS config_app;
+
+-- ---------------------------------------------------------------------------
 -- clientes -> idéntica a dev/qa. Rama `equal` en un diff contra cualquiera.
 -- ---------------------------------------------------------------------------
 DROP TABLE IF EXISTS clientes;
@@ -93,6 +109,13 @@ INSERT INTO config_app (clave, valor) VALUES
 -- ---------------------------------------------------------------------------
 -- orders -> la tabla que se consulta desde la página de SQL. No existe en dev/qa:
 -- es el objeto propio de `local`, para que haya algo real que mirar sin AWS.
+--
+-- `customer_id` NO lleva FOREIGN KEY, a propósito. La relación con `clientes`
+-- es lógica y se resuelve en los queries, que es como trabajan los ambientes
+-- reales. Con la FK declarada, compilar `yappy.clientes` en `local` no tenía
+-- salida: el destino la referencia, /api/compile lo rechaza, y no había forma
+-- de dejar `clientes` como estaba. El índice sí queda, que es lo que hace útil
+-- el JOIN.
 -- ---------------------------------------------------------------------------
 DROP TABLE IF EXISTS orders;
 CREATE TABLE orders (
@@ -105,9 +128,7 @@ CREATE TABLE orders (
   PRIMARY KEY (order_id),
   KEY idx_orders_customer (customer_id),
   KEY idx_orders_status (status),
-  KEY idx_orders_date (order_date),
-  CONSTRAINT fk_orders_customer FOREIGN KEY (customer_id)
-    REFERENCES clientes (cliente_id)
+  KEY idx_orders_date (order_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Pedidos en ingles (solo local)';
 
 INSERT INTO orders (customer_id, status, total_amount, channel) VALUES

@@ -1072,6 +1072,10 @@ def _two_envs(monkeypatch, envs=("dev", "qa")):
     )
     monkeypatch.setattr(Config, "with_env", staticmethod(lambda env: _FakeConfig(env)))
     monkeypatch.setattr("yappy_api.routes.db.connect", _fake_connect)
+    # `_FakeConn` no tiene `cursor()`, así que cualquier consulta real revienta.
+    # Por defecto el destino no referencia a nadie: cada test que necesite FKs
+    # entra con la arista que le importa.
+    monkeypatch.setattr(obj, "inbound_foreign_keys", lambda conn, schema, name: [])
 
 
 # --- Objects: tablas / stored procedures de un schema ------------------------
@@ -1215,6 +1219,76 @@ def test_api_compile_never_executes_anywhere(monkeypatch):
     assert "results" not in payload
     assert "ok_count" not in payload
     assert "err_count" not in payload
+
+
+def test_api_compile_table_refuses_when_the_destination_references_it(monkeypatch):
+    """Una tabla que el destino referencia con una FK no se puede compilar.
+
+    Sin este chequeo el usuario se llevaba dos errores y ningún script que
+    funcione: ``DROP TABLE`` rechazado con 3730 ("cannot drop table referenced
+    by a foreign key constraint") y el ``CREATE`` siguiente con 1050, porque la
+    tabla nunca se fue. Peor: ``execute_sql`` corre con autocommit y no corta el
+    script, así que la mitad del trabajo quedaba aplicada al pedido.
+    """
+    _two_envs(monkeypatch, ("dev", "local"))
+    monkeypatch.setattr(obj, "show_create_table", lambda conn, s, n: "CREATE TABLE `t` (`id` INT)")
+    # Solo el destino tiene la arista: en el origen `t` es una hoja.
+    monkeypatch.setattr(
+        obj, "inbound_foreign_keys",
+        lambda conn, schema, name: (
+            [("yappy", "orders", "fk_orders_customer")] if conn.env == "local" else []
+        ),
+    )
+    executed = []
+    monkeypatch.setattr(
+        "yappy_api.routes.db.syncexec.execute_sql",
+        lambda cfg, schema, code: executed.append(code) or [],
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        api_compile(
+            CompileRequest(
+                env_b="dev", env_a="local", object_type="table",
+                schema_name="s", object_name="t",
+            )
+        )
+
+    detail = str(exc_info.value.detail)
+    assert exc_info.value.status_code == 400
+    # El mensaje dice qué tabla y qué constraint bloquean, y ofrece la salida.
+    assert "yappy.orders" in detail and "fk_orders_customer" in detail
+    assert "Diff de base de datos" in detail
+    # Y no se reempaqueta como "Error de base de datos: 400: ...".
+    assert not detail.startswith("Error de base de datos")
+    assert executed == []
+
+
+def test_api_compile_table_ignores_foreign_keys_that_only_the_source_has(monkeypatch):
+    """Lo que bloquea es lo que apunta **en el destino**, no lo que apunta en el origen.
+
+    El origen puede ser el padre de media base y compilar igual: lo que se
+    reemplaza es el objeto del destino, y las filas de las tablas hijas del
+    destino son las que quedarían sin padre.
+    """
+    _two_envs(monkeypatch, ("dev", "local"))
+    monkeypatch.setattr(obj, "show_create_table", lambda conn, s, n: "CREATE TABLE `t` (`id` INT)")
+    # El origen es el padre; el destino no lo referencia. No bloquea.
+    monkeypatch.setattr(
+        obj, "inbound_foreign_keys",
+        lambda conn, schema, name: (
+            [("yappy", "lineas", "fk_lineas_padre")] if conn.env == "dev" else []
+        ),
+    )
+
+    payload = api_compile(
+        CompileRequest(
+            env_b="dev", env_a="local", object_type="table",
+            schema_name="s", object_name="t",
+        )
+    )
+
+    assert payload["status"] == "replace_in_a"
+    assert payload["script"].startswith("DROP TABLE IF EXISTS `s`.`t`;")
 
 
 def test_api_compile_table_replaces_the_destination_wholesale(monkeypatch):
