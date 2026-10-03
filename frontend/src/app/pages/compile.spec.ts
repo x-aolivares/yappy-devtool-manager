@@ -184,7 +184,7 @@ describe('CompilePage origen = script', () => {
     const { el } = await inScriptMode();
 
     expect(el.textContent).not.toContain('Generar');
-    expect(el.textContent).not.toContain('Esquema (del origen)');
+    expect(el.textContent).not.toContain('Esquema del origen');
     expect(el.textContent).not.toContain('Nombre del objeto');
     expect(el.querySelector('#compile-object')).toBeNull();
   });
@@ -194,8 +194,10 @@ describe('CompilePage origen = script', () => {
 
     expect(comp.envB()).toBe('');
     expect(comp.envA()).toBe('');
-    expect(el.textContent).toContain('Es el único ambiente');
-    expect(el.textContent).not.toContain('Elegí dos');
+    // Un ambiente, no dos. Se afirma sobre qué componente se renderiza y no
+    // sobre el texto de una leyenda: la leyenda se fue y el comportamiento sigue.
+    expect(el.querySelector('app-region-controls')).toBeNull();
+    expect(el.querySelector('app-env-controls')).not.toBeNull();
   });
 
   it('ofrece el USE opcional, ya con el destino elegido', async () => {

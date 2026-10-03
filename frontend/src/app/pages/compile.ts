@@ -82,25 +82,14 @@ import { AutoGrowDirective } from '../shared/auto-grow';
               Script
             </label>
           </div>
-          <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
-            @if (source() === 'env') {
-              Se lee el objeto del ambiente de origen y <strong>Generar</strong> deja en el
-              editor el SQL que lo deja igual en el destino, exista o no exista allá.
-            } @else {
-              No hay nada que generar: el SQL del editor es el origen y se compila en el
-              destino, tal cual está.
-            }
-          </p>
         </div>
 
         <div class="field">
-          <div class="field-label">Ambiente donde compilar (destino)</div>
           @if (source() === 'env') {
             <app-region-controls
               [environments]="environments()"
               [withService]="false"
               envLabel="Ambientes"
-              hint="Elegí dos: el primero es el de origen y el segundo el de destino."
               [(envB)]="envB"
               [(envA)]="envA"
             />
@@ -109,7 +98,6 @@ import { AutoGrowDirective } from '../shared/auto-grow';
               [environments]="environments()"
               [max]="1"
               envLabel="Ambiente"
-              hint="Es el único ambiente: el SQL del editor ya viene listo."
               [envs]="destEnvs()"
               (envsChange)="onDestEnvChange($event)"
             />
@@ -125,10 +113,6 @@ import { AutoGrowDirective } from '../shared/auto-grow';
                   [optional]="true"
                   emptyLabel="Sin USE — usá nombres calificados"
                 />
-                <p class="muted" style="margin-top:0.375rem; font-size:0.75rem;">
-                  Si lo elegís, el script arranca con <code>USE {{ schema() }}</code>. Si lo
-                  dejás vacío, los objetos tienen que venir con el esquema en el nombre.
-                </p>
               </div>
             }
           }
@@ -152,11 +136,6 @@ import { AutoGrowDirective } from '../shared/auto-grow';
               [(value)]="schema"
               emptyLabel="Seleccione un esquema del origen"
             />
-            @if (!envB()) {
-              <p class="muted" style="margin-top:0.375rem; font-size:0.75rem;">
-                Elegí el ambiente de origen para ver sus esquemas.
-              </p>
-            }
           </div>
 
           <div class="field">
@@ -185,19 +164,6 @@ import { AutoGrowDirective } from '../shared/auto-grow';
                 Stored procedure
               </label>
             </div>
-            <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
-              @if (!schema()) {
-                Elegí un esquema antes.
-              } @else if (objectType() === 'procedure') {
-                Se recompila la definición completa en el destino.
-              } @else {
-                Se reemplaza la tabla entera en el destino
-                @if (envA()) {
-                  (se lleva sus filas en {{ envA() }})
-                }
-                .
-              }
-            </p>
           </div>
         </div>
 
@@ -228,10 +194,6 @@ import { AutoGrowDirective } from '../shared/auto-grow';
               <p class="muted hint-error" style="margin-top:0.25rem; font-size:0.75rem;">
                 No se pudieron leer los {{ objectTypePlural() }} de {{ schema() }}: {{ objectsError() }}
               </p>
-            } @else if (!schema()) {
-              <p class="muted" style="margin-top:0.25rem; font-size:0.75rem;">
-                Elegí un esquema para ver sus objetos.
-              </p>
             }
           </div>
 
@@ -261,16 +223,12 @@ import { AutoGrowDirective } from '../shared/auto-grow';
           </button>
         </span>
       </div>
-      <p class="muted" style="margin-bottom:0.5rem; font-size:0.75rem;">
-        @if (source() === 'env') {
-          Acá va el SQL que <strong>Compilar</strong> ejecuta en {{ envA() || 'el destino' }}, tal
-          cual está. Arranca con un <code>DROP ... IF EXISTS</code>, así que el mismo script
-          funciona exista o no exista el objeto allá.
-        } @else {
-          Este es el origen de la compilación: pegá el SQL que querés llevar a
-          {{ envA() || 'el destino' }}. Se ejecuta tal cual está, statement por statement.
-        }
-      </p>
+      @if (source() === 'env') {
+        <p class="muted" style="margin-bottom:0.5rem; font-size:0.75rem;">
+          Arranca con un <code>DROP ... IF EXISTS</code>, así que el mismo script funciona exista
+          o no exista el objeto allá.
+        </p>
+      }
       <textarea
         id="compile-script"
         appAutoGrow
@@ -290,10 +248,6 @@ import { AutoGrowDirective } from '../shared/auto-grow';
           {{ aviso }}
         </p>
       }
-      <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
-        Podés editarlo, vaciarlo y escribir tu propio SQL. Se ejecuta tal cual está, statement por
-        statement, en el ambiente destino.
-      </p>
       @if (!canExecute() && envA()) {
         <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
           @if (source() === 'env') {
