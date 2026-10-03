@@ -6,6 +6,7 @@ client (Angular) generates its types from them.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -197,6 +198,50 @@ class MigrationResponse(BaseModel):
     notes: list[str] = []
     ok_count: int = 0
     err_count: int = 0
+
+
+class TableSelectionRequest(BaseModel):
+    """One table of a table-list migration and the window to take from it.
+
+    ``date_from``/``date_to`` are inclusive dates, as the person filling the form
+    reads them; the half-open bounds they are rendered as are the library's
+    business. A ``date_column`` with no dates migrates the whole table, which is
+    also what omitting the column does.
+    """
+
+    table: str
+    date_column: str | None = None
+    date_from: date | None = None
+    date_to: date | None = None
+
+
+class TableMigrateRequest(BaseModel):
+    """Migrate an explicit list of tables of one schema (origen -> destino).
+
+    The bulk sibling of ``MigrationRequest``: same engine, same response model, and
+    the source of each ``SELECT`` is this list instead of a user-written query.
+    """
+
+    env_b: str  # origen: de dónde se lee
+    env_a: str  # destino: a dónde se escribe
+    schema_name: str
+    tables: list[TableSelectionRequest]
+    dry_run: bool = False
+    confirm: bool = False
+
+
+class DateColumnInfo(BaseModel):
+    name: str
+    type: str
+
+
+class DateColumnsResponse(BaseModel):
+    """The columns a window can be built on, so the picker is not guesswork."""
+
+    env: str
+    schema_name: str
+    table_name: str
+    columns: list[DateColumnInfo] = []
 
 
 class ReadParamsEntry(BaseModel):

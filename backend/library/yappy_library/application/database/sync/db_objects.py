@@ -17,6 +17,15 @@ WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s
 ORDER BY ORDINAL_POSITION
 """
 
+_DATE_COLUMNS_SQL = """
+SELECT COLUMN_NAME, ORDINAL_POSITION, COLUMN_TYPE, DATA_TYPE, IS_NULLABLE,
+       COLUMN_DEFAULT
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s
+  AND DATA_TYPE IN ('date', 'datetime', 'timestamp')
+ORDER BY ORDINAL_POSITION
+"""
+
 _INDEXES_SQL = """
 SELECT INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART
 FROM INFORMATION_SCHEMA.STATISTICS
@@ -103,6 +112,25 @@ def table_columns(conn, schema: str, table: str) -> list[dict]:
 def table_indexes(conn, schema: str, table: str) -> list[dict]:
     with conn.cursor(DictCursor) as cur:
         cur.execute(_INDEXES_SQL, (schema, table))
+        return list(cur.fetchall())
+
+
+def date_columns(conn, schema: str, table: str) -> list[dict]:
+    """The DATE/DATETIME/TIMESTAMP columns of one table, in declaration order.
+
+    Read from the source, and used for two things that need the same truth: the
+    picker offers them so nobody has to remember which column holds the date, and
+    :func:`table_migrate.build_plan` validates ``date_column`` against them, so the
+    name that reaches a ``WHERE`` clause is one this table really has.
+
+    ``DATA_TYPE`` (the family) sits next to ``COLUMN_TYPE`` (the exact declared
+    type, ``datetime(3)`` and friends) because the first decides what can be
+    filtered on and the second is what a person should read in the picker. A table
+    with none of them answers ``[]`` rather than failing: "no date column" is a
+    legitimate answer, and it is what tells the caller to migrate the table whole.
+    """
+    with conn.cursor(DictCursor) as cur:
+        cur.execute(_DATE_COLUMNS_SQL, (schema, table))
         return list(cur.fetchall())
 
 

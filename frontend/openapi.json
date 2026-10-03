@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Yappy Region Sync",
-    "description": "Diff de DB (tablas/SP) y de parÃ¡metros SSM/Secrets entre regiones de origen y destino",
+    "description": "Diff de DB (tablas/SP) y de parámetros SSM/Secrets entre regiones de origen y destino",
     "version": "2.0.0"
   },
   "paths": {
@@ -172,13 +172,74 @@
         }
       }
     },
+    "/api/db/date-columns": {
+      "get": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Api Db Date Columns",
+        "description": "List the columns a date window can be built on for one table.\n\nRead-only, and asked *before* migrating: the picker has to offer the real\ncolumn names instead of asking the user to remember them, and the migration\nvalidates against the same list, so what this returns and what the migration\naccepts can never disagree.\n\nA table with no date column answers an empty list instead of an error — that\nis the answer that says \"migrate this one whole\".",
+        "operationId": "list_db_date_columns",
+        "parameters": [
+          {
+            "name": "env",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Env"
+            }
+          },
+          {
+            "name": "schema",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Schema"
+            }
+          },
+          {
+            "name": "table",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Table"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DateColumnsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/execute/sql": {
       "post": {
         "tags": [
           "db"
         ],
         "summary": "Api Execute Sql",
-        "description": "Run a SQL/DDL script against an environment.\n\nThis is the only write path: ``/api/compile`` merely generates. ``code`` is\nwhatever the user is looking at, so it may be a generated script, an edited\nversion of it, or free-form SQL pasted from anywhere.\n\n``object_type`` labels the run and is echoed back; nothing branches on it,\nbecause the splitter runs whatever text it is given. Besides ``table`` and\n``procedure`` it accepts ``script``: the Compile page sends it when the SQL\ncomes from the user instead of from an object of a source environment, and in\nthat case there is no single object to name â€” claiming ``table`` would just\nbe a lie in the response.",
+        "description": "Run a SQL/DDL script against an environment.\n\nThis is the only write path: ``/api/compile`` merely generates. ``code`` is\nwhatever the user is looking at, so it may be a generated script, an edited\nversion of it, or free-form SQL pasted from anywhere.\n\n``object_type`` labels the run and is echoed back; nothing branches on it,\nbecause the splitter runs whatever text it is given. Besides ``table`` and\n``procedure`` it accepts ``script``: the Compile page sends it when the SQL\ncomes from the user instead of from an object of a source environment, and in\nthat case there is no single object to name — claiming ``table`` would just\nbe a lie in the response.",
         "operationId": "execute_sql",
         "requestBody": {
           "content": {
@@ -220,7 +281,7 @@
           "db"
         ],
         "summary": "Api Compile",
-        "description": "Generate the script that would take an object from source into destination.\n\nNothing is written here: both environments are opened read-only to look at\nthem and the script comes back in the response. The caller decides whether to\nsend it to ``/api/execute/sql``, possibly after editing it.\n\nBoth object types are a **replace**, not a merge: the source is the truth and\nthe script makes the destination look exactly like it. MySQL has no\n``CREATE OR REPLACE`` for procedures nor for tables, so both are\n``DROP ... IF EXISTS`` + ``CREATE``. One script, the same whether or not the\nobject is already in the destination â€” that is the whole point, since a script\nthat depended on what it was going to find is a script that ends in ``1050``\nor ``1305`` halfway through.\n\nFor a table that means ``DROP TABLE`` takes the destination's rows with it.\nWhoever wants to keep them has the other page: ``/api/db/diff`` emits only the\n``ALTER``s that are missing.\n\n``status`` says what is going to happen in the destination:\n``replace_in_a`` (exists there and is about to be dropped),\n``missing_in_a`` (does not exist; the ``DROP`` has nothing to do),\n``different`` (a procedure whose body is regenerated) or ``none`` (the object\nis not in the source, so there is nothing to compile).\n\n``code_b`` (source) and ``code_a`` (destination) come back for every branch so\nthe caller can show what each side has today.",
+        "description": "Generate the script that would take an object from source into destination.\n\nNothing is written here: both environments are opened read-only to look at\nthem and the script comes back in the response. The caller decides whether to\nsend it to ``/api/execute/sql``, possibly after editing it.\n\nBoth object types are a **replace**, not a merge: the source is the truth and\nthe script makes the destination look exactly like it. MySQL has no\n``CREATE OR REPLACE`` for procedures nor for tables, so both are\n``DROP ... IF EXISTS`` + ``CREATE``. One script, the same whether or not the\nobject is already in the destination — that is the whole point, since a script\nthat depended on what it was going to find is a script that ends in ``1050``\nor ``1305`` halfway through.\n\nFor a table that means ``DROP TABLE`` takes the destination's rows with it.\nThere is no non-destructive path left in the UI: whoever wants to keep them\nwrites the missing ``ALTER``s by hand and runs only those.\n\n``status`` says what is going to happen in the destination:\n``replace_in_a`` (exists there and is about to be dropped),\n``missing_in_a`` (does not exist; the ``DROP`` has nothing to do),\n``different`` (a procedure whose body is regenerated) or ``none`` (the object\nis not in the source, so there is nothing to compile).\n\n``code_b`` (source) and ``code_a`` (destination) come back for every branch so\nthe caller can show what each side has today.",
         "operationId": "compile_db_object",
         "requestBody": {
           "content": {
@@ -262,7 +323,7 @@
           "db"
         ],
         "summary": "Api Compile Schema",
-        "description": "Generate ONE script that replaces a whole schema's objects with the origin's.\n\n``/api/compile`` does one table or one procedure; this does the schema, which\nis the case that only makes sense as a single script: the tables reference\neach other, and MySQL rejects a drop of a parent that a child still points at\n(3730) and a create of a child whose parent does not exist yet. The script is\ntherefore ordered twice â€” drops by the destination's foreign keys, children\nfirst; creates by the origin's, parents first.\n\nWhat it replaces is exactly what the origin has. It does **not** delete what\nonly the destination has: those tables come back in ``left_alone`` and the\nscript never mentions them. A schema sync makes this environment's copy of the\norigin's objects match; it is not \"make the destination a clone\".\n\nNothing is written here, and this route never calls ``/api/execute/sql``'s\n``execute_sql``: both environments are opened to be read and the script comes\nback in the response. Nor is the script a transaction â€” it runs with\nautocommit, so a statement that fails half way leaves the destination\npartially migrated. ``notes`` always carries that warning along with the rest.\n\n``status`` is ``schema_sync`` for a schema with something to replace and\n``none`` when the origin has no tables and no procedures in it. ``script`` is\nreturned in both cases: it is a harmless no-op (the ``CREATE DATABASE``/\n``USE`` pair), and the caller should not have to special-case it.",
+        "description": "Generate ONE script that replaces a whole schema's objects with the origin's.\n\n``/api/compile`` does one table or one procedure; this does the schema, which\nis the case that only makes sense as a single script: the tables reference\neach other, and MySQL rejects a drop of a parent that a child still points at\n(3730) and a create of a child whose parent does not exist yet. The script is\ntherefore ordered twice — drops by the destination's foreign keys, children\nfirst; creates by the origin's, parents first.\n\nWhat it replaces is exactly what the origin has. It does **not** delete what\nonly the destination has: those tables come back in ``left_alone`` and the\nscript never mentions them. A schema sync makes this environment's copy of the\norigin's objects match; it is not \"make the destination a clone\".\n\nNothing is written here, and this route never calls ``/api/execute/sql``'s\n``execute_sql``: both environments are opened to be read and the script comes\nback in the response. Nor is the script a transaction — it runs with\nautocommit, so a statement that fails half way leaves the destination\npartially migrated. ``notes`` always carries that warning along with the rest.\n\n``status`` is ``schema_sync`` for a schema with something to replace and\n``none`` when the origin has no tables and no procedures in it. ``script`` is\nreturned in both cases: it is a harmless no-op (the ``CREATE DATABASE``/\n``USE`` pair), and the caller should not have to special-case it.",
         "operationId": "compile_db_schema",
         "requestBody": {
           "content": {
@@ -353,6 +414,48 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/MigrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/migrate/tables": {
+      "post": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Api Migrate Tables",
+        "description": "Migrate an explicit list of tables of one schema, each with its own window.\n\nThe same engine ``/api/migrate`` uses — :func:`dbmig.migrate` with a plan built\nfrom a list instead of from a query — so ``REPLACE INTO``, the parent-first\nwrite order, the column reconciliation and the per-table failure isolation\nbehave identically. Only the origin of each ``SELECT`` changes, and the\nresponse is the same model, so the frontend renders both migrations with one\ncomponent.\n\nEach entry carries an optional window: ``date_column`` plus inclusive\n``date_from``/``date_to``, a single bound or none both allowed. ``date_column``\nis validated against the source's real DATE/DATETIME/TIMESTAMP columns\n(:func:`dbtablemig.build_plan`) before anything is written, so a typo is a 400\nand never a statement.\n\nThe source is opened twice: once to validate the plan and once to copy. That is\nthe price of :func:`dbmig.migrate` owning its own connections, and paying it\nbeats duplicating the copy loop to save one.\n\n``dry_run`` reads everything and writes nothing, which is the only honest way\nto find out how many rows each table contributes before committing to it.",
+        "operationId": "migrate_db_table_list",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TableMigrateRequest"
               }
             }
           },
@@ -1274,6 +1377,56 @@
           "env_b"
         ],
         "title": "CreateSessionRequest"
+      },
+      "DateColumnInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "type"
+        ],
+        "title": "DateColumnInfo"
+      },
+      "DateColumnsResponse": {
+        "properties": {
+          "env": {
+            "type": "string",
+            "title": "Env"
+          },
+          "schema_name": {
+            "type": "string",
+            "title": "Schema Name"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/DateColumnInfo"
+            },
+            "type": "array",
+            "title": "Columns",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "env",
+          "schema_name",
+          "table_name"
+        ],
+        "title": "DateColumnsResponse",
+        "description": "The columns a window can be built on, so the picker is not guesswork."
       },
       "DbDiffRequest": {
         "properties": {
@@ -2951,6 +3104,97 @@
           "message"
         ],
         "title": "StepResultInfo"
+      },
+      "TableMigrateRequest": {
+        "properties": {
+          "env_b": {
+            "type": "string",
+            "title": "Env B"
+          },
+          "env_a": {
+            "type": "string",
+            "title": "Env A"
+          },
+          "schema_name": {
+            "type": "string",
+            "title": "Schema Name"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/TableSelectionRequest"
+            },
+            "type": "array",
+            "title": "Tables"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          },
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "env_b",
+          "env_a",
+          "schema_name",
+          "tables"
+        ],
+        "title": "TableMigrateRequest",
+        "description": "Migrate an explicit list of tables of one schema (origen -> destino).\n\nThe bulk sibling of ``MigrationRequest``: same engine, same response model, and\nthe source of each ``SELECT`` is this list instead of a user-written query."
+      },
+      "TableSelectionRequest": {
+        "properties": {
+          "table": {
+            "type": "string",
+            "title": "Table"
+          },
+          "date_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Column"
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From"
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table"
+        ],
+        "title": "TableSelectionRequest",
+        "description": "One table of a table-list migration and the window to take from it.\n\n``date_from``/``date_to`` are inclusive dates, as the person filling the form\nreads them; the half-open bounds they are rendered as are the library's\nbusiness. A ``date_column`` with no dates migrates the whole table, which is\nalso what omitting the column does."
       },
       "UpdateSessionItemRequest": {
         "properties": {

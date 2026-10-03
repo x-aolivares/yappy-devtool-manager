@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
 
 from pymysql.cursors import DictCursor
 
@@ -67,6 +68,31 @@ class TableTarget:
         return f"{schema}.{table}"
 
 
+@runtime_checkable
+class SelectPlan(Protocol):
+    """The whole contract between "what to migrate" and the copy loop.
+
+    :func:`migrate` reads a plan through these two members and nothing else, and
+    that is what lets a second entry point — an explicit table list with date
+    filters, :mod:`table_migrate` — reuse the loop instead of growing a second one.
+    The parts that are easy to get subtly wrong exist once because there is one
+    loop: the ``REPLACE INTO``, the reconciliation of columns between the two
+    environments, the parent-first write order and the per-table failure isolation.
+
+    Structural on purpose: neither plan inherits from it, so the contract is "have
+    these two members" and not "descend from this class", and a plan cannot quietly
+    drift by overriding one of them.
+    """
+
+    tables: list[TableTarget]
+    """The tables to migrate, in the order the caller chose. ``migrate`` writes them
+    reordered (parents before children) and restores this order in the response."""
+
+    def select_for(self, target: TableTarget) -> str:
+        """The query that returns ``target``'s rows, filters included."""
+        ...
+
+
 @dataclass
 class QueryPlan:
     """A query decomposed into the tables that must be migrated.
@@ -80,6 +106,15 @@ class QueryPlan:
     from_clause: str = ""
     where_clause: str = ""
     notes: list[str] = field(default_factory=list)
+
+    def select_for(self, target: TableTarget) -> str:
+        """Same text :func:`table_select` returns — the delegate, not a copy.
+
+        The delegation is the point: the copy loop asks the plan for its queries
+        through :class:`SelectPlan`, and ``table_select`` stays the one place that
+        knows how a query's FROM/WHERE are rewritten into a projection.
+        """
+        return table_select(self, target)
 
 
 # --- lexical helpers --------------------------------------------------------
@@ -325,8 +360,14 @@ def table_select(plan: QueryPlan, target: TableTarget) -> str:
     return f"SELECT DISTINCT {target.qualifier}.*\n{plan_source(plan)}"
 
 
-def plan_selects(plan: QueryPlan) -> list[tuple[TableTarget, str]]:
-    return [(t, table_select(plan, t)) for t in plan.tables]
+def plan_selects(plan: SelectPlan) -> list[tuple[TableTarget, str]]:
+    """Every table's query, as the pairs the copy loop consumes.
+
+    Kept for callers that want the whole plan's SQL before running anything. It
+    goes through :attr:`SelectPlan.select_for` rather than :func:`table_select`, so
+    a plan built from a table list answers here just as well as a parsed query.
+    """
+    return [(t, plan.select_for(t)) for t in plan.tables]
 
 
 # --- execution --------------------------------------------------------------
@@ -374,6 +415,22 @@ def count_rows(cfg: Config, sql: str) -> int:
     return int(row[0]) if row else 0
 
 
+def _error_errno(exc: BaseException) -> int | None:
+    """The MySQL error number behind a driver exception, when there is one.
+
+    pymysql raises ``MySQLError(errno, message)``, so the number is ``args[0]``.
+    It only survives on the exception: :attr:`TableMigrationResult.error` keeps
+    ``str(exc)``, which *prints* the number but does not let a caller match on it.
+    A foreign key rejection (1452) has to be told apart from every other failure,
+    and by the time the caller sees the result the exception is long gone — so the
+    loop captures it here, where the exception still exists.
+    """
+    args = getattr(exc, "args", ())
+    if args and isinstance(args[0], int):
+        return args[0]
+    return None
+
+
 @dataclass
 class TableMigrationResult:
     schema: str
@@ -387,6 +444,11 @@ class TableMigrationResult:
     skipped_columns: list[str] = field(default_factory=list)
     ok: bool = True
     error: str | None = None
+    #: MySQL error number of the failure, when the driver reported one. Not in
+    #: ``to_dict``: this is engine-side metadata for the caller that knows how to
+    #: explain a given code, and the HTTP contract of ``/api/migrate`` does not grow
+    #: a field just because a second entry point found a use for it.
+    error_errno: int | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -412,11 +474,15 @@ def _chunks(rows: list[dict], size: int):
 def migrate(
     cfg_source: Config,
     cfg_target: Config,
-    plan: QueryPlan,
+    plan: SelectPlan,
     batch_size: int = 200,
     dry_run: bool = False,
 ) -> list[TableMigrationResult]:
     """Copy each table's matching rows from the source into the destination.
+
+    ``plan`` is anything that satisfies :class:`SelectPlan`: the per-table query
+    comes from ``plan.select_for(target)``, so a query-driven plan and a table-list
+    plan travel through the same loop.
 
     Rows are written with ``REPLACE INTO``, so a row that already exists in the
     destination is replaced by the source's version rather than duplicated.
@@ -428,7 +494,7 @@ def migrate(
         ordered = order_by_dependencies(conn_dst, plan.tables)
 
         for target in ordered:
-            select = table_select(plan, target)
+            select = plan.select_for(target)
             dest_schema = target.target_schema or target.schema
             dest_table = target.target_table or target.table
             result = TableMigrationResult(
@@ -462,6 +528,7 @@ def migrate(
             except Exception as exc:  # noqa: BLE001 - reported per table below
                 result.ok = False
                 result.error = str(exc)
+                result.error_errno = _error_errno(exc)
                 results.append(result)
                 continue
 
@@ -504,6 +571,7 @@ def migrate(
             except Exception as exc:  # noqa: BLE001 - reported per table below
                 result.ok = False
                 result.error = str(exc)
+                result.error_errno = _error_errno(exc)
 
             results.append(result)
 

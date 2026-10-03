@@ -96,6 +96,6 @@ describe('App', () => {
     // AWS quedó con una sola herramienta: Diff, Crear, Editar y Sesiones salen
     // del menú. `/sessions` sigue enrutada aunque no esté acá, porque la página
     // de leer parámetros enlaza a esa vista.
-    expect(hrefs).toEqual(['/params-read', '/compile', '/schema-sync', '/sql']);
+    expect(hrefs).toEqual(['/params-read', '/compile', '/schema-sync', '/migrate-data', '/sql']);
   });
 });

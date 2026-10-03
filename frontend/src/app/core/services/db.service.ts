@@ -5,14 +5,17 @@ import {
   compileDbSchema,
   diffDbObject,
   executeSql,
+  listDbDateColumns,
   listDbObjects,
   listDbSchemas,
   migrateDbData,
+  migrateDbTableList,
   queryDb,
 } from '../../api-gen/functions';
 import {
   CompileRequest,
   CompileResponse,
+  DateColumnsResponse,
   DbDiffRequest,
   DbObjectsResponse,
   DiffResponse,
@@ -25,6 +28,7 @@ import {
   SchemaCompileRequest,
   SchemaCompileResponse,
   SchemasResponse,
+  TableMigrateRequest,
 } from '../../api-gen/models';
 
 @Injectable({ providedIn: 'root' })
@@ -65,5 +69,26 @@ export class DbService {
   /** Migrate every table involved in a query, honouring its joins and filters. */
   migrate(request: MigrationRequest): Promise<MigrationResponse> {
     return this.api.invoke(migrateDbData, { body: request });
+  }
+
+  /**
+   * The DATE/DATETIME/TIMESTAMP columns one table can be filtered by.
+   *
+   * Asked before migrating, so the picker offers real column names instead of
+   * asking the user to remember them. An empty list is the answer that says
+   * "this table migrates whole", not an error.
+   */
+  dateColumns(env: string, schema: string, table: string): Promise<DateColumnsResponse> {
+    return this.api.invoke(listDbDateColumns, { env, schema, table });
+  }
+
+  /**
+   * Migrate an explicit list of tables, each with its own window.
+   *
+   * The bulk sibling of `migrate`: same engine, same response, but the source of
+   * each `SELECT` is this list instead of a user-written query.
+   */
+  migrateTables(request: TableMigrateRequest): Promise<MigrationResponse> {
+    return this.api.invoke(migrateDbTableList, { body: request });
   }
 }

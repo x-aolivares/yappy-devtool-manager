@@ -12,10 +12,12 @@ from yappy_library.application.database.sync import exec as syncexec
 from yappy_library.application.database.sync import migrate as dbmig
 from yappy_library.application.database.sync import query as dbquery
 from yappy_library.application.database.sync import schema_sync as dbschema
+from yappy_library.application.database.sync import table_migrate as dbtablemig
 from ..deps import env_config
 from ..schemas import (
     CompileRequest,
     CompileResponse,
+    DateColumnsResponse,
     DbDiffRequest,
     DbObjectsResponse,
     DiffResponse,
@@ -28,6 +30,7 @@ from ..schemas import (
     SchemaCompileRequest,
     SchemaCompileResponse,
     SchemasResponse,
+    TableMigrateRequest,
 )
 
 router = APIRouter(tags=["db"])
@@ -181,6 +184,43 @@ def api_db_objects(env: str, schema: str, object_type: str):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
+
+
+@router.get(
+    "/api/db/date-columns", operation_id="list_db_date_columns", response_model=DateColumnsResponse
+)
+def api_db_date_columns(env: str, schema: str, table: str):
+    """List the columns a date window can be built on for one table.
+
+    Read-only, and asked *before* migrating: the picker has to offer the real
+    column names instead of asking the user to remember them, and the migration
+    validates against the same list, so what this returns and what the migration
+    accepts can never disagree.
+
+    A table with no date column answers an empty list instead of an error — that
+    is the answer that says "migrate this one whole".
+    """
+    if not schema.strip():
+        raise HTTPException(status_code=400, detail="Completá el schema.")
+    if not table.strip():
+        raise HTTPException(status_code=400, detail="Completá la tabla.")
+
+    schema, table = schema.strip(), table.strip()
+    cfg = env_config(env)
+    try:
+        with connect(cfg) as conn:
+            columns = obj.date_columns(conn, schema, table)
+    except SyncError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
+
+    return {
+        "env": env,
+        "schema_name": schema,
+        "table_name": table,
+        "columns": [{"name": c["COLUMN_NAME"], "type": c.get("DATA_TYPE", "")} for c in columns],
+    }
 
 
 @router.post("/api/execute/sql", operation_id="execute_sql", response_model=ExecuteSqlResponse)
@@ -494,6 +534,76 @@ def api_migrate(req: MigrationRequest):
         "dry_run": req.dry_run,
         "tables": [r.to_dict() for r in results],
         "notes": plan.notes,
+        "ok_count": sum(1 for r in results if r.ok),
+        "err_count": sum(1 for r in results if not r.ok),
+    }
+
+
+@router.post(
+    "/api/migrate/tables", operation_id="migrate_db_table_list", response_model=MigrationResponse
+)
+def api_migrate_tables(req: TableMigrateRequest):
+    """Migrate an explicit list of tables of one schema, each with its own window.
+
+    The same engine ``/api/migrate`` uses — :func:`dbmig.migrate` with a plan built
+    from a list instead of from a query — so ``REPLACE INTO``, the parent-first
+    write order, the column reconciliation and the per-table failure isolation
+    behave identically. Only the origin of each ``SELECT`` changes, and the
+    response is the same model, so the frontend renders both migrations with one
+    component.
+
+    Each entry carries an optional window: ``date_column`` plus inclusive
+    ``date_from``/``date_to``, a single bound or none both allowed. ``date_column``
+    is validated against the source's real DATE/DATETIME/TIMESTAMP columns
+    (:func:`dbtablemig.build_plan`) before anything is written, so a typo is a 400
+    and never a statement.
+
+    The source is opened twice: once to validate the plan and once to copy. That is
+    the price of :func:`dbmig.migrate` owning its own connections, and paying it
+    beats duplicating the copy loop to save one.
+
+    ``dry_run`` reads everything and writes nothing, which is the only honest way
+    to find out how many rows each table contributes before committing to it.
+    """
+    if req.env_a == req.env_b:
+        raise HTTPException(status_code=400, detail="El origen y el destino deben ser distintos")
+    schema = req.schema_name.strip()
+    if not schema:
+        raise HTTPException(status_code=400, detail="Completá el schema.")
+    if not req.tables:
+        raise HTTPException(status_code=400, detail="Elegí al menos una tabla para migrar.")
+    if not req.dry_run and not req.confirm:
+        raise HTTPException(
+            status_code=400, detail="La migración requiere confirmación (confirm=true)."
+        )
+
+    cfg_b = env_config(req.env_b)  # origen
+    cfg_a = env_config(req.env_a)  # destino
+
+    try:
+        with connect(cfg_b) as conn_b:
+            plan = dbtablemig.build_plan(
+                conn_b,
+                schema,
+                [
+                    (sel.table, dbtablemig.TableFilter(sel.date_column, sel.date_from, sel.date_to))
+                    for sel in req.tables
+                ],
+            )
+        results = dbmig.migrate(cfg_b, cfg_a, plan, dry_run=req.dry_run)
+    except SyncError as exc:
+        # Preconditions land here: schema or table missing in the origin, or a date
+        # column that is not one. All of them while nothing has been written.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
+
+    return {
+        "env_b": req.env_b,
+        "env_a": req.env_a,
+        "dry_run": req.dry_run,
+        "tables": [r.to_dict() for r in results],
+        "notes": plan.notes + dbtablemig.missing_parent_notes(results),
         "ok_count": sum(1 for r in results if r.ok),
         "err_count": sum(1 for r in results if not r.ok),
     }

@@ -54,6 +54,11 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         hint: 'Lleva todas las tablas y stored procedures de un esquema a otro ambiente',
       },
       {
+        link: '/migrate-data',
+        label: 'Migrar datos',
+        hint: 'Copia un conjunto de tablas de un ambiente a otro, con filtro por fecha por tabla',
+      },
+      {
         link: '/sql',
         label: 'Ejecutar SQL',
         hint: 'Consulta información y migra los datos de lo consultado',

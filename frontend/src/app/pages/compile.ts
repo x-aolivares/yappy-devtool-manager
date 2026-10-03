@@ -9,6 +9,7 @@ import { CopyButton } from '../shared/copy-button';
 import { EnvControlsComponent } from '../shared/env-controls';
 import { RegionControlsComponent } from '../shared/region-controls';
 import { SchemaSelectComponent } from '../shared/schema-select';
+import { AutoGrowDirective } from '../shared/auto-grow';
 
 /**
  * Compilar: ejecutar SQL contra un ambiente, tomando el SQL de donde sea.
@@ -43,6 +44,7 @@ import { SchemaSelectComponent } from '../shared/schema-select';
     SchemaSelectComponent,
     StatusBadge,
     CopyButton,
+    AutoGrowDirective,
   ],
   template: `
     <h1>Compilar</h1>
@@ -55,88 +57,95 @@ import { SchemaSelectComponent } from '../shared/schema-select';
     </p>
 
     <div class="panel">
-      <div class="section-title"><strong>1 · Ambiente donde compilar (destino)</strong></div>
-      @if (source() === 'env') {
-        <app-region-controls
-          [environments]="environments()"
-          [withService]="false"
-          envLabel="Ambientes"
-          hint="Elegí dos: el primero es el de origen y el segundo el de destino."
-          [(envB)]="envB"
-          [(envA)]="envA"
-        />
-      } @else {
-        <app-env-controls
-          [environments]="environments()"
-          [max]="1"
-          envLabel="Ambiente"
-          hint="Es el único ambiente: el SQL del editor ya viene listo."
-          [envs]="destEnvs()"
-          (envsChange)="onDestEnvChange($event)"
-        />
-        @if (envA()) {
-          <div class="form-grid">
-            <div>
-              <label for="compile-script-schema">Esquema (opcional)</label>
-              <app-schema-select
-                controlId="compile-script-schema"
-                [env]="envA()"
-                [(value)]="schema"
-                [optional]="true"
-                emptyLabel="Sin USE — usá nombres calificados"
+      <div class="columns">
+        <div class="field">
+          <div class="field-label">Origen del SQL</div>
+          <div class="radio-row">
+            <label>
+              <input
+                type="radio"
+                name="compile-source"
+                value="env"
+                [checked]="source() === 'env'"
+                (change)="setSource('env')"
               />
-              <p class="muted" style="margin-top:0.375rem; font-size:0.75rem;">
-                Si lo elegís, el script arranca con <code>USE {{ schema() }}</code>. Si lo dejás
-                vacío, los objetos tienen que venir con el esquema en el nombre.
-              </p>
-            </div>
+              Ambiente de origen
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="compile-source"
+                value="script"
+                [checked]="source() === 'script'"
+                (change)="setSource('script')"
+              />
+              Script
+            </label>
           </div>
-        }
-      }
-      @if (sameEnv()) {
-        <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
-          El origen y el destino no pueden ser el mismo ambiente.
-        </p>
-      }
+          <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
+            @if (source() === 'env') {
+              Se lee el objeto del ambiente de origen y <strong>Generar</strong> deja en el
+              editor el SQL que lo deja igual en el destino, exista o no exista allá.
+            } @else {
+              No hay nada que generar: el SQL del editor es el origen y se compila en el
+              destino, tal cual está.
+            }
+          </p>
+        </div>
 
-      <div class="section-title"><strong>2 · Origen del SQL</strong></div>
-      <div class="radio-row">
-        <label>
-          <input
-            type="radio"
-            name="compile-source"
-            value="env"
-            [checked]="source() === 'env'"
-            (change)="setSource('env')"
-          />
-          Ambiente de origen
-        </label>
-        <label>
-          <input
-            type="radio"
-            name="compile-source"
-            value="script"
-            [checked]="source() === 'script'"
-            (change)="setSource('script')"
-          />
-          Script
-        </label>
+        <div class="field">
+          <div class="field-label">Ambiente donde compilar (destino)</div>
+          @if (source() === 'env') {
+            <app-region-controls
+              [environments]="environments()"
+              [withService]="false"
+              envLabel="Ambientes"
+              hint="Elegí dos: el primero es el de origen y el segundo el de destino."
+              [(envB)]="envB"
+              [(envA)]="envA"
+            />
+          } @else {
+            <app-env-controls
+              [environments]="environments()"
+              [max]="1"
+              envLabel="Ambiente"
+              hint="Es el único ambiente: el SQL del editor ya viene listo."
+              [envs]="destEnvs()"
+              (envsChange)="onDestEnvChange($event)"
+            />
+            @if (envA()) {
+              <div style="margin-top:0.875rem;">
+                <label class="field-label" for="compile-script-schema">
+                  Esquema (opcional)
+                </label>
+                <app-schema-select
+                  controlId="compile-script-schema"
+                  [env]="envA()"
+                  [(value)]="schema"
+                  [optional]="true"
+                  emptyLabel="Sin USE — usá nombres calificados"
+                />
+                <p class="muted" style="margin-top:0.375rem; font-size:0.75rem;">
+                  Si lo elegís, el script arranca con <code>USE {{ schema() }}</code>. Si lo
+                  dejás vacío, los objetos tienen que venir con el esquema en el nombre.
+                </p>
+              </div>
+            }
+          }
+          @if (sameEnv()) {
+            <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
+              El origen y el destino no pueden ser el mismo ambiente.
+            </p>
+          }
+        </div>
       </div>
-      <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
-        @if (source() === 'env') {
-          Se lee el objeto del ambiente de origen y <strong>Generar</strong> deja en el editor
-          el SQL que lo deja igual en el destino, exista o no exista allá.
-        } @else {
-          No hay nada que generar: el SQL del editor es el origen y se compila en el destino,
-          tal cual está.
-        }
-      </p>
 
       @if (source() === 'env') {
-        <div class="section-title"><strong>3 · Esquema (del origen)</strong></div>
-        <div class="form-grid">
-          <div>
-            <label for="compile-schema">Esquema</label>
+        <div class="columns">
+          <div class="field">
+            <label class="field-label" for="compile-schema">
+              Esquema del origen
+            </label>
             <app-schema-select
               controlId="compile-schema"
               [env]="envB()"
@@ -149,51 +158,54 @@ import { SchemaSelectComponent } from '../shared/schema-select';
               </p>
             }
           </div>
+
+          <div class="field">
+            <div class="field-label">Tipo de objeto</div>
+            <div class="radio-row">
+              <label [style.opacity]="schema() ? 1 : 0.5">
+                <input
+                  type="radio"
+                  name="object-type"
+                  value="table"
+                  [disabled]="!schema()"
+                  [checked]="objectType() === 'table'"
+                  (change)="objectType.set('table')"
+                />
+                Tabla
+              </label>
+              <label [style.opacity]="schema() ? 1 : 0.5">
+                <input
+                  type="radio"
+                  name="object-type"
+                  value="procedure"
+                  [disabled]="!schema()"
+                  [checked]="objectType() === 'procedure'"
+                  (change)="objectType.set('procedure')"
+                />
+                Stored procedure
+              </label>
+            </div>
+            <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
+              @if (!schema()) {
+                Elegí un esquema antes.
+              } @else if (objectType() === 'procedure') {
+                Se recompila la definición completa en el destino.
+              } @else {
+                Se reemplaza la tabla entera en el destino
+                @if (envA()) {
+                  (se lleva sus filas en {{ envA() }})
+                }
+                .
+              }
+            </p>
+          </div>
         </div>
 
-        <div class="section-title"><strong>4 · Tipo de objeto</strong></div>
-        <div class="radio-row">
-          <label [style.opacity]="schema() ? 1 : 0.5">
-            <input
-              type="radio"
-              name="object-type"
-              value="table"
-              [disabled]="!schema()"
-              [checked]="objectType() === 'table'"
-              (change)="objectType.set('table')"
-            />
-            Tabla
-          </label>
-          <label [style.opacity]="schema() ? 1 : 0.5">
-            <input
-              type="radio"
-              name="object-type"
-              value="procedure"
-              [disabled]="!schema()"
-              [checked]="objectType() === 'procedure'"
-              (change)="objectType.set('procedure')"
-            />
-            Stored procedure
-          </label>
-        </div>
-        <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
-          @if (!schema()) {
-            Elegí un esquema antes.
-          } @else if (objectType() === 'procedure') {
-            Se recompila la definición completa en el destino.
-          } @else {
-            Se reemplaza la tabla entera en el destino
-            @if (envA()) {
-              (se lleva sus filas en {{ envA() }})
-            }
-            .
-          }
-        </p>
-
-        <div class="section-title"><strong>5 · Objeto</strong></div>
-        <div class="form-grid">
-          <div>
-            <label for="compile-object">Nombre del objeto</label>
+        <div class="columns">
+          <div class="field">
+            <label class="field-label" for="compile-object">
+              Nombre del objeto
+            </label>
             <select
               id="compile-object"
               [disabled]="!schema() || objectsLoading()"
@@ -222,23 +234,32 @@ import { SchemaSelectComponent } from '../shared/schema-select';
               </p>
             }
           </div>
-          <div class="actions" style="align-items:flex-end; justify-content:flex-end;">
-            <button type="button" [disabled]="busy() || !canGenerate()" (click)="generate()">
-              Generar
-            </button>
+
+          <div class="field" style="display:flex; flex-direction:column; justify-content:flex-end;">
+            <div class="actions" style="justify-content:flex-end;">
+              <button type="button" [disabled]="busy() || !canGenerate()" (click)="generate()">
+                Generar
+              </button>
+            </div>
+            @if (!canGenerate() && schema() && objectName()) {
+              <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
+                Falta elegir el ambiente de destino para poder generar.
+              </p>
+            }
           </div>
         </div>
-        @if (!canGenerate() && schema() && objectName()) {
-          <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
-            Falta elegir el ambiente de destino para poder generar.
-          </p>
-        }
       }
     </div>
 
     <div class="panel">
-      <div class="section-title">
+      <div class="section-title section-title--plain">
         <strong>{{ source() === 'env' ? '6' : '3' }} · Script a ejecutar en {{ envA() || 'el destino' }}</strong>
+        <span class="actions">
+          <app-copy-button [text]="script()" />
+          <button type="button" [disabled]="busy() || !canExecute()" (click)="run()">
+            Compilar en {{ envA() || '…' }}
+          </button>
+        </span>
       </div>
       <p class="muted" style="margin-bottom:0.5rem; font-size:0.75rem;">
         @if (source() === 'env') {
@@ -252,6 +273,8 @@ import { SchemaSelectComponent } from '../shared/schema-select';
       </p>
       <textarea
         id="compile-script"
+        appAutoGrow
+        [autoGrowValue]="script()"
         spellcheck="false"
         rows="12"
         [value]="script()"
@@ -271,13 +294,6 @@ import { SchemaSelectComponent } from '../shared/schema-select';
         Podés editarlo, vaciarlo y escribir tu propio SQL. Se ejecuta tal cual está, statement por
         statement, en el ambiente destino.
       </p>
-
-      <div class="actions" style="margin-top:0.75rem; justify-content:space-between; flex-wrap:wrap; gap:0.625rem;">
-        <app-copy-button [text]="script()" />
-        <button type="button" [disabled]="busy() || !canExecute()" (click)="run()">
-          Compilar en {{ envA() || '…' }}
-        </button>
-      </div>
       @if (!canExecute() && envA()) {
         <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
           @if (source() === 'env') {

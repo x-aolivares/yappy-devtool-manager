@@ -413,6 +413,47 @@ def test_rows_are_written_in_batches(fake_connections):
     assert results[0].replaced == 250
     assert [len(b) for b in dst.batches] == [100, 100, 50]
 
+
+# --- the plan contract -------------------------------------------------------
+
+
+def test_query_plan_select_for_is_table_select_and_nothing_else():
+    """La generalización delegó, no copió.
+
+    `migrate()` ahora pide el SQL por `SelectPlan.select_for`, así que si este
+    método se desviara de `table_select` el texto de la migración cambiaría sin que
+    ningún otro test lo notara: `/api/migrate` es un consumidor más, no el
+    propietario de la fórmula.
+    """
+    plan = parse_select(EXAMPLE)
+    for target in plan.tables:
+        assert plan.select_for(target) == dbmig.table_select(plan, target)
+
+
+def test_plan_selects_goes_through_the_contract():
+    plan = parse_select(EXAMPLE)
+
+    assert dbmig.plan_selects(plan) == [(t, dbmig.table_select(plan, t)) for t in plan.tables]
+
+
+def test_migrate_still_takes_a_queryPlan(fake_connections):
+    """`migrate()` recibe un `SelectPlan`, y un `QueryPlan` lo sigue siendo."""
+    src = FakeConn(
+        tables={"shop.orders": [{"COLUMN_NAME": "id"}]},
+        rows={"SELECT DISTINCT `o`.*": [{"id": 1}]},
+    )
+    dst = FakeConn(tables={"shop.orders": [{"COLUMN_NAME": "id"}]})
+    cfg_b, cfg_a = fake_connections(src, dst)
+
+    plan = parse_select("SELECT * FROM shop.orders o")
+    assert isinstance(plan, m.SelectPlan)
+
+    results = m.migrate(cfg_b, cfg_a, plan)
+
+    assert results[0].ok is True
+    assert results[0].replaced == 1
+    assert dst.batches == [[(1,)]]
+
 def test_migrate_error_names_origin_and_destination(fake_connections):
     """Cuando no hay columnas en común, el error tiene que dizer cuál es cuál.
 

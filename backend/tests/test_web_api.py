@@ -1,14 +1,18 @@
+from datetime import date
+
 import pytest
 from fastapi import HTTPException
 
 from yappy_api.routes.db import (
     api_compile,
     api_compile_schema,
+    api_db_date_columns,
     api_db_diff,
     api_db_objects,
     api_db_schemas,
     api_execute_sql,
     api_migrate,
+    api_migrate_tables,
     api_query,
 )
 from yappy_api.routes.envs import api_envs
@@ -40,6 +44,8 @@ from yappy_api.schemas import (
     QueryRequest,
     ReadParamsEntry,
     SchemaCompileRequest,
+    TableMigrateRequest,
+    TableSelectionRequest,
     UpdateSessionItemRequest,
 )
 from yappy_library.adapters.database.connection import SyncError
@@ -1869,6 +1875,228 @@ def test_api_migrate_defaults_the_schema_for_unqualified_tables(monkeypatch):
         )
     )
     assert captured["tables"] == ["shop.orders"]
+
+
+# --- Migrate: lista de tablas con ventana de fechas --------------------------
+
+
+PEDIDOS = [{"COLUMN_NAME": "fecha", "DATA_TYPE": "datetime"}]
+
+
+def _table_migrate_world(monkeypatch, *, date_columns=None):
+    """El origen que ``/api/migrate/tables`` necesita para validar el plan.
+
+    Igual que ``_schema_world``: ``_FakeConn`` no tiene ``cursor()``, así que
+    ``list_schemas``, ``list_tables`` y ``date_columns`` entran por acá.
+    """
+    _two_envs(monkeypatch, ("dev", "local"))  # dev = origen, local = destino
+    columns = date_columns or {}
+    monkeypatch.setattr(obj, "list_schemas", lambda conn: ["yappy"])
+    monkeypatch.setattr(obj, "list_tables", lambda conn, schema: ["pedidos", "lineas"])
+    monkeypatch.setattr(
+        obj,
+        "date_columns",
+        lambda conn, schema, table: columns.get(f"{schema}.{table}", []),
+    )
+
+
+def _two_selection_request(**overrides):
+    payload = dict(
+        env_b="dev",
+        env_a="local",
+        schema_name="yappy",
+        tables=[
+            TableSelectionRequest(
+                table="pedidos",
+                date_column="fecha",
+                date_from=date(2026, 1, 1),
+                date_to=date(2026, 1, 31),
+            ),
+            TableSelectionRequest(table="lineas"),
+        ],
+        dry_run=True,
+    )
+    payload.update(overrides)
+    return TableMigrateRequest(**payload)
+
+
+def test_api_migrate_tables_reports_counts_and_rows_per_table(monkeypatch):
+    _table_migrate_world(monkeypatch, date_columns={"yappy.pedidos": PEDIDOS})
+    captured = {}
+
+    def fake_migrate(cfg_b, cfg_a, plan, dry_run=False):
+        captured["source"] = cfg_b._env
+        captured["target"] = cfg_a._env
+        captured["plan"] = plan
+        captured["dry_run"] = dry_run
+        return [
+            dbmig.TableMigrationResult(
+                schema="yappy", table="pedidos", alias="",
+                target_schema="yappy", target_table="pedidos",
+                select_sql=plan.select_for(plan.tables[0]),
+                row_count=12, replaced=0 if dry_run else 12,
+            ),
+            dbmig.TableMigrationResult(
+                schema="yappy", table="lineas", alias="",
+                target_schema="yappy", target_table="lineas",
+                select_sql=plan.select_for(plan.tables[1]),
+                row_count=40, replaced=0 if dry_run else 40,
+            ),
+        ]
+
+    monkeypatch.setattr("yappy_api.routes.db.dbmig.migrate", fake_migrate)
+
+    payload = api_migrate_tables(_two_selection_request())
+
+    # El mismo motor y el mismo origen/destino que /api/migrate.
+    assert captured["source"] == "dev"
+    assert captured["target"] == "local"
+    assert captured["dry_run"] is True
+    plan = captured["plan"]
+    assert [t.name for t in plan.tables] == ["yappy.pedidos", "yappy.lineas"]
+    # La ventana llega al motor como SQL, con el tope exclusivo.
+    assert plan.select_for(plan.tables[0]) == (
+        "SELECT * FROM `yappy`.`pedidos`\n"
+        "WHERE `fecha` >= '2026-01-01 00:00:00' AND `fecha` < '2026-02-01 00:00:00'"
+    )
+    assert payload["env_b"] == "dev"
+    assert payload["env_a"] == "local"
+    assert payload["dry_run"] is True
+    assert payload["ok_count"] == 2
+    assert payload["err_count"] == 0
+    assert [t["table_name"] for t in payload["tables"]] == ["pedidos", "lineas"]
+    assert [t["row_count"] for t in payload["tables"]] == [12, 40]
+    assert all(t["replaced"] == 0 for t in payload["tables"])
+
+
+def test_api_migrate_tables_requires_confirmation_when_writing(monkeypatch):
+    _table_migrate_world(monkeypatch, date_columns={"yappy.pedidos": PEDIDOS})
+
+    with pytest.raises(HTTPException) as exc:
+        api_migrate_tables(_two_selection_request(dry_run=False, confirm=False))
+
+    assert exc.value.status_code == 400
+    assert "confirmación" in str(exc.value.detail)
+
+
+def test_api_migrate_tables_dry_run_needs_no_confirmation(monkeypatch):
+    _table_migrate_world(monkeypatch, date_columns={"yappy.pedidos": PEDIDOS})
+    monkeypatch.setattr(
+        "yappy_api.routes.db.dbmig.migrate",
+        lambda cfg_b, cfg_a, plan, dry_run=False: [],
+    )
+
+    payload = api_migrate_tables(_two_selection_request(dry_run=True, confirm=False))
+
+    assert payload["ok_count"] == 0
+    assert payload["err_count"] == 0
+
+
+def test_api_migrate_tables_rejects_same_source_and_target(monkeypatch):
+    _two_envs(monkeypatch, ("dev", "local"))
+    with pytest.raises(HTTPException) as exc:
+        api_migrate_tables(_two_selection_request(env_a="dev"))
+    assert exc.value.status_code == 400
+    assert "distintos" in str(exc.value.detail)
+
+
+def test_api_migrate_tables_rejects_an_empty_table_list(monkeypatch):
+    _two_envs(monkeypatch, ("dev", "local"))
+    with pytest.raises(HTTPException) as exc:
+        api_migrate_tables(_two_selection_request(tables=[]))
+    assert exc.value.status_code == 400
+    assert "al menos una tabla" in str(exc.value.detail)
+
+
+def test_api_migrate_tables_rejects_a_date_column_the_origin_does_not_have(monkeypatch):
+    _table_migrate_world(monkeypatch, date_columns={"yappy.pedidos": PEDIDOS})
+
+    with pytest.raises(HTTPException) as exc:
+        api_migrate_tables(
+            _two_selection_request(
+                tables=[
+                    TableSelectionRequest(
+                        table="pedidos", date_column="total",
+                        date_from=date(2026, 1, 1), date_to=date(2026, 1, 31),
+                    )
+                ]
+            )
+        )
+
+    # El mensaje de la validación llega tal cual, con las columnas válidas encima.
+    assert exc.value.status_code == 400
+    detail = str(exc.value.detail)
+    assert "no es una columna de fecha" in detail
+    assert "fecha" in detail
+    assert not detail.startswith("Error de base de datos")
+
+
+def test_api_migrate_tables_explains_a_foreign_key_rejection(monkeypatch):
+    """El 1452 se explica en la respuesta, no se reenvía como string del driver."""
+    _table_migrate_world(monkeypatch, date_columns={"yappy.pedidos": PEDIDOS})
+
+    def fake_migrate(cfg_b, cfg_a, plan, dry_run=False):
+        return [
+            dbmig.TableMigrationResult(
+                schema="yappy", table="pedidos", alias="",
+                target_schema="yappy", target_table="pedidos",
+                select_sql=plan.select_for(plan.tables[0]),
+                error=(
+                    "(1452, 'Cannot add or update a child row: "
+                    "a foreign key constraint fails')"
+                ),
+                error_errno=1452,
+                ok=False,
+            ),
+        ]
+
+    monkeypatch.setattr("yappy_api.routes.db.dbmig.migrate", fake_migrate)
+
+    payload = api_migrate_tables(_two_selection_request())
+
+    assert payload["ok_count"] == 0
+    assert payload["err_count"] == 1
+    notes = " ".join(payload["notes"])
+    assert "1452" in notes
+    assert "ampliando el rango" in notes
+
+
+def test_api_db_date_columns_returns_the_windowable_columns(monkeypatch):
+    _two_envs(monkeypatch, ("dev",))
+    monkeypatch.setattr(
+        obj,
+        "date_columns",
+        lambda conn, schema, table: [
+            {"COLUMN_NAME": "alta", "DATA_TYPE": "date"},
+            {"COLUMN_NAME": "fecha", "DATA_TYPE": "datetime"},
+        ],
+    )
+
+    payload = api_db_date_columns(env="dev", schema="yappy", table="pedidos")
+
+    assert payload == {
+        "env": "dev",
+        "schema_name": "yappy",
+        "table_name": "pedidos",
+        "columns": [
+            {"name": "alta", "type": "date"},
+            {"name": "fecha", "type": "datetime"},
+        ],
+    }
+
+
+def test_api_db_date_columns_requires_a_schema_and_a_table(monkeypatch):
+    _two_envs(monkeypatch, ("dev",))
+
+    with pytest.raises(HTTPException) as exc:
+        api_db_date_columns(env="dev", schema="  ", table="pedidos")
+    assert exc.value.status_code == 400
+    assert "schema" in str(exc.value.detail)
+
+    with pytest.raises(HTTPException) as exc:
+        api_db_date_columns(env="dev", schema="yappy", table="")
+    assert exc.value.status_code == 400
+    assert "tabla" in str(exc.value.detail)
 
 
 def test_api_params_apply_target_b_builds_script_for_origin(monkeypatch):
