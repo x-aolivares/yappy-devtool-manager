@@ -253,8 +253,13 @@ h2 {
 /* `.hint-error` lo usan nueve templates en cinco archivos y hasta ahora no
    tenía ni una regla: los errores de validación se veían como texto gris
    común, indistinguibles de una nota explicativa. Se le da la tinta de error y
-   una marca a la izquierda para que salte a la vista sin agrandar el bloque. */
-.hint-error {
+   una marca a la izquierda para que salte a la vista sin agrandar el bloque.
+
+   El selector es `.muted.hint-error` y no `.hint-error`: los nueve usos ya
+   vienen con `muted`, y compoundando los dos la regla gana por especificidad
+   en vez de por orden en el archivo. Con `.hint-error` sola dependía de que
+   nadie escribiera un `.muted` más abajo y los errores volvían a gris. */
+.muted.hint-error {
   color: var(--err);
   border-left: 0.1875rem solid var(--bb-danger-border);
   padding-left: 0.5rem;
@@ -282,6 +287,47 @@ h2 {
 /* Los últimos de una fila ya no necesitan el margen: la grilla los separa. */
 .field:last-child {
   margin-bottom: 0;
+}
+
+/* Fila repetida de un formulario: una unidad de una lista que lleva sus propios
+   controles adentro. La usa Migrar datos, donde cada tabla marcada tiene su
+   filtro de fechas.
+
+   Deliberadamente NO es `.stmt-row`: ese es el separador de resultados de una
+   ejecución —fila sin fondo, con borde abajo, para leer en vertical— y reciclarlo
+   para un formulario hacía que un control de entrada pareciera un resultado. Esta
+   es una caja: se distingue de un vistazo de dónde termina una fila de ejecución
+   y empieza la siguiente. */
+.pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pick-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0.875rem;
+  background: var(--panel);
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--bb-border-radius);
+}
+
+.pick-row__head {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+}
+
+/* Lista de casillas que se acomoda en columnas. Una tabla por renglón con cien
+   tablas es una barra de scroll larga sin ningún motivo: lo que se elige se
+   escanea, no se lee. */
+.check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  gap: 0.125rem 0.875rem;
 }
 
 /* Título de panel sin la regla, para cuando los controles van en la misma línea
@@ -655,9 +701,11 @@ h2 {
   }
 
   /* Fallback para las páginas que deshabilitan un radio sin poner opacidad
-     inline. Donde sí la hay, la inline gana y esto no aplica. */
+     inline. El 0.5 coincide con el `[style.opacity]` que sí usan las páginas que
+     lo pasan inline: donde están los dos, gana el inline y los valores coinciden
+     para que el estado se vea igual en todas. */
   label:has(input:disabled) {
-    opacity: 0.45;
+    opacity: 0.5;
     cursor: not-allowed;
   }
 
@@ -829,6 +877,17 @@ textarea {
   min-height: 13.75rem;
   resize: vertical;
   line-height: 1.5;
+}
+
+/* Tope del auto-grow. El selector es por atributo y no global a propósito: un
+   `max-height` en `textarea` pelaría también con el `textarea.value-box` de Leer
+   parámetros, que está diseñado para crecer con el contenido que copiás, y con
+   el editor de una consulta de la página de SQL, que nunca necesita tanto.
+
+   La directiva escribe el `scrollHeight` completo sin tope propio; este es el
+   único lugar donde el alto se decide. Cambiarlo acá, con cualquier unidad. */
+textarea[appAutoGrow] {
+  max-height: 32rem;
 }
 
 .change-input {

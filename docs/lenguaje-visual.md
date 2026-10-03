@@ -1,17 +1,17 @@
 # Lenguaje visual de los formularios
 
-Referencia de los patrones visuales que nacieron del rediseño de **Compilar**
-(2026-10). La idea es que las páginas que comparten el mismo flujo —Sincronizar
-schema, Migrar datos, Ejecutar SQL— adopten estos mismos patrones, para que la
-app se vea como una sola cosa y no como cinco templates que se parezcan.
+Referencia de los patrones visuales de las páginas de base de datos: **Compilar**,
+**Sincronizar schema**, **Migrar datos** y **Ejecutar SQL**. Las cuatro están
+migradas; la idea es que la app se vea como una sola cosa y no como cuatro
+templates que se parezcan.
 
-Regla que gobernó el trabajo: **esto es presentación, no comportamiento.** Ningún
+Regla que gobierna el trabajo: **esto es presentación, no comportamiento.** Ningún
 patrón introduce estado, ni una clase para distinguir "activo" en Angular, ni un
 cálculo. El estado sale siempre del DOM.
 
 ## Paleta
 
-**No se tocó.** Los tokens viven en dos lugares de `frontend/src/styles.scss` y
+**No se toca.** Los tokens viven en dos lugares de `frontend/src/styles.scss` y
 ya tienen lo que hace falta:
 
 | Token | Rol |
@@ -28,6 +28,54 @@ Ojo con una inversión que confunde: en dark, `--bb-bg` es el **panel** y
 
 El tema se aplica con `data-theme` en `<html>`, y lo mueve
 `ThemeService.setTheme()`. Es el único lugar donde se cambia.
+
+## La regla del `.field-label`
+
+> **Un field lleva `.field-label` sólo si el control de adentro no trae etiqueta
+> propia.**
+
+Es la decisión que antes no estaba escrita y que hacía que Compilar tuviera 5
+fields y 4 labels, sin que nadie supiera por qué. Los dos casos:
+
+- `app-schema-select`, `<select>` y `<input>` pelados **no** traen etiqueta →
+  hay que ponerla.
+- `app-env-controls`, `app-env-picker` y `app-region-controls` ya dibujan su
+  propia `.pill-label` → poner otra sería repetir lo mismo en dos versalitas
+  distintas.
+
+Lo mismo aplica a los `<label for>`: si existen, son la etiqueta del campo, y el
+`field-label` es ese mismo `<label>`, no un `<div>` aparte.
+
+## Prosa: qué se quitó y por qué
+
+Las cuatro páginas tenían un bloque de explanatory text por campo. Salió casi
+todo. Lo que queda, y el criterio:
+
+**Se queda**
+- **Errores.** `.hint-error`, `.error-box`.
+- **Estados.** Spinners, "cargando X", "el origen no tiene tablas".
+- **Por qué el botón está deshabilitado.** `generateHint()` en Sincronizar schema
+  y `submitHint()` en Migrar datos: son un `computed` con un mensaje por rama.
+- **Advertencias de algo destructivo.** El `replaceNotice()` de Compilar
+  (el DROP se lleva las filas) y el `hint-error` del script de Sincronizar.
+- **Una frase de seguridad que no está en otro lado.** En Compilar, el
+  `DROP ... IF EXISTS` que explica por qué el script se puede correr dos veces.
+
+**Se fue**
+- "Se lee el objeto del ambiente de origen y Generar deja en el editor…".
+- "Elegí dos: el primero es el de origen y el segundo el de destino." — la
+  información **sigue visible**: `app-region-controls` reenvía
+  `roleLabels: ['Origen','Destino']` y `env-picker` las pinta como badge
+  `.env-role` en cada píldora.
+- "Las dos fechas son inclusivas: `<code>Hasta 2026-03-31</code>` también trae…".
+  Los labels de los inputs dicen "inclusive", y el backend es el que renderiza
+  el tope **exclusivo** un día después.
+- Los párrafos introductorios de las cuatro páginas, reducidos a una línea.
+
+**Las preguntas que se responden con el control, no con texto**: qué hace el
+segundo ambiente (los badges), si el rango incluye el último día (el label del
+input), por qué no se puede filtrar una tabla (no hay columnas de fecha, y se
+lo dice en el lugar donde se lo intentaría).
 
 ## Segmentado
 
@@ -72,6 +120,13 @@ las esquinas externas.
 angosta. El costo asumido: si el grupo da vuelta a la siguiente fila, la unión
 se pierde en el salto.
 
+### Lo que NO es un segmentado
+
+**Las casillas de selección múltiple no se convierten en segmentado.** El alcance
+de Sincronizar schema (Tablas / Stored procedures) y la lista de tablas de
+Migrar datos son multi-selección: un segmentado implica elección única y
+mentiría sobre la semántica. Se quedan como `.checkbox-row` nativos.
+
 ## Paneles y campos
 
 ```html
@@ -88,12 +143,26 @@ se pierde en el salto.
 
 - **`.panel`** — la caja con borde de 1px. Es el contenedor, no cada grupo.
 - **`.columns`** — grilla de dos columnas que colapsa a una sola bajo `47.5rem`.
-  Ya existía; la usaban dos páginas que dejaron de estar enrutadas.
 - **`.field`** — un bloque de campos y todo lo que cuelga de él. El margen
   inferior separa los grupos; el de la última columna se anula con
   `.field:last-child`.
-- **`.field-label`** — la etiqueta suelta sobre el control, en versalitas.
-  **Es la alternativa a `.section-title`**: sin la regla horizontal de debajo.
+- **`.field-label`** — la etiqueta suelta sobre el control, en versalitas. **Es la
+  alternativa a `.section-title`**, que conserva la regla horizontal y hoy sólo
+  se usa con el modificador `--plain`.
+
+## Fila repetida de un formulario
+
+`.pick-list` y `.pick-row` son para una **unidad de una lista que lleva sus
+propios controles adentro**: en Migrar datos, cada tabla marcada con su filtro de
+fechas.
+
+Deliberadamente **no** es `.stmt-row`: ese es el separador de resultados de una
+ejecución —fila sin fondo, con borde abajo— y reciclarlo para un formulario hacía
+que un control de entrada pareciera un resultado. `.pick-row` es una caja, y se
+distingue de un vistazo de dónde termina una fila de ejecución.
+
+`.check-grid` es para listas de casillas que se escanean: una tabla por renglón
+con cien tablas es una barra de scroll larga sin motivo.
 
 ## Título de panel con acciones a la derecha
 
@@ -111,14 +180,19 @@ que pide el wireframe cuando los botones van en la misma línea:
 </div>
 ```
 
+Los tres hijos de `.section-title` funcionan: los usan Compilar (texto + acciones)
+y Leer Parámetros (texto + metadata + badge).
+
 ## Errores de validación
 
-`.hint-error` se usa en nueve templates de cinco archivos y antes de este trabajo
-**no tenía ni una regla CSS**: los errores se veían como texto gris, igual que
-una nota explicativa. Ahora lleva la tinta de error y una marca a la izquierda.
-Es la clase a usar para cualquier mensaje de validación en línea.
+`.muted.hint-error` se usa en nueve templates de cinco archivos y antes de este
+trabajo **no tenía ni una regla CSS**: los errores se veían como texto gris,
+igual que una nota explicativa.
 
-Los errores de página completa van en `.error-box`, que ya existía.
+El selector es **compuesto a propósito**. Los nueve usos ya vienen con `muted`, y
+`.muted.hint-error` gana por especificidad en vez de depender del orden en el
+archivo: con un `.hint-error` solo, alcanzar a `.muted` dependía de que nadie
+escribiera un `.muted` más abajo.
 
 ## Editor de SQL
 
@@ -135,35 +209,82 @@ siga al contenido. Dos caminos de redimensionado, y **ambos hacen falta**:
   script no dispara `input`, así que sin ese input el editor se quedaría con el
   alto anterior justo después de Generar.
 
-El **tope lo pone el CSS**, no la directiva: se escribe el `scrollHeight` completo
-y si un `max-height` de la hoja lo recorta, el navegador recorta y aparece el
-scroll. Por eso no hay lógica de tope en la clase y el tope se cambia en CSS, con
-cualquier unidad, sin recompilar.
+**El tope lo pone el CSS**, con el selector por atributo
+`textarea[appAutoGrow] { max-height: 32rem }`, no la directiva: se escribe el
+`scrollHeight` completo y si el `max-height` lo recorta, el navegador recorta y
+aparece el scroll. Por eso el tope se cambia en CSS, con cualquier unidad.
 
-CSS tiene `field-sizing: content` para lo mismo, pero Firefox no lo soporta y
-ahí el editor volvería a su alto fijo sin avisar.
+El selector es **por atributo y no global** a propósito: un `max-height` en
+`textarea` pelaría con el `textarea.value-box` de Leer Parámetros, que está
+diseñado para crecer con el contenido que copiás.
+
+Dos interacciones que conviene conocer:
+
+- `resize: vertical` sigue activo, y **choca** con el auto-grow: si arrastrás el
+  textarea más alto que su contenido, al siguiente `input` vuelve al alto del
+  contenido. Sirve para encogerlo a propósito, no para estirarlo.
+- CSS tiene `field-sizing: content` para lo mismo, pero Firefox no lo soporta y
+  ahí el editor volvería a su alto fijo sin avisar.
+
+**No todas las textareas lo llevan.** `textarea.value-box` de Leer Parámetros
+muestra un valor puntual, no un script, y tiene su propio alto.
 
 ## Botones
 
 - Sin clase → primario, relleno azul. Es el `button` global.
 - `class="secondary"` → contorno. Vive **fuera** del bloque `button` en
-  `styles.scss` a propósito: anidado adentro no se podía estilar por separado,
-  y un panel con una acción principal y dos acompañantes las necesita
-  distintas.
+  `styles.scss` a propósito: anidado adentro no se podía estilar por separado, y
+  un panel con una acción principal y dos acompañantes las necesita distintas.
+
+## Dos fuentes de verdad para el mismo estado
+
+El estado "deshabilitado" de un segmentado tiene dos caminos: el `[style.opacity]`
+inline que las páginas pasan, y el `label:has(input:disabled)` del CSS. El inline
+gana por estar en el elemento. Los dos usan **0.5** a propósito: donde están
+ambos no se nota, y donde hay uno solo el estado se ve igual en todas las
+páginas.
 
 ## Checklist para migrar una página
 
 1. Cambiar `.section-title` por `.field-label` en los títulos de grupo internos,
-   y dejar `.section-title` (o `+ .section-title--plain`) solo para el título del
+   y dejar `.section-title` (o `+ .section-title--plain`) sólo para el título del
    panel.
-2. Envolver los grupos en `.columns` / `.field`. **Los `@if` y `@for` no se
+2. Aplicar **la regla del field-label** de más arriba: no duplicar la etiqueta
+   que el componente ya trae.
+3. Envolver los grupos en `.columns` / `.field`. **Los `@if` y `@for` no se
    tocan**: la grilla va alrededor, no adentro.
-3. Revisar los `<p class="muted hint-error">`: ya se ven como errores.
-4. Si tiene textarea de SQL, agregar `appAutoGrow` + `[autoGrowValue]`.
-5. No tocar nada de signals, bindings ni handlers.
+4. Revisar los `<p class="muted hint-error">`: ya se ven como errores.
+5. Si tiene textarea de SQL, agregar `appAutoGrow` + `[autoGrowValue]`.
+6. Subir las acciones al header del panel con `.section-title--plain`.
+7. No tocar nada de signals, bindings ni handlers.
+
+## Tests: afirmar sobre el mecanismo
+
+**Un assert sobre el texto de una leyenda se rompe cada vez que se limpia una
+línea de copy.** Es la razón por la que esta tanda tocó menos specs de los que se
+esperaba, y la razón por la que `sql.ts` y `params-read.ts` —que no tenían un
+solo test— recibieron specs **antes** de ser restiladas.
+
+Las tres formas de afirmar bien, en orden de preferencia:
+
+1. **Sobre lo que se manda.** `expect(sent[0].dry_run).toBe(true)`.
+2. **Sobre lo que se renderiza.** `expect(el.querySelector('app-region-controls')).toBeNull()`.
+3. **Sobre un `computed`.** `expect(comp.showMigrate()).toBe(false)`.
+
+La forma que **no** funciona es buscar texto en el `textContent` de la página
+entera, porque las palabras viven en más de un lado. El ejemplo: un test pedía
+`not.toContain('Migrar info')` para verificar que el panel no se renderizaba, y
+fallaba porque la palabra también estaba en la intro de la página. El mismo
+problema con los títulos numerados: `not.toContain('Esquema (del origen)')` pasó
+a ser vacuo cuando el label pasó a ser `Esquema del origen` — la cadena con
+paréntesis ya no existía en ningún lado.
+
+Los `toContain` del texto de las `notes` del backend sí son intocables: son texto
+de negocio, no caption de UI.
 
 ## Lo que este trabajo NO cambió
 
 Los tokens de color, el tema, las rutas, los servicios, y la lógica de todas las
 páginas. Los cambios de comportamiento de esta tanda: ninguno. La única lógica
 nueva es `AutoGrowDirective`, que es presentación pura.
+

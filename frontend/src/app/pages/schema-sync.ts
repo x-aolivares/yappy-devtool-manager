@@ -7,6 +7,7 @@ import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
 import { RegionControlsComponent } from '../shared/region-controls';
 import { SchemaSelectComponent } from '../shared/schema-select';
+import { AutoGrowDirective } from '../shared/auto-grow';
 
 /**
  * Sincronizar schema: un solo script para todo un esquema, del ambiente de origen
@@ -36,37 +37,39 @@ import { SchemaSelectComponent } from '../shared/schema-select';
  */
 @Component({
   selector: 'app-schema-sync-page',
-  imports: [RegionControlsComponent, SchemaSelectComponent, StatusBadge, CopyButton],
+  imports: [
+    RegionControlsComponent,
+    SchemaSelectComponent,
+    StatusBadge,
+    CopyButton,
+    AutoGrowDirective,
+  ],
   template: `
     <h1>Sincronizar schema</h1>
     <p class="muted">
-      Toma todas las tablas y stored procedures de un esquema en el ambiente de
-      <strong>origen</strong> y arma <strong>un solo script</strong> para dejar el destino igual.
-      Las tablas del destino que el origen no tiene quedan como están.
+      Toma todas las tablas y stored procedures de un esquema del ambiente de origen y arma un solo
+      script para dejar el destino igual.
     </p>
 
     <div class="panel">
-      <div class="section-title"><strong>1 · Ambientes</strong></div>
-      <app-region-controls
-        [environments]="environments()"
-        [withService]="false"
-        envLabel="Ambientes"
-        hint="Elegí dos: el primero es el de origen y el segundo el de destino."
-        [(envB)]="envB"
-        [(envA)]="envA"
-      />
-      @if (sameEnv()) {
-        <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
-          El origen y el destino no pueden ser el mismo ambiente.
-        </p>
-      }
-    </div>
+      <div class="columns">
+        <div class="field">
+          <app-region-controls
+            [environments]="environments()"
+            [withService]="false"
+            envLabel="Ambientes"
+            [(envB)]="envB"
+            [(envA)]="envA"
+          />
+          @if (sameEnv()) {
+            <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
+              El origen y el destino no pueden ser el mismo ambiente.
+            </p>
+          }
+        </div>
 
-    <div class="panel">
-      <div class="section-title"><strong>2 · Esquema y alcance</strong></div>
-      <div class="form-grid">
-        <div>
-          <label for="schema-sync-schema">Esquema</label>
+        <div class="field">
+          <label class="field-label" for="schema-sync-schema">Esquema del origen</label>
           <app-schema-select
             controlId="schema-sync-schema"
             [env]="envB()"
@@ -97,32 +100,27 @@ import { SchemaSelectComponent } from '../shared/schema-select';
         </label>
       </div>
 
-      <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
-        @if (!scopeSelected()) {
-          Marcá al menos tablas o stored procedures: sincronizar un esquema sin alcance no
-          sincroniza nada.
-        } @else {
-          El alcance es el del origen. Marcá sólo <strong>tablas</strong> para deixar los stored
-          procedures del destino como están, o al revés.
-        }
-      </p>
-    </div>
-
-    <div class="panel">
-      <div class="section-title"><strong>3 · Generar</strong></div>
-      <div class="actions">
-        <button type="button" [disabled]="busy() || !canGenerate()" (click)="generate()">
-          Generar
-        </button>
+      <div
+        class="field"
+        style="display:flex; align-items:center; justify-content:space-between; gap:0.75rem; flex-wrap:wrap;"
+      >
         @if (generateHint(); as hint) {
           <span class="muted" style="font-size:0.75rem;">{{ hint }}</span>
+        } @else {
+          <span></span>
         }
+        <div class="actions">
+          <button type="button" [disabled]="busy() || !canGenerate()" (click)="generate()">
+            Generar
+          </button>
+        </div>
       </div>
+    </div>
 
-      @if (result(); as r) {
-        <div
-          style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-top:0.75rem;"
-        >
+    @if (result(); as r) {
+      <div class="panel">
+        <div class="section-title"><strong>Resultado</strong></div>
+        <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
           <app-badge [status]="r.status" />
           <span class="muted">
             {{ r.env_b }} → {{ r.env_a }} · {{ tables().length }} tabla(s) y
@@ -132,7 +130,8 @@ import { SchemaSelectComponent } from '../shared/schema-select';
 
         @if (r.create_schema) {
           <div class="note">
-            • El destino no tiene el esquema <code>{{ r.schema_name }}</code>: el script lo crea.
+            • El destino no tiene el esquema <code>{{ r.schema_name }}</code
+            >: el script lo crea.
           </div>
         }
         @if (leftAlone().length) {
@@ -148,24 +147,23 @@ import { SchemaSelectComponent } from '../shared/schema-select';
         @for (n of r.notes ?? []; track n) {
           <div class="note">• {{ n }}</div>
         }
-      } @else {
-        <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
-          Generar arma el script y lo deja en el editor de abajo. No escribe en ninguna base: eso
-          pasa recién cuando apretás <strong>Sincronizar</strong>.
-        </p>
-      }
-    </div>
+      </div>
+    }
 
     <div class="panel">
-      <div class="section-title">
-        <strong>4 · Script a ejecutar en {{ envA() || 'el destino' }}</strong>
+      <div class="section-title section-title--plain">
+        <strong>Script a ejecutar en {{ envA() || 'el destino' }}</strong>
+        <span class="actions">
+          <app-copy-button [text]="script()" />
+          <button type="button" [disabled]="busy() || !canSync()" (click)="run()">
+            Sincronizar en {{ envA() || '…' }}
+          </button>
+        </span>
       </div>
-      <p class="muted" style="margin-bottom:0.5rem; font-size:0.75rem;">
-        Acá va el SQL que <strong>Sincronizar</strong> ejecuta en {{ envA() || 'el destino' }}, tal
-        cual está. Podés editarlo antes de correrlo.
-      </p>
       <textarea
         id="schema-sync-script"
+        appAutoGrow
+        [autoGrowValue]="script()"
         spellcheck="false"
         rows="12"
         [value]="script()"
@@ -173,20 +171,11 @@ import { SchemaSelectComponent } from '../shared/schema-select';
         placeholder="Generá el script con el botón de arriba, o pegá acá el SQL que quieras ejecutar."
       ></textarea>
       <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
-        Ojo: el script borra y vuelve a crear {{ scopeLabel() }} en {{ envA() || 'el destino' }}. Las
-        filas que están allá en esas tablas se pierden. Si querés conservar los datos del destino,
-        editá el script y dejá solo los ALTER que faltan.
+        Ojo: el script borra y vuelve a crear {{ scopeLabel() }} en {{ envA() || 'el destino' }}.
+        Las filas que están allá en esas tablas se pierden. Si querés conservar los datos del
+        destino, editá el script y dejá solo los ALTER que faltan.
       </p>
 
-      <div
-        class="actions"
-        style="margin-top:0.75rem; justify-content:space-between; flex-wrap:wrap; gap:0.625rem;"
-      >
-        <app-copy-button [text]="script()" />
-        <button type="button" [disabled]="busy() || !canSync()" (click)="run()">
-          Sincronizar en {{ envA() || '…' }}
-        </button>
-      </div>
       @if (!canSync() && envA()) {
         <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
           Escribí o generá un script para habilitar el botón.
@@ -204,13 +193,11 @@ import { SchemaSelectComponent } from '../shared/schema-select';
 
     @if (executed(); as ex) {
       <div class="panel">
-        <div class="section-title"><strong>5 · Sentencias ejecutadas</strong></div>
+        <div class="section-title"><strong>Sentencias ejecutadas</strong></div>
         <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
           <app-badge
             [status]="ex.err_count ? 'error' : 'ok'"
-            [label]="
-              ex.err_count ? ex.err_count + ' error(es)' : ex.ok_count + ' sentencia(s) OK'
-            "
+            [label]="ex.err_count ? ex.err_count + ' error(es)' : ex.ok_count + ' sentencia(s) OK'"
           />
           <span class="muted">{{ ex.env }}</span>
         </div>

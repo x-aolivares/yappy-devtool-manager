@@ -88,33 +88,28 @@ function blankState(table: string): TableState {
   template: `
     <h1>Migrar datos</h1>
     <p class="muted">
-      Copiá las filas de las tablas que marques del ambiente de <strong>origen</strong> al de
-      <strong>destino</strong>, con un filtro por fecha por tabla. Lo que se escribe es
-      <strong>Migrar</strong>; <strong>Simular</strong> lee lo mismo y no escribe nada.
+      Copiá las filas de las tablas que marques a otro ambiente, con un filtro por fecha por tabla.
     </p>
 
     <div class="panel">
-      <div class="section-title"><strong>1 · Ambientes</strong></div>
-      <app-region-controls
-        [environments]="environments()"
-        [withService]="false"
-        envLabel="Ambientes"
-        hint="Elegí dos: el primero es el de origen y el segundo el de destino."
-        [(envB)]="envB"
-        [(envA)]="envA"
-      />
-      @if (sameEnv()) {
-        <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
-          El origen y el destino no pueden ser el mismo ambiente.
-        </p>
-      }
-    </div>
+      <div class="columns">
+        <div class="field">
+          <app-region-controls
+            [environments]="environments()"
+            [withService]="false"
+            envLabel="Ambientes"
+            [(envB)]="envB"
+            [(envA)]="envA"
+          />
+          @if (sameEnv()) {
+            <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
+              El origen y el destino no pueden ser el mismo ambiente.
+            </p>
+          }
+        </div>
 
-    <div class="panel">
-      <div class="section-title"><strong>2 · Esquema y tablas</strong></div>
-      <div class="form-grid">
-        <div>
-          <label for="migrate-data-schema">Esquema</label>
+        <div class="field">
+          <label class="field-label" for="migrate-data-schema">Esquema del origen</label>
           <app-schema-select
             controlId="migrate-data-schema"
             [env]="envB()"
@@ -124,193 +119,177 @@ function blankState(table: string): TableState {
         </div>
       </div>
 
-      <p class="muted" style="margin-top:0.75rem; font-size:0.75rem;">
-        Las tablas son las del <strong>origen</strong>: es de ahí de donde se leen las filas. Marcá
-        las que querés copiar al destino.
-      </p>
-
       @if (tablesLoading()) {
-        <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
+        <p class="muted" style="font-size:0.75rem;">
           <span class="spinner"></span> Cargando tablas de {{ schema() }} en {{ envB() }}...
         </p>
       } @else if (tablesError()) {
-        <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
+        <p class="muted hint-error" style="font-size:0.75rem;">
           No se pudieron leer las tablas de {{ schema() }}: {{ tablesError() }}
         </p>
       } @else if (schema() && !tableList().length) {
-        <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
+        <p class="muted" style="font-size:0.75rem;">
           {{ schema() }} no tiene tablas en {{ envB() }}: no hay nada para migrar.
         </p>
       } @else if (tableList().length) {
-        <div class="checkbox-row" style="margin-top:0.625rem; gap:1.125rem; flex-wrap:wrap;">
-          <label class="checkbox-row" style="margin:0;">
-            <input
-              type="checkbox"
-              id="migrate-data-all"
-              [checked]="allIncluded()"
-              (change)="toggleAll($any($event.target).checked)"
-            />
-            <span>Todas ({{ tableList().length }})</span>
-          </label>
-          <span class="muted" style="font-size:0.75rem;">
-            {{ includedTables().length }} de {{ tableList().length }} marcadas
-          </span>
-        </div>
-
-        <div style="margin-top:0.5rem;">
-          @for (t of tableList(); track t) {
-            <label class="checkbox-row" style="margin:0.25rem 0;" [for]="'migrate-table-' + t">
+        <div class="field">
+          <div class="field-label">Tablas a migrar</div>
+          <div class="checkbox-row" style="gap:1.125rem; flex-wrap:wrap;">
+            <label class="checkbox-row" style="margin:0;">
               <input
                 type="checkbox"
-                [id]="'migrate-table-' + t"
-                [checked]="isIncluded(t)"
-                (change)="toggle(t, $any($event.target).checked)"
+                id="migrate-data-all"
+                [checked]="allIncluded()"
+                (change)="toggleAll($any($event.target).checked)"
               />
-              <span>{{ t }}</span>
+              <span>Todas ({{ tableList().length }})</span>
             </label>
-          }
+            <span class="muted" style="font-size:0.75rem;">
+              {{ includedTables().length }} de {{ tableList().length }} marcadas
+            </span>
+          </div>
+
+          <div class="check-grid">
+            @for (t of tableList(); track t) {
+              <label class="checkbox-row" style="margin:0;" [for]="'migrate-table-' + t">
+                <input
+                  type="checkbox"
+                  [id]="'migrate-table-' + t"
+                  [checked]="isIncluded(t)"
+                  (change)="toggle(t, $any($event.target).checked)"
+                />
+                <span>{{ t }}</span>
+              </label>
+            }
+          </div>
         </div>
       }
     </div>
 
-    <div class="panel">
-      <div class="section-title"><strong>3 · Filtro por tabla</strong></div>
-      @if (!includedTables().length) {
-        <p class="muted" style="font-size:0.75rem;">
-          Marcá una tabla arriba para poder filtrarla por fecha. Sin filtro, o con una columna de
-          fecha y ninguna fecha, la tabla se migra completa.
-        </p>
-      } @else {
-        <p class="muted" style="font-size:0.75rem;">
-          La columna de fecha sale de las columnas DATE/DATETIME/TIMESTAMP que la tabla tiene en el
-          origen, así que no hay forma de inventarse un nombre. Las dos fechas son
-          <strong>inclusivas</strong>: <code>Hasta 2026-03-31</code> también trae las filas de ese
-          día.
-        </p>
-
-        @for (row of rows(); track row.state.table) {
-          <div class="stmt-row" style="flex-direction:column; align-items:stretch; gap:0.5rem;">
-            <div style="display:flex; align-items:center; gap:0.625rem; flex-wrap:wrap;">
-              <strong>{{ row.state.table }}</strong>
-              @if (row.state.columns?.length) {
-                <span class="muted" style="font-size:0.75rem;">
-                  {{ row.state.columns!.length }} columna(s) de fecha
-                </span>
-              }
-            </div>
-
-            @if (row.state.loading) {
-              <p class="muted" style="font-size:0.75rem;">
-                <span class="spinner"></span> Buscando columnas de fecha de {{ row.state.table }}...
-              </p>
-            } @else if (row.state.error) {
-              <p class="muted hint-error" style="font-size:0.75rem;">
-                No se pudieron leer las columnas de fecha de {{ row.state.table }}:
-                {{ row.state.error }}. La tabla no se puede migrar hasta saber si tiene o no, porque
-                mandarla sin filtro la copia entera.
-              </p>
-            } @else if (!row.state.columns?.length) {
-              <p class="muted" style="font-size:0.75rem;">
-                Sin columnas de fecha: se migra completa. No hay forma de acotarla por un rango de
-                fechas.
-              </p>
-            } @else {
-              <div class="form-grid" style="margin:0;">
-                <div>
-                  <label [for]="'migrate-date-column-' + row.state.table">Columna de fecha</label>
-                  <select
-                    [id]="'migrate-date-column-' + row.state.table"
-                    [value]="row.state.column"
-                    (change)="setColumn(row.state.table, $any($event.target).value)"
-                  >
-                    <option value="" [selected]="!row.state.column">Todo (sin filtro)</option>
-                    @for (c of row.state.columns!; track c.name) {
-                      <option [value]="c.name" [selected]="row.state.column === c.name">
-                        {{ c.name }} ({{ c.type }})
-                      </option>
-                    }
-                  </select>
-                </div>
-
-                @if (row.state.column) {
-                  <div>
-                    <label class="checkbox-row" style="margin:0;">
-                      <input
-                        type="checkbox"
-                        [id]="'migrate-single-day-' + row.state.table"
-                        [checked]="row.state.singleDay"
-                        (change)="setSingleDay(row.state.table, $any($event.target).checked)"
-                      />
-                      <span>Un solo día</span>
-                    </label>
-                    @if (row.state.singleDay) {
-                      <input
-                        type="date"
-                        style="margin-top:0.375rem;"
-                        [id]="'migrate-day-' + row.state.table"
-                        [value]="row.state.dateFrom"
-                        (input)="setDay(row.state.table, $any($event.target).value)"
-                      />
-                    } @else {
-                      <div style="display:flex; gap:0.5rem; margin-top:0.375rem;">
-                        <div>
-                          <label
-                            [for]="'migrate-from-' + row.state.table"
-                            style="font-size:0.6875rem;"
-                          >
-                            Desde (inclusive)
-                          </label>
-                          <input
-                            type="date"
-                            [id]="'migrate-from-' + row.state.table"
-                            [value]="row.state.dateFrom"
-                            (input)="setFrom(row.state.table, $any($event.target).value)"
-                          />
-                        </div>
-                        <div>
-                          <label [for]="'migrate-to-' + row.state.table" style="font-size:0.6875rem;">
-                            Hasta (inclusive)
-                          </label>
-                          <input
-                            type="date"
-                            [id]="'migrate-to-' + row.state.table"
-                            [value]="row.state.dateTo"
-                            (input)="setTo(row.state.table, $any($event.target).value)"
-                          />
-                        </div>
-                      </div>
-                    }
-                    <p class="muted" style="margin-top:0.375rem; font-size:0.75rem;">
-                      Con una sola de las dos fechas también se puede: "desde marzo en adelante" es
-                      una migración como cualquier otra.
-                      @if (isSameDay(row.state)) {
-                        <br />
-                        <strong>Un solo día: {{ row.state.dateFrom }}.</strong> Los dos límites
-                        quedan iguales porque la ventana es ese día entero.
-                      }
-                    </p>
-                  </div>
-                } @else {
-                  <p class="muted" style="font-size:0.75rem;">
-                    Sin columna de filtro: se copia la tabla entera de {{ envB() }}.
-                  </p>
+    @if (includedTables().length) {
+      <div class="panel">
+        <div class="section-title"><strong>Filtro por tabla</strong></div>
+        <div class="pick-list">
+          @for (row of rows(); track row.state.table) {
+            <div class="pick-row">
+              <div class="pick-row__head">
+                <strong>{{ row.state.table }}</strong>
+                @if (row.state.columns?.length) {
+                  <span class="muted" style="font-size:0.75rem;">
+                    {{ row.state.columns!.length }} columna(s) de fecha
+                  </span>
                 }
               </div>
-            }
-          </div>
-        }
-      }
-    </div>
+
+              @if (row.state.loading) {
+                <p class="muted" style="font-size:0.75rem;">
+                  <span class="spinner"></span> Buscando columnas de fecha de {{ row.state.table }}...
+                </p>
+              } @else if (row.state.error) {
+                <p class="muted hint-error" style="font-size:0.75rem;">
+                  No se pudieron leer las columnas de fecha de {{ row.state.table }}:
+                  {{ row.state.error }}. La tabla no se puede migrar hasta saber si tiene o no, porque
+                  mandarla sin filtro la copia entera.
+                </p>
+              } @else if (!row.state.columns?.length) {
+                <p class="muted" style="font-size:0.75rem;">
+                  Sin columnas de fecha: se migra completa. No hay forma de acotarla por un rango de
+                  fechas.
+                </p>
+              } @else {
+                <div class="form-grid" style="margin:0;">
+                  <div>
+                    <label class="field-label" [for]="'migrate-date-column-' + row.state.table">
+                      Columna de fecha
+                    </label>
+                    <select
+                      [id]="'migrate-date-column-' + row.state.table"
+                      [value]="row.state.column"
+                      (change)="setColumn(row.state.table, $any($event.target).value)"
+                    >
+                      <option value="" [selected]="!row.state.column">Todo (sin filtro)</option>
+                      @for (c of row.state.columns!; track c.name) {
+                        <option [value]="c.name" [selected]="row.state.column === c.name">
+                          {{ c.name }} ({{ c.type }})
+                        </option>
+                      }
+                    </select>
+                  </div>
+
+                  @if (row.state.column) {
+                    <div>
+                      <label class="checkbox-row" style="margin:0;">
+                        <input
+                          type="checkbox"
+                          [id]="'migrate-single-day-' + row.state.table"
+                          [checked]="row.state.singleDay"
+                          (change)="setSingleDay(row.state.table, $any($event.target).checked)"
+                        />
+                        <span>Un solo día</span>
+                      </label>
+                      @if (row.state.singleDay) {
+                        <input
+                          type="date"
+                          style="margin-top:0.375rem;"
+                          [id]="'migrate-day-' + row.state.table"
+                          [value]="row.state.dateFrom"
+                          (input)="setDay(row.state.table, $any($event.target).value)"
+                        />
+                      } @else {
+                        <div style="display:flex; gap:0.5rem; margin-top:0.375rem;">
+                          <div>
+                            <label
+                              class="field-label"
+                              [for]="'migrate-from-' + row.state.table"
+                            >
+                              Desde (inclusive)
+                            </label>
+                            <input
+                              type="date"
+                              [id]="'migrate-from-' + row.state.table"
+                              [value]="row.state.dateFrom"
+                              (input)="setFrom(row.state.table, $any($event.target).value)"
+                            />
+                          </div>
+                          <div>
+                            <label class="field-label" [for]="'migrate-to-' + row.state.table">
+                              Hasta (inclusive)
+                            </label>
+                            <input
+                              type="date"
+                              [id]="'migrate-to-' + row.state.table"
+                              [value]="row.state.dateTo"
+                              (input)="setTo(row.state.table, $any($event.target).value)"
+                            />
+                          </div>
+                        </div>
+                      }
+                      @if (isSameDay(row.state)) {
+                        <p class="muted" style="margin-top:0.375rem; font-size:0.75rem;">
+                          <strong>Un solo día: {{ row.state.dateFrom }}.</strong> Los dos límites
+                          quedan iguales porque la ventana es ese día entero.
+                        </p>
+                      }
+                    </div>
+                  } @else {
+                    <p class="muted" style="font-size:0.75rem;">
+                      Sin columna de filtro: se copia la tabla entera de {{ envB() }}.
+                    </p>
+                  }
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    }
 
     <div class="panel">
-      <div class="section-title"><strong>4 · Simular o migrar</strong></div>
+      <div class="section-title section-title--plain"><strong>Simular o migrar</strong></div>
       <div class="actions" style="justify-content:space-between; flex-wrap:wrap; gap:0.625rem;">
         <span class="muted" style="font-size:0.75rem;">
           @if (submitHint(); as hint) {
             {{ hint }}
-          } @else {
-            Migrar reemplaza por primary key lo que ya esté en el destino, y no crea las tablas
-            que falten allá.
           }
         </span>
         <div class="actions" style="gap:0.625rem;">
@@ -361,7 +340,7 @@ function blankState(table: string): TableState {
 
       <div class="panel">
         <div class="section-title">
-          <strong>5 · @if (r.dry_run) {Filas por tabla} @else {Resultado por tabla}</strong>
+          <strong>@if (r.dry_run) {Filas por tabla} @else {Resultado por tabla}</strong>
         </div>
         @for (t of r.tables ?? []; track t.schema_name + '.' + t.table_name) {
           <div class="stmt-row">

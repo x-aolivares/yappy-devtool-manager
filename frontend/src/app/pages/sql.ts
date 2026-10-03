@@ -27,13 +27,11 @@ import { StatusBadge } from '../shared/status-badge';
   template: `
     <h1>Ejecutar SQL</h1>
     <p class="muted">
-      Corré una consulta de lectura contra un ambiente y mirá el resultado. Con
-      <strong>Migrar info</strong> se copia a otro ambiente cada tabla que la consulta toca,
-      con sus mismos filtros — no el aplanado del join.
+      Corré una consulta de lectura contra un ambiente y mirá el resultado.
     </p>
 
     <div class="panel">
-      <div style="margin-bottom:1.125rem;">
+      <div class="field">
         <app-env-controls
           [environments]="environments()"
           [max]="1"
@@ -43,17 +41,19 @@ import { StatusBadge } from '../shared/status-badge';
         />
       </div>
 
-      <label for="sql">Consulta SQL</label>
-      <textarea
-        id="sql"
-        spellcheck="false"
-        rows="8"
-        [value]="sql()"
-        (input)="sql.set($any($event.target).value)"
-        placeholder="SELECT * FROM schema_abc.table_abc abc, schema_zxc.zxc zxc&#10;WHERE zxc.abc_id = abc.abc_id&#10;  AND zxc.zxc_status = 'COMPLETED'&#10;  AND abc.abc_type = 'M2P'"
-      ></textarea>
+      <div class="field">
+        <label class="field-label" for="sql">Consulta SQL</label>
+        <textarea
+          id="sql"
+          spellcheck="false"
+          rows="8"
+          [value]="sql()"
+          (input)="sql.set($any($event.target).value)"
+          placeholder="SELECT * FROM schema_abc.table_abc abc, schema_zxc.zxc zxc&#10;WHERE zxc.abc_id = abc.abc_id&#10;  AND zxc.zxc_status = 'COMPLETED'&#10;  AND abc.abc_type = 'M2P'"
+        ></textarea>
+      </div>
 
-      <div class="actions" style="margin-top:0.75rem; justify-content:flex-end;">
+      <div class="actions" style="justify-content:flex-end;">
         <button type="button" [disabled]="busy()" (click)="runQuery()">Consultar</button>
       </div>
     </div>
@@ -117,11 +117,7 @@ import { StatusBadge } from '../shared/status-badge';
     @if (showMigrate()) {
       <div class="panel">
         <div class="section-title"><strong>Migrar info</strong></div>
-        <p class="muted" style="font-size:0.85rem;">
-          Se copia cada tabla de la consulta al ambiente destino, con los filtros y joins
-          que ya definiste. Las filas que ya existen se reemplazan.
-        </p>
-        <div style="margin:0.875rem 0;">
+        <div class="field">
           <app-env-controls
             [environments]="destEnvironments()"
             [max]="1"
@@ -135,7 +131,10 @@ import { StatusBadge } from '../shared/status-badge';
             </p>
           }
         </div>
-        <div class="actions" style="justify-content:space-between; flex-wrap:wrap; gap:0.625rem;">
+        <div
+          class="actions"
+          style="justify-content:space-between; flex-wrap:wrap; gap:0.625rem;"
+        >
           <label class="checkbox-row" style="margin:0;">
             <input
               type="checkbox"

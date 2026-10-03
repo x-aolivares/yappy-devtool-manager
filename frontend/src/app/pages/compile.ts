@@ -49,11 +49,8 @@ import { AutoGrowDirective } from '../shared/auto-grow';
   template: `
     <h1>Compilar</h1>
     <p class="muted">
-      Elegí el ambiente donde compilar y de dónde sale el SQL: de un
-      <strong>ambiente de origen</strong> —se arma el script desde el objeto que hay allá— o de
-      un <strong>script</strong> que pegás vos. En los dos casos lo que escribe en la base es
-      <strong>Compilar</strong>, y compila siempre el mismo SQL: el destino queda igual al
-      origen.
+      Elegí de dónde sale el SQL y a qué ambiente se compila. En los dos casos el destino queda
+      igual al origen.
     </p>
 
     <div class="panel">
@@ -215,7 +212,7 @@ import { AutoGrowDirective } from '../shared/auto-grow';
 
     <div class="panel">
       <div class="section-title section-title--plain">
-        <strong>{{ source() === 'env' ? '6' : '3' }} · Script a ejecutar en {{ envA() || 'el destino' }}</strong>
+        <strong>Script a ejecutar en {{ envA() || 'el destino' }}</strong>
         <span class="actions">
           <app-copy-button [text]="script()" />
           <button type="button" [disabled]="busy() || !canExecute()" (click)="run()">

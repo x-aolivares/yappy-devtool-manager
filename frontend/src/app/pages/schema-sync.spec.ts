@@ -347,7 +347,7 @@ describe('SchemaSyncPage sincronizar', () => {
     await settle(fixture);
 
     expect(comp.executed()!.err_count).toBe(0);
-    expect(el.textContent).toContain('5 · Sentencias ejecutadas');
+    expect(el.textContent).toContain('Sentencias ejecutadas');
     expect(el.textContent).toContain('1 sentencia(s) OK');
     expect(el.textContent).toContain('#1');
     expect(el.textContent).toContain('CREATE TABLE `yappy`.`orders` (`id` INT)');

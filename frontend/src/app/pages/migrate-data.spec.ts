@@ -155,9 +155,12 @@ describe('MigrateDataPage tablas y columnas de fecha', () => {
   it('lista las tablas del esquema del origen', async () => {
     const { el } = await ready();
 
-    expect(el.textContent).toContain('2 · Esquema y tablas');
+    // Una casilla por tabla, con el id derivado del nombre. Se afirma sobre las
+    // casillas y no sobre el título del grupo: el título es copy y cambia con el
+    // rediseño, las casillas son el mecanismo.
     expect(el.querySelector('#migrate-table-orders')).not.toBeNull();
     expect(el.querySelector('#migrate-table-config')).not.toBeNull();
+    expect(el.querySelectorAll('.check-grid input[type="checkbox"]').length).toBe(3);
   });
 
   it('no pregunta las columnas de fecha hasta que la tabla se marca', async () => {
@@ -337,13 +340,22 @@ describe('MigrateDataPage un solo día', () => {
     expect(el.textContent).toContain('la ventana es ese día entero');
   });
 
-  it('avisa que la fecha final se incluye', async () => {
+  it('el rango ofrece los dos límites, y cada uno va en su input', async () => {
     const { fixture, comp, el } = await ready();
     comp.toggle('orders', true);
     await settle(fixture);
+    comp.setColumn('orders', 'created_at');
+    await settle(fixture);
 
-    expect(el.textContent).toContain('Las dos fechas son inclusivas');
-    expect(el.textContent).toContain('Hasta 2026-03-31');
+    // Se afirma sobre los dos inputs y sus labels, no sobre la prosa que
+    // explicaba la inclusividad. Los labels dicen "inclusive" y el backend
+    // renderiza el tope exclusivo un día después: eso es lo que hay que verificar.
+    expect(el.querySelector('#migrate-from-orders')).not.toBeNull();
+    expect(el.querySelector('#migrate-to-orders')).not.toBeNull();
+    expect(el.querySelector('label[for="migrate-from-orders"]')?.textContent).toContain(
+      'Desde',
+    );
+    expect(el.querySelector('label[for="migrate-to-orders"]')?.textContent).toContain('Hasta');
   });
 });
 
@@ -553,7 +565,7 @@ describe('MigrateDataPage resultado', () => {
     comp.migrate();
     await settle(fixture);
 
-    expect(el.textContent).toContain('5 · Resultado por tabla');
+    expect(el.textContent).toContain('Resultado por tabla');
     expect(el.textContent).toContain('yappy.orders');
     expect(el.textContent).toContain('120 leída(s)');
     expect(el.textContent).toContain('118 reemplazada(s)');
@@ -599,7 +611,7 @@ describe('MigrateDataPage resultado', () => {
     await settle(fixture);
 
     expect(el.textContent).toContain('Simulación');
-    expect(el.textContent).toContain('5 · Filas por tabla');
+    expect(el.textContent).toContain('Filas por tabla');
     expect(el.textContent).not.toContain('Resultado por tabla');
   });
 });

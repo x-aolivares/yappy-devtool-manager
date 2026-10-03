@@ -40,50 +40,47 @@ interface EnvPanel {
   template: `
     <h1>Leer Parámetros / Secretos</h1>
     <p class="muted">
-      Marcá los ambientes que te interesa comparar, ingresá el nombre del parámetro o secreto y
-      leé su valor en cada uno (se detecta si es secreto con el servicio elegido). Cada panel se
-      ajusta a su contenido y te deja actualizar el valor sólo de ese ambiente.
+      Leé el mismo parámetro o secreto en los ambientes que marques y actualizalo uno por uno.
     </p>
 
     <div class="panel">
-      <app-env-controls
-        [environments]="awsEnvironments()"
-        [services]="services"
-        [(envs)]="envs"
-        [(service)]="service"
-      />
-
-      <p class="muted" style="margin-top: 0.25rem; font-size: 0.75rem;">
-        Se leen las mismas claves en todos los ambientes marcados. Con dos o más también se arma la
-        sesión de trabajo: el primero es el origen y el segundo el destino.
-      </p>
+      <div class="field">
+        <app-env-controls
+          [environments]="awsEnvironments()"
+          [services]="services"
+          [(envs)]="envs"
+          [(service)]="service"
+        />
+      </div>
 
       @if (requireAlias()) {
-        <label for="session-alias">Alias o nombre de la iniciativa</label>
-        <input
-          id="session-alias"
-          type="text"
-          [value]="sessionAlias()"
-          (input)="sessionAlias.set($any($event.target).value)"
-          placeholder="release/REP-325073"
-          style="max-width: 26rem;"
-        />
-      }
-
-      <div class="read-actions">
-        <div style="flex: 1;">
-          <label for="param-name">Parámetro o secreto</label>
+        <div class="field">
+          <label class="field-label" for="session-alias">Alias o nombre de la iniciativa</label>
           <input
-            id="param-name"
+            id="session-alias"
             type="text"
-            [value]="name()"
-            (input)="name.set($any($event.target).value)"
-            (keydown.enter)="search()"
-            placeholder="/prod/ecommerce/db/master_url"
-            spellcheck="false"
+            [value]="sessionAlias()"
+            (input)="sessionAlias.set($any($event.target).value)"
+            placeholder="release/REP-325073"
+            style="max-width: 26rem;"
           />
         </div>
-        <button type="button" [disabled]="busy()" (click)="search()">Buscar</button>
+      }
+
+      <div class="field">
+        <label class="field-label" for="param-name">Parámetro o secreto</label>
+        <input
+          id="param-name"
+          type="text"
+          [value]="name()"
+          (input)="name.set($any($event.target).value)"
+          (keydown.enter)="search()"
+          placeholder="/prod/ecommerce/db/master_url"
+          spellcheck="false"
+        />
+        <div class="actions" style="margin-top:0.75rem; justify-content:flex-end;">
+          <button type="button" [disabled]="busy()" (click)="search()">Buscar</button>
+        </div>
       </div>
     </div>
 
@@ -104,7 +101,7 @@ interface EnvPanel {
 
     @for (panel of panels(); track panel.env) {
       <div class="panel env-value-panel">
-        <div class="section-title">
+        <div class="section-title section-title--plain">
           <strong>{{ panel.env }}</strong>
           @if (panel.region || panel.profile) {
             <span class="muted">{{ panel.region || '—' }} · {{ panel.profile || '—' }}</span>
