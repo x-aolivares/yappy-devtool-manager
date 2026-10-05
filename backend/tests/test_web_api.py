@@ -1596,6 +1596,59 @@ def test_api_compile_schema_rejects_a_request_with_nothing_to_sync(monkeypatch):
     assert "tablas" in detail or "procedures" in detail
 
 
+def test_api_compile_schema_takes_an_explicit_list_as_the_whole_scope(monkeypatch):
+    """La página de sincronizar manda la lista de lo que el usuario marcó. Con los
+    dos flags en true —su default— el alcance tiene que ser igual a la lista, no el
+    esquema entero."""
+    _schema_world(monkeypatch, **_two_related_tables())
+
+    payload = api_compile_schema(
+        SchemaCompileRequest(
+            env_b="dev", env_a="local", schema_name="yappy",
+            include_tables=True, include_procedures=True,
+            tables=["orders"], procedures=["sp_calc"],
+        )
+    )
+
+    assert payload["tables"] == ["orders"]
+    assert payload["procedures"] == ["sp_calc"]
+    # Y lo que no está en la lista no aparece en el script.
+    assert "lines" not in payload["script"]
+
+
+def test_api_compile_schema_rejects_an_explicit_list_with_nothing_in_it(monkeypatch):
+    """Vaciar la tabla de casillas es una decisión: si leyera como "no se envió
+    lista", compilaría el esquema entero que el usuario acaba de dejar vacío."""
+    _schema_world(monkeypatch, **_two_related_tables())
+
+    with pytest.raises(HTTPException) as exc:
+        api_compile_schema(
+            SchemaCompileRequest(
+                env_b="dev", env_a="local", schema_name="yappy",
+                tables=[], procedures=[],
+            )
+        )
+
+    assert exc.value.status_code == 400
+    assert "al menos" in str(exc.value.detail)
+
+
+def test_api_compile_schema_rejects_a_list_naming_an_object_the_origin_lacks(monkeypatch):
+    _schema_world(monkeypatch, **_two_related_tables())
+
+    with pytest.raises(HTTPException) as exc:
+        api_compile_schema(
+            SchemaCompileRequest(
+                env_b="dev", env_a="local", schema_name="yappy",
+                tables=["orders", "no_existe"], procedures=[],
+            )
+        )
+
+    # Decirlo mientras nada se escribió, en vez de devolver un script con un hueco.
+    assert exc.value.status_code == 400
+    assert "no_existe" in str(exc.value.detail)
+
+
 def test_api_compile_schema_rejects_same_source_and_target(monkeypatch):
     _schema_world(monkeypatch, **_two_related_tables())
 

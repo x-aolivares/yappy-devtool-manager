@@ -441,7 +441,17 @@ def api_compile_schema(req: SchemaCompileRequest):
     schema = req.schema_name.strip()
     if not schema:
         raise HTTPException(status_code=400, detail="Completá el schema.")
-    if not (req.include_tables or req.include_procedures):
+
+    # An explicit list is the user's own selection, so the flags do not apply and
+    # only the list has to be non-empty. An empty list is a refusal, not a
+    # fallback to "everything": they emptied the table on purpose.
+    if req.tables is not None or req.procedures is not None:
+        if not (req.tables or req.procedures):
+            raise HTTPException(
+                status_code=400,
+                detail="Marcá al menos una tabla o un stored procedure para sincronizar.",
+            )
+    elif not (req.include_tables or req.include_procedures):
         raise HTTPException(
             status_code=400,
             detail="Marcá al menos tablas o stored procedures para sincronizar el schema.",
@@ -453,7 +463,13 @@ def api_compile_schema(req: SchemaCompileRequest):
     try:
         with connect(cfg_b) as conn_b, connect(cfg_a) as conn_a:
             schema_plan = dbschema.plan(
-                conn_b, conn_a, schema, req.include_tables, req.include_procedures
+                conn_b,
+                conn_a,
+                schema,
+                req.include_tables,
+                req.include_procedures,
+                only_tables=req.tables,
+                only_procedures=req.procedures,
             )
             script = dbschema.build_script(conn_b, schema_plan)
 

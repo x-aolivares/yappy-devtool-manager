@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, PendingTasks, computed, effect, inject, signal, untracked } from '@angular/core';
 import { EnvironmentInfo, ExecuteSqlResponse, SchemaCompileResponse } from '../api-gen/models';
 import { EnvironmentService } from '../core/services/environment.service';
 import { DbService } from '../core/services/db.service';
@@ -8,6 +8,15 @@ import { CopyButton } from '../shared/copy-button';
 import { RegionControlsComponent } from '../shared/region-controls';
 import { SchemaSelectComponent } from '../shared/schema-select';
 import { AutoGrowDirective } from '../shared/auto-grow';
+
+/** One object of the origin schema, as the picker table renders it. */
+interface SyncObject {
+  readonly name: string;
+  readonly kind: 'table' | 'procedure';
+  readonly selected: boolean;
+  /** Whether the destination already has it: the script replaces it and its rows. */
+  readonly inDestination: boolean;
+}
 
 /**
  * Sincronizar schema: un solo script para todo un esquema, del ambiente de origen
@@ -34,6 +43,13 @@ import { AutoGrowDirective } from '../shared/auto-grow';
  * destino no se tocan, no aparecen en el script y se listan aparte para que se
  * vean antes de correrlo. Sincronizar deja la copia del origen igual; no convierte
  * al destino en un clon.
+ *
+ * **Qué se sincroniza se ve antes de generar el script.** El alcance son las dos
+ * casillas de "tablas" y "stored procedures", que sólo podían decir *todo o nada*
+ * de cada clase. La pregunta real es "estas nueve, no esas cuatro", y sin una tabla
+ * a la vista no hay forma de contestarla —ni de saber qué filas se van a perder.
+ * Ahora cada objeto es una fila con su casilla y con la columna de si el destino ya
+ * lo tiene, y la selección viaja explícita al backend.
  */
 @Component({
   selector: 'app-schema-sync-page',
@@ -79,26 +95,83 @@ import { AutoGrowDirective } from '../shared/auto-grow';
         </div>
       </div>
 
-      <div class="checkbox-row" style="margin-top:0.75rem; gap:1.125rem; flex-wrap:wrap;">
-        <label class="checkbox-row" style="margin:0;">
-          <input
-            type="checkbox"
-            id="schema-sync-tables"
-            [checked]="includeTables()"
-            (change)="includeTables.set($any($event.target).checked)"
-          />
-          <span>Tablas</span>
-        </label>
-        <label class="checkbox-row" style="margin:0;">
-          <input
-            type="checkbox"
-            id="schema-sync-procedures"
-            [checked]="includeProcedures()"
-            (change)="includeProcedures.set($any($event.target).checked)"
-          />
-          <span>Stored procedures</span>
-        </label>
-      </div>
+      @if (objectsLoading()) {
+        <p class="muted" style="margin-top:0.75rem; font-size:0.75rem;">
+          <span class="spinner"></span> Cargando los objetos de {{ schema() }} en
+          {{ envB() }}...
+        </p>
+      } @else if (objectsError()) {
+        <p class="muted hint-error" style="margin-top:0.75rem; font-size:0.75rem;">
+          No se pudieron leer los objetos de {{ schema() }}: {{ objectsError() }}
+        </p>
+      }
+
+      @if (objectRows().length) {
+        <div class="field">
+          <div class="section-title section-title--plain">
+            <strong>Qué se sincroniza</strong>
+            <span class="actions">
+              <span class="muted" style="font-size:0.75rem;">
+                {{ selectedCount() }} de {{ objectRows().length }} marcados
+              </span>
+              <label class="checkbox-row" style="margin:0;">
+                <input
+                  type="checkbox"
+                  id="schema-sync-all"
+                  [checked]="allSelected()"
+                  [indeterminate]="someSelected()"
+                  (change)="toggleAll($any($event.target).checked)"
+                />
+                <span>Todos</span>
+              </label>
+            </span>
+          </div>
+
+          <div class="table-scroll">
+            <table class="filter-table filter-table--narrow">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Tipo</th>
+                  <th>Objeto</th>
+                  <th>En {{ envA() || 'el destino' }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of objectRows(); track row.name) {
+                  <tr [class.is-off]="!row.selected">
+                    <td>
+                      <label class="checkbox-row" style="margin:0;" [for]="'sync-obj-' + row.name">
+                        <input
+                          type="checkbox"
+                          [id]="'sync-obj-' + row.name"
+                          [checked]="row.selected"
+                          (change)="toggle(row.name, $any($event.target).checked)"
+                        />
+                        <span class="muted">{{ row.name }}</span>
+                      </label>
+                    </td>
+                    <td>
+                      <app-badge
+                        [status]="row.kind === 'table' ? 'equal' : 'info'"
+                        [label]="row.kind === 'table' ? 'tabla' : 'procedure'"
+                      />
+                    </td>
+                    <td class="mono">{{ row.name }}</td>
+                    <td>
+                      @if (row.inDestination) {
+                        <app-badge status="equal" label="Ya está" />
+                      } @else {
+                        <span class="muted" style="font-size:0.75rem;">Se crea</span>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      }
 
       <div
         class="field"
@@ -170,11 +243,18 @@ import { AutoGrowDirective } from '../shared/auto-grow';
         (input)="script.set($any($event.target).value)"
         placeholder="Generá el script con el botón de arriba, o pegá acá el SQL que quieras ejecutar."
       ></textarea>
-      <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
-        Ojo: el script borra y vuelve a crear {{ scopeLabel() }} en {{ envA() || 'el destino' }}.
-        Las filas que están allá en esas tablas se pierden. Si querés conservar los datos del
-        destino, editá el script y dejá solo los ALTER que faltan.
-      </p>
+      @if (selected().tables.length) {
+        <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
+          Ojo: el script borra y vuelve a crear {{ scopeLabel() }} en
+          {{ envA() || 'el destino' }}. Las filas que están allá en esas tablas se pierden. Si
+          querés conservar los datos del destino, editá el script y dejá solo los ALTER que faltan.
+        </p>
+      } @else {
+        <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
+          Sólo se van a recrear stored procedures: no se toca ninguna tabla, así que no hay
+          filas que perder.
+        </p>
+      }
 
       @if (!canSync() && envA()) {
         <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
@@ -224,13 +304,33 @@ import { AutoGrowDirective } from '../shared/auto-grow';
 export class SchemaSyncPage {
   private readonly envService = inject(EnvironmentService);
   private readonly dbService = inject(DbService);
+  private readonly pendingTasks = inject(PendingTasks);
 
   readonly environments = signal<EnvironmentInfo[] | null>(null);
   readonly envB = signal(''); // origen
   readonly envA = signal(''); // destino: donde sincroniza
   readonly schema = signal('');
-  readonly includeTables = signal(true);
-  readonly includeProcedures = signal(true);
+
+  /**
+   * The origin's tables and procedures, and which ones are marked.
+   *
+   * This replaces the two "include tables / include procedures" checkboxes. Those
+   * could only say "todo o nada" of a kind, which is not the question anybody
+   * asks: the question is "these nine, not those four". Seeing the objects is
+   * also the only way to know *before* generating a script that drops and recreates
+   * — and therefore empties — a table.
+   *
+   * The destination column answers "is this one already there?", because that is
+   * what tells the user which rows the script is about to take away.
+   */
+  readonly objects = signal<SyncObject[] | null>(null);
+  readonly objectsLoading = signal(false);
+  readonly objectsError = signal<string | null>(null);
+  /** Marked objects, as `name` per kind — the shape `/api/compile/schema` takes. */
+  readonly selected = signal<{ tables: string[]; procedures: string[] }>({
+    tables: [],
+    procedures: [],
+  });
 
   /** The script the user runs, generated or written by hand. */
   readonly script = signal('');
@@ -248,11 +348,30 @@ export class SchemaSyncPage {
   readonly procedures = computed(() => this.result()?.procedures ?? []);
   readonly leftAlone = computed(() => this.result()?.left_alone ?? []);
 
+  /** One row per object of the origin, tables first, alphabetical within each. */
+  readonly objectRows = computed<SyncObject[]>(() => this.objects() ?? []);
+
+  /** Cuántos están marcados, en total. Es lo que se compara con la lista completa. */
+  readonly selectedCount = computed(
+    () => this.selected().tables.length + this.selected().procedures.length,
+  );
+
+  readonly allSelected = computed(
+    () =>
+      !!this.objectRows().length && this.selectedCount() === this.objectRows().length,
+  );
+  /** `Todos` a medio marcar, que es un estado distinto de "ninguno marcado". */
+  readonly someSelected = computed(() => {
+    const total = this.objectRows().length;
+    const marked = this.selectedCount();
+    return marked > 0 && marked < total;
+  });
+
   /**
    * Un alcance vacío no sincroniza nada — el backend lo rechaza con un 400 — así
    * que se corta acá, en el botón, en lugar de dejar que viaje y vuelva el error.
    */
-  readonly scopeSelected = computed(() => this.includeTables() || this.includeProcedures());
+  readonly scopeSelected = computed(() => this.selectedCount() > 0);
 
   readonly sameEnv = computed(() => !!this.envB() && this.envB() === this.envA());
 
@@ -267,19 +386,30 @@ export class SchemaSyncPage {
     if (!this.envB() || !this.envA()) return 'Elegí el ambiente de origen y el de destino.';
     if (this.sameEnv()) return 'El origen y el destino tienen que ser distintos.';
     if (!this.schema()) return 'Elegí el esquema del origen.';
-    if (!this.scopeSelected()) return 'Marcá al menos tablas o stored procedures.';
+    if (this.objectsLoading()) return 'Esperando los objetos del esquema de origen.';
+    if (this.objectsError()) return 'No se pudieron leer los objetos del esquema de origen.';
+    if (!this.objectRows().length) return 'El origen no tiene tablas ni procedures en ese esquema.';
+    if (!this.scopeSelected()) return 'Marcá al menos una tabla o un stored procedure.';
     return '';
   });
 
   /** Sincronizar does NOT need the schema chain: it runs whatever is in the editor. */
   readonly canSync = computed(() => !!this.envA() && this.script().trim().length > 0);
 
-  /** Cómo se nombra el alcance en los avisos: "las tablas y los stored procedures". */
+  /**
+   * Cómo se nombra el alcance en los avisos.
+   *
+   * Con lista de objetos puede ser "las 9 tablas", "3 tablas y 2 procedures" o una
+   * sola cosa, así que cuenta en vez de decir "las tablas y los stored procedures":
+   * el aviso tiene que decir cuántas filas se van a perder, no qué clases hay.
+   */
   readonly scopeLabel = computed(() => {
+    const t = this.selected().tables.length;
+    const p = this.selected().procedures.length;
     const partes: string[] = [];
-    if (this.includeTables()) partes.push('las tablas');
-    if (this.includeProcedures()) partes.push('los stored procedures');
-    return partes.length > 1 ? partes.join(' y ') : (partes[0] ?? 'los objetos del esquema');
+    if (t) partes.push(`${t} tabla${t === 1 ? '' : 's'}`);
+    if (p) partes.push(`${p} procedure${p === 1 ? '' : 's'}`);
+    return partes.length > 1 ? partes.join(' y ') : (partes[0] ?? 'los objetos marcados');
   });
 
   constructor() {
@@ -288,16 +418,31 @@ export class SchemaSyncPage {
       (err) => this.error.set('No se pudieron cargar los ambientes: ' + toApiError(err).message),
     );
 
-    // Un script generado describe un esquema, un alcance y un destino concretos. Si
-    // el usuario cambia cualquiera de ellos —o el origen entero—, ejecutarlo sería
+    // Los objetos del esquema pertenecen a un (origen, esquema). Cambiar cualquiera
+    // de los dos recarga la lista y limpia la selección: los nombres marcados eran
+    // de otro esquema y probablemente ni siquiera existen en este.
+    effect(() => {
+      const env = this.envB();
+      const schema = this.schema();
+      this.objectsSeq++;
+      this.objects.set(null);
+      this.objectsError.set(null);
+      this.selected.set({ tables: [], procedures: [] });
+      // Registrada como tarea pendiente: la página está leyendo y su tabla de
+      // objetos todavía no es la que va a quedar. Sin esto, un `whenStable()`
+      // puede cerrarse en el medio de la cadena y dejar la tabla sin pintar.
+      this.pendingTasks.run(() => Promise.resolve(this.loadObjects(env, schema)));
+    });
+
+    // Un script generado describe un esquema, una selección y un destino concretos.
+    // Si el usuario cambia cualquiera de ellos —o el origen entero—, ejecutarlo sería
     // correrlo en el lugar equivocado, así que se descarta. Un script escrito a
     // mano es suyo: no se toca.
     effect(() => {
       this.envB();
       this.envA();
       this.schema();
-      this.includeTables();
-      this.includeProcedures();
+      this.selected();
 
       // `generated` se lee sin trackear a propósito: si se leyera trackeado, el
       // effect volvería a dispararse cuando `generate()` lo pone en true y
@@ -308,6 +453,122 @@ export class SchemaSyncPage {
       this.result.set(null);
       this.executed.set(null);
     });
+  }
+
+  /** Bumped when (origin, schema) changes: every pending object read is stale. */
+  private objectsSeq = 0;
+
+  /**
+   * The origin's objects of one schema, plus which of them the destination has.
+   *
+   * Two requests, not one: `listTables` and `listProcedures` are the same endpoint
+   * with `object_type`, so they are asked in parallel and joined here. The
+   * destination's answer is what turns "se sincroniza" into "estas seis ya están
+   * y el script se lleva sus filas".
+   *
+   * Guarded by `objectsSeq`: a schema the user already left must not write over the
+   * one they are looking at now.
+   */
+  private loadObjects(env: string, schema: string): void {
+    const seq = this.objectsSeq;
+    if (!env || !schema) {
+      this.objects.set(null);
+      this.objectsLoading.set(false);
+      return;
+    }
+
+    // Las tres lecturas en un `Promise.all` y no encadenadas: la última depende
+    // de las otras dos, y encadenarla dejaría su resolución fuera de lo que
+    // espera un `whenStable()`, así que la tabla aparecería a destiempo.
+    this.objectsLoading.set(true);
+    const destino = env === this.envA() ? Promise.resolve([]) : this.readDestination(schema);
+    Promise.all([
+      this.dbService.listObjects(env, schema, 'table'),
+      this.dbService.listObjects(env, schema, 'procedure'),
+      destino,
+    ]).then(
+      ([tablas, procedures, delDestino]) => {
+        if (seq !== this.objectsSeq) return;
+
+        const origen: Array<{ name: string; kind: SyncObject['kind'] }> = [
+          ...(tablas.objects ?? []).map((name) => ({ name, kind: 'table' as const })),
+          ...(procedures.objects ?? []).map((name) => ({ name, kind: 'procedure' as const })),
+        ];
+        const yaEsta = new Set(delDestino ?? []);
+
+        this.objects.set(
+          origen.map((o) => ({
+            ...o,
+            selected: true,
+            // `delDestino === null` es "no se pudo leer", no "no tiene nada": se
+            // muestra "Se crea" porque no se sabe, y el aviso lo dice.
+            inDestination: yaEsta.has(o.name),
+          })),
+        );
+        this.markAll(origen);
+        this.objectsLoading.set(false);
+      },
+      (err) => {
+        if (seq !== this.objectsSeq) return;
+        this.objects.set(null);
+        this.objectsError.set(toApiError(err).message);
+        this.objectsLoading.set(false);
+      },
+    );
+  }
+
+  /**
+   * The destination's tables, or `null` when that read failed.
+   *
+   * A failure here must not sink the whole list: which objects exist in the origin
+   * is the part the user needs to choose, and it arrives on its own. So the error
+   * is reported next to the table and the "ya está" column falls back to not
+   * knowing, rather than leaving the page empty.
+   */
+  private readDestination(schema: string): Promise<string[] | null> {
+    const envA = this.envA();
+    if (!envA) return Promise.resolve(null);
+    return this.dbService.listObjects(envA, schema, 'table').then(
+      (r) => r.objects ?? [],
+      (err) => {
+        this.objectsError.set(toApiError(err).message);
+        return null;
+      },
+    );
+  }
+
+  /** Everything starts marked: sincronizar el esquema means the schema. */
+  private markAll(origen: Array<{ name: string; kind: SyncObject['kind'] }>): void {
+    this.selected.set({
+      tables: origen.filter((o) => o.kind === 'table').map((o) => o.name),
+      procedures: origen.filter((o) => o.kind === 'procedure').map((o) => o.name),
+    });
+  }
+
+  toggle(name: string, checked: boolean): void {
+    this.patchObject(name, checked);
+  }
+
+  toggleAll(checked: boolean): void {
+    const rows = this.objectRows();
+    this.objects.set(rows.map((r) => ({ ...r, selected: checked })));
+    this.selected.set({
+      tables: checked ? rows.filter((r) => r.kind === 'table').map((r) => r.name) : [],
+      procedures: checked ? rows.filter((r) => r.kind === 'procedure').map((r) => r.name) : [],
+    });
+  }
+
+  private patchObject(name: string, selected: boolean): void {
+    const rows = this.objectRows();
+    const row = rows.find((r) => r.name === name);
+    if (!row || row.selected === selected) return;
+    this.objects.set(rows.map((r) => (r.name === name ? { ...r, selected } : r)));
+
+    const bucket = row.kind === 'table' ? 'tables' : 'procedures';
+    const names = new Set(this.selected()[bucket]);
+    if (selected) names.add(name);
+    else names.delete(name);
+    this.selected.set({ ...this.selected(), [bucket]: [...names] });
   }
 
   generate(): void {
@@ -328,22 +589,29 @@ export class SchemaSyncPage {
       return;
     }
     if (!this.scopeSelected()) {
-      this.error.set('Marcá al menos tablas o stored procedures para sincronizar el schema.');
+      this.error.set('Marcá al menos una tabla o un stored procedure para sincronizar.');
       return;
     }
 
     this.busy.set(true);
     this.error.set(null);
     this.executed.set(null);
-    this.busyText.set(`Generando el script de ${schema} de ${envB} a ${envA}...`);
+    const selected = this.selected();
+    const counted = `${selected.tables.length} tabla(s) y ${selected.procedures.length} procedure(s)`;
+    this.busyText.set(`Generando el script de ${counted} de ${schema}, de ${envB} a ${envA}...`);
 
     this.dbService
       .compileSchema({
         env_b: envB,
         env_a: envA,
         schema_name: schema,
-        include_tables: this.includeTables(),
-        include_procedures: this.includeProcedures(),
+        include_tables: selected.tables.length > 0,
+        include_procedures: selected.procedures.length > 0,
+        // La lista explícita es lo que se compiló: sin ella el backend usaría los
+        // flags y se llevaría el esquema entero. Las dos cosas viajan, y el
+        // backend le da prioridad a la lista.
+        tables: selected.tables,
+        procedures: selected.procedures,
       })
       .then(
         (d) => {
@@ -378,11 +646,17 @@ export class SchemaSyncPage {
     // `DROP TABLE` del script se lleva las filas que están en el destino, y
     // empujar las del origen no es lo que hace esta página.
     const drops = /\bDROP\s+(TABLE|PROCEDURE|FUNCTION|TRIGGER)\b/i.test(code);
+    const tablas = this.selected().tables.length;
+    // El aviso cuenta las tablas, no los objetos: lo que se pierde son filas, y
+    // una tabla es lo que tiene filas.
     const aviso =
-      `\n\nEl script borra y vuelve a crear ${this.scopeLabel()} en ${env}. Las filas que ` +
-      `están en ${env} en esos objetos se pierden: el script reemplaza la estructura y no ` +
-      'copia los datos del origen. No es una fusión. Para conservar los datos del destino, ' +
-      'editá el script y dejá solo los ALTER que faltan.';
+      tablas > 0
+        ? `\n\nEl script borra y vuelve a crear ${this.scopeLabel()} en ${env}. Las filas que ` +
+          `están en ${env} en esas ${tablas} tabla(s) se pierden: el script reemplaza la ` +
+          'estructura y no copia los datos del origen. No es una fusión. Para conservar los ' +
+          'datos del destino, editá el script y dejá solo los ALTER que faltan.'
+        : `\n\nEl script reemplaza ${this.scopeLabel()} en ${env}. No se borra ninguna tabla, ` +
+          'así que no hay filas que perder.';
     if (
       !confirm(
         `¿Sincronizar ${this.schema() || 'el esquema'} de ${this.envB() || 'el origen'} a ${env}?\n` +

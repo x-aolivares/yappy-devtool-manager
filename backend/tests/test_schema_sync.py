@@ -220,6 +220,104 @@ def test_left_alone_is_the_destination_minus_the_scope_and_is_never_dropped(monk
     assert "legacy" not in script
 
 
+def test_an_explicit_list_narrows_the_scope_to_exactly_what_it_names(monkeypatch):
+    """La página de sincronizar muestra una tabla con una casilla por objeto: lo
+    que llega es la lista de lo que el usuario dejó marcado."""
+    _full_world(
+        monkeypatch,
+        tables={B.env: ["orders", "lines", "config"], A.env: ["orders", "lines", "config"]},
+        procedures={B.env: ["sp_calc", "sp_sync"], A.env: ["sp_calc", "sp_sync"]},
+    )
+
+    p = ss.plan(
+        B, A, SCHEMA, True, True, only_tables=["lines"], only_procedures=["sp_calc"]
+    )
+
+    assert p.tables == ["lines"]
+    assert p.procedures == ["sp_calc"]
+    # Y los dos órdenes son permutaciones de esa misma lista, no de la original.
+    assert sorted(p.drop_order) == ["lines"]
+    assert sorted(p.create_order) == ["lines"]
+
+
+def test_an_explicit_list_is_not_widened_by_the_flags(monkeypatch):
+    """`include_tables=True` es el default del request. Si se aplicara después de
+    la lista, volvería a compilar todo lo que el usuario recién desmarcó."""
+    _full_world(
+        monkeypatch,
+        tables={B.env: ["orders", "lines"], A.env: ["orders", "lines"]},
+        procedures={B.env: ["sp_calc"], A.env: ["sp_calc"]},
+    )
+
+    p = ss.plan(B, A, SCHEMA, True, True, only_tables=["orders"], only_procedures=[])
+
+    assert p.tables == ["orders"]
+    assert p.procedures == []
+
+
+def test_an_explicit_empty_list_is_nothing_rather_than_everything(monkeypatch):
+    """Vaciar la tabla de casillas es una decisión, no un request sin alcance: si
+    leyera como "no se envió lista", compilaría el esquema entero que el usuario
+    acababa de dejar vacío."""
+    _full_world(
+        monkeypatch,
+        tables={B.env: ["orders"], A.env: ["orders"]},
+        procedures={B.env: ["sp_calc"], A.env: ["sp_calc"]},
+    )
+
+    p = ss.plan(B, A, SCHEMA, True, True, only_tables=[], only_procedures=[])
+
+    assert p.tables == []
+    assert p.procedures == []
+
+
+def test_a_list_that_names_something_the_origin_does_not_have_is_rejected(monkeypatch):
+    """El cliente está desactualizado, o el nombre está mal. Decirlo ahora evita un
+    script con un hueco adentro que nadie nota hasta que falta una tabla."""
+    _full_world(
+        monkeypatch,
+        tables={B.env: ["orders"], A.env: ["orders"]},
+        procedures={B.env: ["sp_calc"], A.env: ["sp_calc"]},
+    )
+
+    with pytest.raises(SyncError) as exc:
+        ss.plan(B, A, SCHEMA, True, True, only_tables=["orders", "typo"], only_procedures=None)
+
+    message = str(exc.value)
+    assert "typo" in message
+    # Y dice cuál era la lista real, para que se sepa qué volver a marcar.
+    assert "orders" in message
+
+
+def test_only_one_kind_can_be_narrowed(monkeypatch):
+    """Las tablas y los procedures se eligen por separado: un run de sólo tablas
+    con sus procedures intactos es un request normal."""
+    _full_world(
+        monkeypatch,
+        tables={B.env: ["orders", "lines"], A.env: ["orders", "lines"]},
+        procedures={B.env: ["sp_calc", "sp_sync"], A.env: ["sp_calc", "sp_sync"]},
+    )
+
+    p = ss.plan(B, A, SCHEMA, True, True, only_tables=["orders"], only_procedures=None)
+
+    assert p.tables == ["orders"]
+    # `only_procedures=None` = "no lo restringí": todos los procedures.
+    assert p.procedures == ["sp_calc", "sp_sync"]
+
+
+def test_a_narrowed_list_still_reports_what_the_destination_keeps(monkeypatch):
+    _full_world(
+        monkeypatch,
+        tables={B.env: ["orders", "lines"], A.env: ["orders", "lines", "legacy"]},
+    )
+
+    p = ss.plan(B, A, SCHEMA, True, True, only_tables=["orders"], only_procedures=[])
+
+    # `lines` y `legacy` quedan como están: `lines` porque el usuario no la marcó,
+    # `legacy` porque el origen no la tiene.
+    assert p.left_alone == ["legacy", "lines"]
+
+
 def test_left_alone_is_empty_when_tables_are_excluded(monkeypatch):
     """On a procedures-only run nothing is reported about tables, and that is the point.
 

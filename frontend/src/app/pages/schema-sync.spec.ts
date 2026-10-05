@@ -31,6 +31,12 @@ const CREATE_SCRIPT =
 let compileResponse: Record<string, any> = BASE;
 let compileRequests: SchemaCompileRequest[] = [];
 let executeRequests: ExecuteRequest[] = [];
+let objectCalls: Array<{ env: string; schema: string; type: string }> = [];
+
+/** Los objetos que el origen tiene, y los que el destino ya tiene. */
+let originTables: string[] = ['lines', 'orders'];
+let originProcedures: string[] = ['sp_calc'];
+let destinationTables: string[] = ['orders'];
 
 function mockProviders() {
   return [
@@ -42,6 +48,28 @@ function mockProviders() {
       provide: DbService,
       useValue: {
         listSchemas: () => Promise.resolve({ schemas: ['yappy'] }),
+        listObjects: (env: string, schema: string, objectType: string) => {
+          objectCalls.push({ env, schema, type: objectType });
+          // Un esquema distinto tiene objetos distintos: es lo que hace que la
+          // recarga se note en la selección y no sólo en el log de llamadas.
+          const esOtro = schema === 'otro';
+          const objects =
+            objectType === 'table'
+              ? env === 'dev'
+                ? esOtro
+                  ? ['otra']
+                  : originTables
+                : destinationTables
+              : esOtro
+                ? []
+                : originProcedures;
+          return Promise.resolve({
+            env,
+            schema_name: schema,
+            object_type: objectType,
+            objects,
+          });
+        },
         compileSchema: (req: SchemaCompileRequest) => {
           compileRequests.push(req);
           return Promise.resolve(compileResponse);
@@ -74,6 +102,10 @@ async function setup(): Promise<void> {
   compileResponse = BASE;
   compileRequests = [];
   executeRequests = [];
+  objectCalls = [];
+  originTables = ['lines', 'orders'];
+  originProcedures = ['sp_calc'];
+  destinationTables = ['orders'];
   await TestBed.configureTestingModule({
     imports: [SchemaSyncPage],
     providers: [provideRouter([]), ...mockProviders()],
@@ -106,6 +138,23 @@ async function generate(response: Record<string, any> = {}): Promise<{
   el: HTMLElement;
 }> {
   compileResponse = { ...BASE, ...response };
+  const { fixture, comp } = await ready();
+  comp.generate();
+  await settle(fixture);
+  return { fixture, comp, el: fixture.nativeElement as HTMLElement };
+}
+
+/**
+ * La página con origen, destino y esquema cargados, y la lista de objetos ya leída.
+ *
+ * Es el estado en el que el usuario realmente elige: sin esto no hay tabla y no
+ * hay nada que marcar.
+ */
+async function ready(): Promise<{
+  fixture: ComponentFixture<SchemaSyncPage>;
+  comp: any;
+  el: HTMLElement;
+}> {
   const fixture = TestBed.createComponent(SchemaSyncPage);
   const comp = fixture.componentInstance as any;
   comp.envB.set('dev');
@@ -113,8 +162,6 @@ async function generate(response: Record<string, any> = {}): Promise<{
   comp.envA.set('local');
   await settle(fixture);
   comp.schema.set('yappy');
-  await settle(fixture);
-  comp.generate();
   await settle(fixture);
   return { fixture, comp, el: fixture.nativeElement as HTMLElement };
 }
@@ -161,66 +208,84 @@ describe('SchemaSyncPage generación', () => {
     expect(el.textContent).not.toContain('quedan sin tocar');
   });
 
-  it('manda el alcance elegido en la request', async () => {
-    const fixture = TestBed.createComponent(SchemaSyncPage);
-    const comp = fixture.componentInstance as any;
-    comp.envB.set('dev');
-    await settle(fixture);
-    comp.envA.set('local');
-    await settle(fixture);
-    comp.schema.set('yappy');
-    comp.includeProcedures.set(false);
-    await settle(fixture);
+  it('manda la lista exacta de objetos marcados', async () => {
+    const { fixture, comp } = await ready();
+    // Todo arranca marcado: sincronizar el esquema significa el esquema.
     comp.generate();
     await settle(fixture);
 
     expect(compileRequests.length).toBe(1);
-    expect(compileRequests[0]).toEqual({
+    // La lista viaja explícita, sin los flags decidiendo por su cuenta. Es lo que
+    // garantiza que el backend no compile lo que el usuario desmarcó.
+    expect(compileRequests[0].tables).toEqual(['lines', 'orders']);
+    expect(compileRequests[0].procedures).toEqual(['sp_calc']);
+    expect(compileRequests[0]).toMatchObject({
       env_b: 'dev',
       env_a: 'local',
       schema_name: 'yappy',
       include_tables: true,
-      include_procedures: false,
+      include_procedures: true,
     });
   });
 
-  it('deshabilita Generar cuando no queda nada en el alcance', async () => {
-    const fixture = TestBed.createComponent(SchemaSyncPage);
-    const comp = fixture.componentInstance as any;
-    comp.envB.set('dev');
+  it('desmarcar un objeto lo saca de la request', async () => {
+    const { fixture, comp } = await ready();
+
+    comp.toggle('orders', false);
     await settle(fixture);
-    comp.envA.set('local');
+    comp.generate();
     await settle(fixture);
-    comp.schema.set('yappy');
-    comp.includeTables.set(false);
-    comp.includeProcedures.set(false);
+
+    expect(compileRequests[0].tables).toEqual(['lines']);
+    expect(compileRequests[0].procedures).toEqual(['sp_calc']);
+  });
+
+  it('deshabilita Generar cuando no queda nada marcado', async () => {
+    const { fixture, comp, el } = await ready();
+    comp.toggleAll(false);
     await settle(fixture);
 
     expect(comp.scopeSelected()).toBe(false);
     expect(comp.canGenerate()).toBe(false);
-    expect(button(fixture.nativeElement as HTMLElement, 'Generar').disabled).toBe(true);
-    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
-      'Marcá al menos tablas o stored procedures',
-    );
+    expect(button(el, 'Generar').disabled).toBe(true);
+    expect(el.textContent).toContain('Marcá al menos una tabla o un stored procedure');
   });
 
-  it('vuelve a habilitar Generar si queda un tipo de objeto marcado', async () => {
-    const fixture = TestBed.createComponent(SchemaSyncPage);
-    const comp = fixture.componentInstance as any;
-    comp.envB.set('dev');
+  it('vuelve a habilitar Generar si queda un solo objeto marcado', async () => {
+    const { fixture, comp, el } = await ready();
+    comp.toggleAll(false);
     await settle(fixture);
-    comp.envA.set('local');
-    await settle(fixture);
-    comp.schema.set('yappy');
-    comp.includeTables.set(false);
-    comp.includeProcedures.set(false);
+    expect(comp.canGenerate()).toBe(false);
+
+    comp.toggle('sp_calc', true);
     await settle(fixture);
 
-    comp.includeProcedures.set(true);
-    await settle(fixture);
-
+    expect(comp.scopeSelected()).toBe(true);
     expect(comp.canGenerate()).toBe(true);
-    expect(button(fixture.nativeElement as HTMLElement, 'Generar').disabled).toBe(false);
+    expect(button(el, 'Generar').disabled).toBe(false);
+  });
+
+  it('"Todos" a medias se muestra indeterminado, no marcado', async () => {
+    const { fixture, comp } = await ready();
+
+    // Con 3 objetos y 2 marcados, la casilla global no puede decir "todos": saying
+    // it would make one more click silently drop the third.
+    comp.toggle('sp_calc', false);
+    await settle(fixture);
+
+    expect(comp.allSelected()).toBe(false);
+    expect(comp.someSelected()).toBe(true);
+    expect(comp.selectedCount()).toBe(2);
+  });
+
+  it('un origen sin objetos no habilita nada y lo dice', async () => {
+    originTables = [];
+    originProcedures = [];
+    const { fixture, comp, el } = await ready();
+
+    expect(comp.objectRows()).toEqual([]);
+    expect(comp.canGenerate()).toBe(false);
+    expect(el.textContent).toContain('no tiene tablas ni procedures');
   });
 
   it('no genera con origen y destino iguales', async () => {
@@ -251,13 +316,15 @@ describe('SchemaSyncPage generación', () => {
     expect(comp.canSync()).toBe(false);
   });
 
-  it('descarta el script generado cuando cambia el alcance', async () => {
+  it('descarta el script generado cuando cambia la selección', async () => {
     const { fixture, comp } = await generate();
     expect(comp.script()).not.toBe('');
 
-    comp.includeTables.set(false);
+    comp.toggle('orders', false);
     await settle(fixture);
 
+    // El script en el editor ya no describe lo que el usuario pidió: correrlo
+    // sincronizaría una tabla que acaba de sacar del alcance.
     expect(comp.script()).toBe('');
     expect(comp.result()).toBeNull();
   });
@@ -267,6 +334,121 @@ describe('SchemaSyncPage generación', () => {
 
     expect(comp.script()).toBe('');
     expect(comp.canSync()).toBe(false);
+  });
+});
+
+describe('SchemaSyncPage la tabla de objetos', () => {
+  beforeEach(setup);
+
+  it('lista cada objeto del origen con su tipo y su casilla', async () => {
+    const { el } = await ready();
+
+    // Se afirma sobre las filas y los ids, no sobre el título del panel: el
+    // título es copy, las filas son la estructura que hace falta.
+    const filas = [...el.querySelectorAll('table.filter-table tbody tr')];
+    expect(filas.length).toBe(3);
+    expect(el.querySelector('#sync-obj-orders')).not.toBeNull();
+    expect(el.querySelector('#sync-obj-lines')).not.toBeNull();
+    expect(el.querySelector('#sync-obj-sp_calc')).not.toBeNull();
+    expect(el.textContent).toContain('tabla');
+    expect(el.textContent).toContain('procedure');
+  });
+
+  it('todo arranca marcado y el conteo lo dice', async () => {
+    const { fixture, comp, el } = await ready();
+
+    expect(comp.selected()).toEqual({ tables: ['lines', 'orders'], procedures: ['sp_calc'] });
+    expect(comp.allSelected()).toBe(true);
+    expect(comp.objectsLoading()).toBe(false);
+    expect(comp.objectRows().length).toBe(3);
+    expect(el.textContent).toContain('3 de 3 marcados');
+  });
+
+  it('dice si el destino ya tiene el objeto', async () => {
+    const { el } = await ready();
+
+    // `orders` está en el destino y `lines` no: esa diferencia es la que dice
+    // qué filas se van a perder, y por eso la tabla la muestra.
+    const fila = [...el.querySelectorAll('table.filter-table tbody tr')].find((f) =>
+      f.textContent?.includes('orders'),
+    );
+    expect(fila?.textContent).toContain('Ya está');
+    expect(fila?.textContent).toContain('orders');
+
+    const nueva = [...el.querySelectorAll('table.filter-table tbody tr')].find((f) =>
+      f.textContent?.includes('lines'),
+    );
+    expect(nueva?.textContent).toContain('Se crea');
+  });
+
+  it('desmarcar en la tabla cambia la selección y el botón de todos', async () => {
+    const { fixture, comp, el } = await ready();
+
+    (el.querySelector('#sync-obj-orders') as HTMLInputElement).click();
+    await settle(fixture);
+
+    expect(comp.selected().tables).toEqual(['lines']);
+    expect(comp.selected().procedures).toEqual(['sp_calc']);
+    expect(el.textContent).toContain('2 de 3 marcados');
+  });
+
+  it('"Todos" marca y desmarca la lista entera', async () => {
+    const { fixture, comp, el } = await ready();
+
+    const todos = el.querySelector('#schema-sync-all') as HTMLInputElement;
+    todos.click();
+    await settle(fixture);
+    expect(comp.selected()).toEqual({ tables: [], procedures: [] });
+    expect(el.textContent).toContain('0 de 3 marcados');
+
+    todos.click();
+    await settle(fixture);
+    expect(comp.selected()).toEqual({ tables: ['lines', 'orders'], procedures: ['sp_calc'] });
+  });
+
+  it('pregunta tablas y procedures del origen, y las tablas del destino', async () => {
+    await ready();
+
+    const delOrigen = objectCalls.filter((c) => c.env === 'dev');
+    expect(delOrigen.map((c) => c.type).sort()).toEqual(['procedure', 'table']);
+    // La tercera es la del destino, y sólo de tablas: la que responde "ya está".
+    expect(objectCalls.some((c) => c.env === 'local' && c.type === 'table')).toBe(true);
+  });
+
+  it('cambiar de esquema recarga la lista y limpia la selección', async () => {
+    const { fixture, comp } = await ready();
+    expect(comp.selected().tables).toEqual(['lines', 'orders']);
+
+    comp.schema.set('otro');
+    await settle(fixture);
+
+    // `otro` tiene una sola tabla y ningún procedure. Los nombres marcados
+    // anterior eran de `yappy` y probablemente ni existen acá: dejarlos sería
+    // mandar una lista que el backend va a rechazar.
+    expect(objectCalls.some((c) => c.schema === 'otro' && c.env === 'dev')).toBe(true);
+    expect(comp.selected()).toEqual({ tables: ['otra'], procedures: [] });
+    expect(comp.selected().tables).not.toContain('orders');
+  });
+
+  it('el aviso de filas perdidas cuenta tablas, no objetos', async () => {
+    const { fixture, comp, el } = await ready();
+    // Sólo un procedure marcado: no hay ninguna tabla que recrear, y decirlo evita
+    // un aviso de "se pierden filas" sobre algo que no toca tablas.
+    comp.toggleAll(false);
+    comp.toggle('sp_calc', true);
+    await settle(fixture);
+
+    expect(el.textContent).toContain('no se toca ninguna tabla');
+  });
+
+  it('con tablas marcadas el aviso dice cuántas filas se pierden', async () => {
+    const { fixture, comp, el } = await ready();
+    comp.toggleAll(false);
+    comp.toggle('orders', true);
+    await settle(fixture);
+
+    expect(el.textContent).toContain('1 tabla');
+    expect(el.textContent).toContain('se pierden');
   });
 });
 

@@ -196,12 +196,44 @@ def _orders(
 # --- planning ---------------------------------------------------------------
 
 
+def _in_scope(
+    available: list[str],
+    wanted: list[str] | None,
+    kind: str,
+    schema: str,
+) -> list[str]:
+    """The objects in scope: what was asked for, checked against what exists.
+
+    ``wanted is None`` means the caller did not narrow the scope, so everything
+    is in it — that is the flag-driven request from a client with no table to
+    show. A list, empty or not, is the caller's explicit choice and is honoured
+    exactly.
+
+    Sorted, because a list the user built by clicking checkboxes has no
+    meaningful order of its own and the response is read by humans.
+    """
+    if wanted is None:
+        return sorted(available)
+
+    unknown = [name for name in wanted if name not in available]
+    if unknown:
+        exists = sorted(set(available))
+        detalle = ", ".join(exists) if exists else "no tiene ninguno"
+        raise SyncError(
+            f"{', '.join(unknown)} no {('existe' if len(unknown) == 1 else 'existen')} como "
+            f"{kind} en {schema} del origen. Volvé a cargar la lista: {detalle}."
+        )
+    return sorted(set(wanted))
+
+
 def plan(
     conn_b,
     conn_a,
     schema: str,
     include_tables: bool,
     include_procedures: bool,
+    only_tables: list[str] | None = None,
+    only_procedures: list[str] | None = None,
 ) -> SchemaPlan:
     """Decide what the script will contain, reading both open connections.
 
@@ -217,6 +249,13 @@ def plan(
     is *not* best-effort: a failed read would silently produce an order that dies
     with 3730 in the middle of the drops, so it is better to answer with an
     error while nothing has been applied.
+
+    ``only_tables``/``only_procedures`` narrow the scope to what the caller
+    picked. They are validated against the origin's real object list rather than
+    trusted, for the same reason the table-list migration validates its
+    ``date_column``: a name the origin does not have is a client that is out of
+    date, and it has to say so while nothing has been applied instead of producing
+    a script with a silent gap in it.
     """
     if schema not in obj.list_schemas(conn_b):
         raise SyncError(
@@ -225,8 +264,20 @@ def plan(
         )
 
     create_schema = schema not in obj.list_schemas(conn_a)
-    tables = sorted(obj.list_tables(conn_b, schema)) if include_tables else []
-    procedures = sorted(obj.list_procedures(conn_b, schema)) if include_procedures else []
+
+    available_tables = obj.list_tables(conn_b, schema)
+    available_procedures = obj.list_procedures(conn_b, schema)
+
+    tables = _in_scope(available_tables, only_tables, "tabla", schema)
+    procedures = _in_scope(available_procedures, only_procedures, "stored procedure", schema)
+
+    # The flags only apply when no explicit list arrived: a list is the user's
+    # own choice, and widening it because `include_tables` happens to be true
+    # would compile objects they just unchecked.
+    if only_tables is None and not include_tables:
+        tables = []
+    if only_procedures is None and not include_procedures:
+        procedures = []
 
     # Everything the destination has that is not in scope stays exactly as it is.
     # Only meaningful when tables are in scope at all: on a procedures-only run
@@ -234,9 +285,10 @@ def plan(
     # as "tables the origin does not have" would be a lie -- the origin almost
     # certainly has them, the user simply did not ask for tables this time. The
     # note built from this list reads exactly that, so the list stays empty.
+    tables_in_scope = include_tables or only_tables is not None
     left_alone = (
         sorted(set(obj.list_tables(conn_a, schema)) - set(tables))
-        if include_tables
+        if tables_in_scope
         else []
     )
 

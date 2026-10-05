@@ -110,9 +110,20 @@ class SchemaCompileRequest(BaseModel):
     """Compile a whole schema from one environment into another (origen -> destino).
 
     The bulk sibling of ``CompileRequest``: one script for every table and stored
-    procedure the origin has in that schema, ordered so MySQL accepts it. Both
-    flags default to ``True`` because "sync this schema" means the schema; the
-    flags exist to narrow the scope, and at least one of them must be on.
+    procedure the origin has in that schema, ordered so MySQL accepts it.
+
+    The scope is one of three shapes, in this order:
+
+    1. ``tables``/``procedures`` carry an explicit list, because the browser
+       showed the user a table with a checkbox per object and they chose. An
+       explicit list is the whole scope: the two flags below are ignored, since
+       they would only widen or narrow what the user just picked.
+    2. Otherwise the two flags apply, and both default to ``True`` because "sync
+       this schema" means the schema. They exist for a client with no table to
+       show, and at least one of them must be on.
+    3. An explicit list that is empty is a scope of nothing, which the route
+       rejects — it is different from "not given", and reading it as "everything"
+       would compile the whole schema the user had just emptied on purpose.
     """
 
     env_b: str  # origen
@@ -120,6 +131,10 @@ class SchemaCompileRequest(BaseModel):
     schema_name: str
     include_tables: bool = True
     include_procedures: bool = True
+    #: The objects the user marked, when the request comes from the schema-sync
+    #: page. Empty means "not given": fall back to the flags.
+    tables: list[str] | None = None
+    procedures: list[str] | None = None
 
 
 class SchemaCompileResponse(BaseModel):
