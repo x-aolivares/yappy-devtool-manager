@@ -149,6 +149,28 @@ function optionsOf(el: HTMLElement, table: string): string[] {
   return [...(select?.options ?? [])].map((o) => (o.textContent ?? '').trim());
 }
 
+/**
+ * Marca una tabla **con rango de fechas**.
+ *
+ * No es una comodidad: marcar una tabla le pone por defecto la primera columna
+ * de fecha, y columna sin ninguna fecha no es enviable — significaría "sin
+ * filtro", o sea la tabla entera. Un test que quiere llegar al submit tiene que
+ * pasar por un rango, como el usuario.
+ */
+async function marcarConRango(
+  comp: any,
+  fixture: ComponentFixture<MigrateDataPage>,
+  table = 'orders',
+  from = '2026-03-01',
+  to = '2026-03-31',
+): Promise<void> {
+  comp.toggle(table, true);
+  await settle(fixture);
+  comp.setFrom(table, from);
+  comp.setTo(table, to);
+  await settle(fixture);
+}
+
 describe('MigrateDataPage tablas y columnas de fecha', () => {
   beforeEach(setup);
 
@@ -212,7 +234,9 @@ describe('MigrateDataPage tablas y columnas de fecha', () => {
     comp.toggle('config', true);
     await settle(fixture);
 
-    expect(el.textContent).toContain('Sin columnas de fecha: se migra completa');
+    // El aviso va en la fila, corto: la celda de una tabla no es lugar para un
+    // párrafo. Lo que importa es que el filtro no aparece.
+    expect(el.textContent).toContain('Sin columnas de fecha');
     expect(el.querySelector('#migrate-date-column-config')).toBeNull();
     expect(el.querySelector('#migrate-from-config')).toBeNull();
     expect(el.querySelector('#migrate-to-config')).toBeNull();
@@ -221,21 +245,22 @@ describe('MigrateDataPage tablas y columnas de fecha', () => {
 
   it('no deja escribir un nombre de columna que no sea de la tabla', async () => {
     const { fixture, comp, el } = await ready();
-    comp.toggle('orders', true);
-    await settle(fixture);
+    await marcarConRango(comp, fixture);
 
     comp.setColumn('orders', 'usuario_id');
     await settle(fixture);
 
     expect(comp.filters().orders.column).toBe('');
     expect(comp.selection()[0].date_column).toBeNull();
-    expect(el.textContent).toContain('Sin columna de filtro');
+    // Sin columna no hay Modo ni Rango que mostrar: los controles desaparecen en
+    // vez de quedar vacíos.
+    expect(el.querySelector('#migrate-from-orders')).toBeNull();
+    expect(el.querySelector('#migrate-to-orders')).toBeNull();
   });
 
   it('una columna de fecha elegida deja habilitados los dos campos de fecha', async () => {
     const { fixture, comp, el } = await ready();
-    comp.toggle('orders', true);
-    await settle(fixture);
+    await marcarConRango(comp, fixture);
 
     expect(el.querySelector('#migrate-from-orders')?.hasAttribute('disabled')).toBeFalsy();
     expect(el.querySelector('#migrate-to-orders')?.hasAttribute('disabled')).toBeFalsy();
@@ -243,8 +268,7 @@ describe('MigrateDataPage tablas y columnas de fecha', () => {
 
   it('con "Todo" no muestra los campos de fecha y limpia los que había', async () => {
     const { fixture, comp, el } = await ready();
-    comp.toggle('orders', true);
-    await settle(fixture);
+    await marcarConRango(comp, fixture);
     comp.setDay('orders', '2026-03-01');
     await settle(fixture);
 
@@ -263,8 +287,7 @@ describe('MigrateDataPage tablas y columnas de fecha', () => {
 
   it('los campos de fecha muestran los límites cargados', async () => {
     const { fixture, comp, el } = await ready();
-    comp.toggle('orders', true);
-    await settle(fixture);
+    await marcarConRango(comp, fixture);
     comp.setFrom('orders', '2026-03-01');
     comp.setTo('orders', '2026-03-31');
     await settle(fixture);
@@ -275,8 +298,7 @@ describe('MigrateDataPage tablas y columnas de fecha', () => {
 
   it('desmarcar y remarkar no vuelve a preguntar las columnas', async () => {
     const { fixture, comp } = await ready();
-    comp.toggle('orders', true);
-    await settle(fixture);
+    await marcarConRango(comp, fixture);
     expect(dateColumnCalls).toHaveLength(1);
 
     comp.toggle('orders', false);
@@ -293,6 +315,8 @@ describe('MigrateDataPage tablas y columnas de fecha', () => {
 
     comp.toggleAll(true);
     await settle(fixture);
+    for (const t of TABLES) comp.setTo(t, '2026-03-31');
+    await settle(fixture);
 
     expect(comp.includedTables()).toEqual(TABLES);
     expect(dateColumnCalls.map((c) => c.table)).toEqual(TABLES);
@@ -306,7 +330,12 @@ describe('MigrateDataPage tablas y columnas de fecha', () => {
     comp.toggle('orders', true);
     await settle(fixture);
 
+    // El detalle del error vive en un modal, no en la celda: era un párrafo de
+    // doscientos caracteres con un `border-left` de bloque adentro de un `<td>`.
     expect(el.textContent).toContain('No se pudieron leer las columnas de fecha de orders');
+    expect(el.querySelector('.notice-modal')).not.toBeNull();
+    // En la fila queda sólo el marcador corto.
+    expect(el.querySelector('table.filter-table .table-alert')).not.toBeNull();
     // Mandarla sin filtro la copiaría entera: eso se frena acá, no en el backend.
     expect(comp.canSubmit()).toBe(false);
     expect(comp.submitHint()).toContain('columnas de fecha');
@@ -317,6 +346,63 @@ describe('MigrateDataPage tablas y columnas de fecha', () => {
 
     expect(sent).toHaveLength(0);
   });
+
+  it('cerrar el modal no destraba nada: el error sigue frenando', async () => {
+    dateColumnsFor = () => Promise.reject(new Error('boom'));
+    const { fixture, comp, el } = await ready();
+
+    comp.toggle('orders', true);
+    await settle(fixture);
+    expect(el.querySelector('.notice-modal')).not.toBeNull();
+
+    comp.dismissNotice();
+    await settle(fixture);
+
+    expect(comp.noticeOpen()).toBe(false);
+    expect(el.querySelector('.notice-modal')).toBeNull();
+    // El estado de error sigue en la tabla: cerrar el aviso es sólo cerrarlo.
+    expect(comp.failedTables().map((f: { table: string }) => f.table)).toEqual(['orders']);
+    expect(comp.canSubmit()).toBe(false);
+  });
+
+  it('el marcador de la fila vuelve a abrir el modal', async () => {
+    dateColumnsFor = () => Promise.reject(new Error('boom'));
+    const { fixture, comp, el } = await ready();
+
+    comp.toggle('orders', true);
+    await settle(fixture);
+    comp.dismissNotice();
+    await settle(fixture);
+
+    (el.querySelector('table.filter-table .table-alert') as HTMLButtonElement).click();
+    await settle(fixture);
+
+    expect(comp.noticeOpen()).toBe(true);
+    expect(el.querySelector('.notice-modal')).not.toBeNull();
+  });
+
+  it('un fallo nuevo vuelve a abrir el modal, uno ya cerrado no', async () => {
+    dateColumnsFor = () => Promise.reject(new Error('boom'));
+    const { fixture, comp } = await ready();
+
+    comp.toggle('orders', true);
+    await settle(fixture);
+    comp.dismissNotice();
+    await settle(fixture);
+    expect(comp.noticeOpen()).toBe(false);
+
+    // Desmarcar y volver a marcar no vuelve a preguntar (las columnas ya se
+    // pidieron y fallaron), así que el aviso no se reabre solo.
+    comp.toggle('orders', false);
+    comp.toggle('orders', true);
+    await settle(fixture);
+    expect(comp.noticeOpen()).toBe(false);
+
+    // Pero una tabla que falla ahora sí lo abre: es un fallo nuevo.
+    comp.toggle('lines', true);
+    await settle(fixture);
+    expect(comp.noticeOpen()).toBe(true);
+  });
 });
 
 describe('MigrateDataPage un solo día', () => {
@@ -324,8 +410,7 @@ describe('MigrateDataPage un solo día', () => {
 
   it('el modo de un solo día escribe los dos límites con un solo campo', async () => {
     const { fixture, comp, el } = await ready();
-    comp.toggle('orders', true);
-    await settle(fixture);
+    await marcarConRango(comp, fixture);
 
     comp.setSingleDay('orders', true);
     await settle(fixture);
@@ -344,8 +429,7 @@ describe('MigrateDataPage un solo día', () => {
 
   it('explica en la pantalla que los dos límites iguales son un solo día', async () => {
     const { fixture, comp, el } = await ready();
-    comp.toggle('orders', true);
-    await settle(fixture);
+    await marcarConRango(comp, fixture);
     comp.setFrom('orders', '2026-03-01');
     comp.setTo('orders', '2026-03-01');
     await settle(fixture);
@@ -357,8 +441,7 @@ describe('MigrateDataPage un solo día', () => {
 
   it('el rango ofrece los dos límites, y cada uno va en su input', async () => {
     const { fixture, comp, el } = await ready();
-    comp.toggle('orders', true);
-    await settle(fixture);
+    await marcarConRango(comp, fixture);
     comp.setColumn('orders', 'created_at');
     await settle(fixture);
 
@@ -386,8 +469,7 @@ describe('MigrateDataPage simular y migrar', () => {
 
   it('Simular manda dry_run true y no manda confirm true', async () => {
     const { fixture, comp } = await ready();
-    comp.toggle('orders', true);
-    await settle(fixture);
+    await marcarConRango(comp, fixture);
 
     comp.simulate();
     await settle(fixture);
@@ -403,8 +485,7 @@ describe('MigrateDataPage simular y migrar', () => {
 
   it('Migrar manda confirm true', async () => {
     const { fixture, comp } = await ready();
-    comp.toggle('orders', true);
-    await settle(fixture);
+    await marcarConRango(comp, fixture);
 
     comp.migrate();
     await settle(fixture);
@@ -416,8 +497,7 @@ describe('MigrateDataPage simular y migrar', () => {
 
   it('Migrar pregunta antes y el aviso dice que escribe y reemplaza por primary key', async () => {
     const { fixture, comp } = await ready();
-    comp.toggle('orders', true);
-    await settle(fixture);
+    await marcarConRango(comp, fixture);
 
     comp.migrate();
     await settle(fixture);
@@ -431,8 +511,7 @@ describe('MigrateDataPage simular y migrar', () => {
   it('declinar la confirmación no manda nada', async () => {
     vi.mocked(window.confirm).mockReturnValue(false);
     const { fixture, comp } = await ready();
-    comp.toggle('orders', true);
-    await settle(fixture);
+    await marcarConRango(comp, fixture);
 
     comp.migrate();
     await settle(fixture);
@@ -551,8 +630,7 @@ describe('MigrateDataPage simular y migrar', () => {
 
   it('un resultado viejo se descarta cuando cambia la selección', async () => {
     const { fixture, comp } = await ready();
-    comp.toggle('orders', true);
-    await settle(fixture);
+    await marcarConRango(comp, fixture);
     comp.simulate();
     await settle(fixture);
     expect(comp.result()).not.toBeNull();
@@ -574,8 +652,7 @@ describe('MigrateDataPage resultado', () => {
 
   it('renderiza cada tabla con su estado, sus conteos y el SELECT usado', async () => {
     const { fixture, comp, el } = await ready();
-    comp.toggle('orders', true);
-    await settle(fixture);
+    await marcarConRango(comp, fixture);
 
     comp.migrate();
     await settle(fixture);
@@ -605,8 +682,7 @@ describe('MigrateDataPage resultado', () => {
 
   it('muestra todas las notas enteras, sin recortarlas', async () => {
     const { fixture, comp, el } = await ready();
-    comp.toggle('orders', true);
-    await settle(fixture);
+    await marcarConRango(comp, fixture);
 
     comp.migrate();
     await settle(fixture);
@@ -616,11 +692,57 @@ describe('MigrateDataPage resultado', () => {
     }
   });
 
-  it('la simulación se marca como simulación', async () => {
-    migrateResponse = { ...BASE, dry_run: true };
+  it('no deja enviar una tabla con columna de fecha elegida pero sin fechas', async () => {
     const { fixture, comp, el } = await ready();
     comp.toggle('orders', true);
     await settle(fixture);
+
+    // Marcar una tabla le pone por defecto la primera columna de fecha. Sin
+    // ninguna fecha el filtro NO acota: el SELECT sale sin WHERE y se copia la
+    // tabla entera. Nadie espera eso de un formulario con "Rango" elegido y dos
+    // campos vacíos, y es la forma de vaciar una tabla de producción en dev.
+    expect(comp.filters().orders.column).toBe('created_at');
+    expect(comp.filterlessTables()).toEqual(['orders']);
+    expect(comp.canSubmit()).toBe(false);
+    expect(comp.submitHint()).toContain('se copiaría entera');
+    expect(button(el, 'Simular').disabled).toBe(true);
+
+    comp.simulate();
+    await settle(fixture);
+    expect(sent).toHaveLength(0);
+  });
+
+  it('con un solo límite ya se puede enviar: "desde marzo en adelante"', async () => {
+    const { fixture, comp } = await ready();
+    comp.toggle('orders', true);
+    await settle(fixture);
+    comp.setFrom('orders', '2026-03-01');
+    await settle(fixture);
+
+    // Un rango abierto por un lado es una migración como cualquier otra: no
+    // entra en `filterlessTables` porque hay una fecha.
+    expect(comp.filterlessTables()).toEqual([]);
+    expect(comp.canSubmit()).toBe(true);
+  });
+
+  it('la forma honesta de migrarla entera es "Todo (sin filtro)"', async () => {
+    const { fixture, comp } = await ready();
+    comp.toggle('orders', true);
+    await settle(fixture);
+    expect(comp.canSubmit()).toBe(false);
+
+    comp.setColumn('orders', '');
+    await settle(fixture);
+
+    expect(comp.filterlessTables()).toEqual([]);
+    expect(comp.canSubmit()).toBe(true);
+    expect(comp.selection()[0].date_column).toBeNull();
+  });
+
+  it('la simulación se marca como simulación', async () => {
+    migrateResponse = { ...BASE, dry_run: true };
+    const { fixture, comp, el } = await ready();
+    await marcarConRango(comp, fixture);
 
     comp.simulate();
     await settle(fixture);

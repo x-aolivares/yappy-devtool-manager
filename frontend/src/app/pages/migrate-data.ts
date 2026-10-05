@@ -11,6 +11,7 @@ import { toApiError } from '../core/services/api-error';
 import { StatusBadge } from '../shared/status-badge';
 import { RegionControlsComponent } from '../shared/region-controls';
 import { SchemaSelectComponent } from '../shared/schema-select';
+import { NoticeModalComponent } from '../shared/notice-modal';
 
 /**
  * El estado de una tabla marcada para migrar.
@@ -84,7 +85,7 @@ function blankState(table: string): TableState {
  */
 @Component({
   selector: 'app-migrate-data-page',
-  imports: [RegionControlsComponent, SchemaSelectComponent, StatusBadge],
+  imports: [RegionControlsComponent, SchemaSelectComponent, StatusBadge, NoticeModalComponent],
   template: `
     <h1>Migrar datos</h1>
     <p class="muted">
@@ -184,23 +185,25 @@ function blankState(table: string): TableState {
                   </td>
 
                   @if (!row.state?.included) {
-                    <td colspan="3" class="muted" style="font-size:0.75rem;">
-                      Sin filtro: se copia la tabla entera.
-                    </td>
+                    <td colspan="3"></td>
                   } @else if (row.state.loading) {
                     <td colspan="3" class="muted" style="font-size:0.75rem;">
-                      <span class="spinner"></span> Buscando columnas de fecha de
-                      {{ row.table }}...
+                      <span class="spinner"></span> Buscando columnas…
                     </td>
                   } @else if (row.state.error) {
-                    <td colspan="3" class="muted hint-error" style="font-size:0.75rem;">
-                      No se pudieron leer las columnas de fecha de {{ row.table }}:
-                      {{ row.state.error }}. La tabla no se puede migrar hasta saber si tiene o no,
-                      porque mandarla sin filtro la copia entera.
+                    <td colspan="3">
+                      <button
+                        type="button"
+                        class="table-alert"
+                        [attr.aria-label]="'Ver el detalle de ' + row.table"
+                        (click)="noticeOpen.set(true)"
+                      >
+                        <app-badge status="error" label="No se pudieron leer las columnas" />
+                      </button>
                     </td>
                   } @else if (!row.state.columns?.length) {
                     <td colspan="3" class="muted" style="font-size:0.75rem;">
-                      Sin columnas de fecha: se migra completa.
+                      Sin columnas de fecha
                     </td>
                   } @else {
                     <td>
@@ -285,9 +288,7 @@ function blankState(table: string): TableState {
                           }
                         }
                       } @else {
-                        <span class="muted" style="font-size:0.75rem;">
-                          Sin columna de filtro: se copia la tabla entera.
-                        </span>
+                        <span></span>
                       }
                     </td>
                   }
@@ -396,6 +397,24 @@ function blankState(table: string): TableState {
         </div>
       }
     }
+
+    <app-notice-modal
+      [open]="noticeOpen()"
+      title="No se pudieron leer las columnas de fecha"
+      (closed)="dismissNotice()"
+    >
+      <p>
+        La migración queda frenada. Sin saber si una tabla tiene columnas de fecha, mandarla sin
+        filtro copiaría la tabla entera, así que primero hay que leer bien cuáles tiene.
+      </p>
+      <ul>
+        @for (f of failedTables(); track f.table) {
+          <li>
+            No se pudieron leer las columnas de fecha de <code>{{ f.table }}</code>: {{ f.error }}
+          </li>
+        }
+      </ul>
+    </app-notice-modal>
   `,
 })
 export class MigrateDataPage {
@@ -423,6 +442,33 @@ export class MigrateDataPage {
   readonly result = signal<MigrationResponse | null>(null);
 
   readonly sameEnv = computed(() => !!this.envB() && this.envB() === this.envA());
+
+  /**
+   * The marked tables whose date columns could not be read. Drives the notice
+   * modal: the detail of a failure is a couple of sentences, which is what broke
+   * the table cell it used to live in. `canSubmit` still blocks on the same
+   * `state.error`, so dismissing the modal does not unblock anything.
+   */
+  readonly failedTables = computed(() =>
+    this.includedTables()
+      .filter((t) => this.filters()[t]?.error)
+      .map((t) => ({ table: t, error: this.filters()[t]?.error ?? '' })),
+  );
+
+  readonly noticeOpen = signal(false);
+
+  /**
+   * Bumped on every failed introspection. The modal opens for a NEW failure and
+   * not for the one the user just closed, so dismissing it sticks until
+   * something else breaks.
+   */
+  private errorSeq = 0;
+  private dismissedSeq = 0;
+
+  dismissNotice(): void {
+    this.dismissedSeq = this.errorSeq;
+    this.noticeOpen.set(false);
+  }
 
   /** The marked tables, in the order the origin listed them. */
   readonly includedTables = computed(() => this.tableList().filter((t) => this.filters()[t]?.included));
@@ -465,12 +511,39 @@ export class MigrateDataPage {
   );
 
   /**
+   * Marked tables that asked to be filtered by date and never said by how much.
+   *
+   * Choosing a column expresses "filter by this"; leaving both bounds empty does
+   * not mean "nothing to migrate", it means **no filter at all** — `render_filter`
+   * emits no predicate and the copy takes the whole table. That is the reading
+   * nobody expects from a form with a mode set to "Rango" and two empty date
+   * fields, and it is the one that dumps a year of production rows into dev.
+   *
+   * So this is not submittable. The honest way to say "the whole table" is the
+   * `Todo (sin filtro)` option of the column select, which says exactly that.
+   * The backend keeps its own note for this — it is the backstop for someone
+   * calling the API directly, not the guard for this screen.
+   *
+   * One bound is fine and is not in here: "desde marzo en adelante" is a
+   * migration like any other.
+   */
+  readonly filterlessTables = computed(() =>
+    this.includedTables().filter((t) => {
+      const s = this.filters()[t];
+      return !!s?.column && !s.dateFrom && !s.dateTo;
+    }),
+  );
+
+  /**
    * The empty schema is not submittable: the backend answers a 400 for it, and a
    * migration of nothing is not a thing anybody meant to do.
    */
   readonly canSubmit = computed(() => {
     if (!this.envB() || !this.envA() || this.sameEnv() || !this.schema()) return false;
     if (!this.selection().length) return false;
+    // Columna elegida sin ninguna fecha: el filtro no acotaría nada y la tabla
+    // entera se copiaría. Ver `filterlessTables`.
+    if (this.filterlessTables().length) return false;
     return this.includedTables().every((t) => {
       const state = this.filters()[t];
       return !!state && !state.loading && !state.error;
@@ -487,6 +560,11 @@ export class MigrateDataPage {
       return 'Esperando las columnas de fecha de las tablas marcadas.';
     if (this.includedTables().some((t) => this.filters()[t]?.error))
       return 'Hay una tabla marcada cuyas columnas de fecha no se pudieron leer.';
+    const sueltas = this.filterlessTables();
+    if (sueltas.length === 1)
+      return `${sueltas[0]} tiene columna de fecha elegida pero ninguna fecha: se copiaría entera. Poné el rango, o elegí "Todo (sin filtro)".`;
+    if (sueltas.length)
+      return `${sueltas.length} tablas tienen columna de fecha elegida pero ninguna fecha: se copiarían enteras. Poné el rango, o elegí "Todo (sin filtro)".`;
     return '';
   });
 
@@ -592,6 +670,8 @@ export class MigrateDataPage {
         // `columns: []` here would be a lie: it means "no date columns", and this
         // means "we couldn't find out". `canSubmit` blocks on the error.
         this.patch(table, { columns: null, column: '', loading: false, error: toApiError(err).message });
+        this.errorSeq += 1;
+        if (this.errorSeq > this.dismissedSeq) this.noticeOpen.set(true);
       },
     );
   }

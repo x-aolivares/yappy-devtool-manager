@@ -201,6 +201,39 @@ que pide el wireframe cuando los botones van en la misma línea:
 Los tres hijos de `.section-title` funcionan: los usan Compilar (texto + acciones)
 y Leer Parámetros (texto + metadata + badge).
 
+## Avisos que no caben en la línea donde ocurren
+
+Una celda de tabla no es lugar para un párrafo. El ejemplo que forzó la regla:
+un error de introspección con ~230 caracteres **y** el `border-left` de
+`.hint-error` —que es una regla de bloque, pensada para un párrafo— adentro de
+un `<td>`. La tabla se rompía sólo cuando el error aparecía, que es
+justamente cuando más feo se veía.
+
+La regla que quedó:
+
+- **En la fila, un marcador corto.** Un badge clickeable. Cero texto largo.
+- **El detalle, en un modal.** `app-notice-modal` (`shared/notice-modal.ts`),
+  genérico: el cuerpo va por `<ng-content>`.
+
+Los cuatro avisos cortos que quedan dentro de la tabla son de una línea y no
+tienen problema: *"Sin columnas de fecha"*, *"Buscando columnas…"*. Los que no
+dijeran nada —una fila sin marcar, una fila en modo "Todo (sin filtro)"— tienen
+la celda vacía, que es más honesto que un texto de relleno.
+
+### Cerrar un modal no destraba nada
+
+El modal es **puramente de presentación**. El estado que frena la acción —en este
+caso `canSubmit()` leyendo `state.error`— no se toca al cerrar. Un modal que se
+dispara al aparecer un error y se cierra con la ✕ es el patrón, y se controla con
+dos contadores:
+
+- `errorSeq` sube en cada fallo nuevo;
+- `dismissedSeq` queda en el valor del `errorSeq` al cerrar.
+
+El modal se abre si `errorSeq > dismissedSeq`. Consecuencia: cerrar el aviso
+**pega** hasta que algo nuevo rompa, en vez de reabrirse en el próximo change
+detection.
+
 ## Errores de validación
 
 `.muted.hint-error` se usa en nueve templates de cinco archivos y antes de este
