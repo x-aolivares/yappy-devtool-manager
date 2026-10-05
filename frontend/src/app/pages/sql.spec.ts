@@ -207,6 +207,105 @@ describe('SqlPage', () => {
     expect(comp.canMigrate()).toBe(false);
   });
 
+  // --- el error va a un modal, no a la línea donde ocurrió -------------------
+  //
+  // El mensaje que forzó esto es el del túnel muerto: ~250 caracteres que dicen
+  // que el puerto está abierto pero MySQL no respondió, qué revisar y dónde está
+  // el log. Eso es un párrafo, y un párrafo en `.error-box` empuja toda la
+  // página — la misma regla de `docs/lenguaje-visual.md` que motivó
+  // `app-notice-modal` en la página de migración.
+
+  const TUNNEL_ERROR =
+    'El túnel SSM no respondió en localhost:8101: el puerto está abierto pero no llegó el ' +
+    'saludo de MySQL. Suele significar que la instancia no puede alcanzar el host remoto.';
+
+  async function consultarConError(message: string) {
+    mockQuery = () => Promise.reject(new Error(message));
+    const fixture = TestBed.createComponent(SqlPage);
+    const comp = fixture.componentInstance as any;
+    comp.envs.set(['dev']);
+    comp.sql.set('SELECT * FROM `yappy`.`pedidos`');
+    comp.runQuery();
+    await settle(fixture);
+    return { comp, fixture, el: fixture.nativeElement as HTMLElement };
+  }
+
+  it('un error largo se lee en un modal, no en un error-box en la página', async () => {
+    const { el } = await consultarConError(TUNNEL_ERROR);
+
+    expect(el.querySelector('.notice-modal')).not.toBeNull();
+    expect(el.querySelector('.notice-modal')?.textContent).toContain('localhost:8101');
+    // El párrafo completo no vive en la línea donde ocurrió.
+    expect(el.querySelector('.error-box')).toBeNull();
+    expect(el.querySelector('.error-box')?.textContent ?? '').not.toContain('8101');
+  });
+
+  it('el marcador que queda en la línea es corto y reabre el modal', async () => {
+    const { comp, fixture, el } = await consultarConError(TUNNEL_ERROR);
+
+    comp.dismissNotice();
+    await settle(fixture);
+    expect(el.querySelector('.notice-modal')).toBeNull();
+
+    const marker = el.querySelector('.error-marker') as HTMLButtonElement;
+    expect(marker).not.toBeNull();
+    expect(marker.textContent?.trim().length ?? 0).toBeLessThan(60);
+    expect(marker.textContent).not.toContain('8101');
+
+    marker.click();
+    await settle(fixture);
+
+    expect(comp.noticeOpen()).toBe(true);
+    expect(el.querySelector('.notice-modal')).not.toBeNull();
+  });
+
+  it('cerrar el aviso no borra el error: el marcador sigue ahí', async () => {
+    // El modal es sólo presentación. El texto sigue en `error`, así que siempre
+    // se puede volver a abrir.
+    const { comp, fixture, el } = await consultarConError(TUNNEL_ERROR);
+
+    comp.dismissNotice();
+    await settle(fixture);
+
+    expect(comp.error()).toContain('localhost:8101');
+    expect(el.querySelector('.error-marker')).not.toBeNull();
+  });
+
+  it('cerrar el aviso pega: el change detection no lo reabre', async () => {
+    // El motivo de los dos contadores. Sin ellos, `noticeOpen` volvería a
+    // `true` en el próximo ciclo porque el error sigue en el signal.
+    const { comp, fixture, el } = await consultarConError(TUNNEL_ERROR);
+    expect(el.querySelector('.notice-modal')).not.toBeNull();
+
+    comp.dismissNotice();
+    await settle(fixture);
+
+    expect(comp.noticeOpen()).toBe(false);
+    expect(el.querySelector('.notice-modal')).toBeNull();
+
+    // Más ciclos sin nada nuevo: sigue cerrado.
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(comp.noticeOpen()).toBe(false);
+  });
+
+  it('un fallo nuevo sí reabre el modal', async () => {
+    // Reintentar la misma consulta es un fallo nuevo, y tiene que volver a
+    // avisar: si no, el modal se cerraría para siempre ante un error que el
+    // usuario puede reproducir.
+    const { comp, fixture } = await consultarConError(TUNNEL_ERROR);
+
+    comp.dismissNotice();
+    await settle(fixture);
+    expect(comp.noticeOpen()).toBe(false);
+
+    comp.runQuery();
+    await settle(fixture);
+
+    expect(comp.noticeOpen()).toBe(true);
+    expect(comp.error()).toContain('localhost:8101');
+  });
+
   it('el editor de la consulta sigue siendo un textarea#sql', () => {
     const fixture = TestBed.createComponent(SqlPage);
     fixture.detectChanges();
@@ -231,10 +330,6 @@ describe('SqlPage', () => {
 
     expect(comp.busy()).toBe(false);
     expect(comp.result()).toBeNull();
-    expect(el(fixture).querySelector('.error-box')).not.toBeNull();
+    expect(comp.error()).toContain('El túnel SSM no respondió');
   });
-
-  function el(fixture: ComponentFixture<SqlPage>): HTMLElement {
-    return fixture.nativeElement as HTMLElement;
-  }
 });

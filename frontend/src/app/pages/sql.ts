@@ -4,6 +4,7 @@ import { EnvironmentService } from '../core/services/environment.service';
 import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
 import { EnvControlsComponent } from '../shared/env-controls';
+import { NoticeModalComponent } from '../shared/notice-modal';
 import { StatusBadge } from '../shared/status-badge';
 
 /**
@@ -23,7 +24,7 @@ import { StatusBadge } from '../shared/status-badge';
  */
 @Component({
   selector: 'app-sql-page',
-  imports: [EnvControlsComponent, StatusBadge],
+  imports: [EnvControlsComponent, StatusBadge, NoticeModalComponent],
   template: `
     <h1>Ejecutar SQL</h1>
     <p class="muted">
@@ -59,7 +60,9 @@ import { StatusBadge } from '../shared/status-badge';
     </div>
 
     @if (error()) {
-      <div class="error-box">{{ error() }}</div>
+      <button type="button" class="error-marker" (click)="openNotice()">
+        No se pudo consultar — ver el detalle
+      </button>
     }
 
     @if (busy()) {
@@ -205,6 +208,34 @@ import { StatusBadge } from '../shared/status-badge';
         }
       </div>
     }
+
+    <app-notice-modal
+      [open]="noticeOpen()"
+      [title]="noticeTitle()"
+      (closed)="dismissNotice()"
+    >
+      <p class="notice-modal__text">{{ error() }}</p>
+    </app-notice-modal>
+  `,
+  styles: `
+    /* The inline marker: short on purpose, it only says there is a detail to
+       read and reopens the modal. The long text lives in the modal. */
+    .error-marker {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 0.625rem 0.875rem;
+      border: 1px solid var(--err);
+      border-radius: 6px;
+      background: color-mix(in srgb, var(--err) 10%, transparent);
+      color: var(--err);
+      font: inherit;
+      font-size: 0.8125rem;
+      cursor: pointer;
+    }
+    .error-marker:hover {
+      background: color-mix(in srgb, var(--err) 18%, transparent);
+    }
   `,
 })
 export class SqlPage {
@@ -222,6 +253,48 @@ export class SqlPage {
   readonly error = signal<string | null>(null);
   readonly result = signal<QueryResponse | null>(null);
   readonly migration = signal<MigrationResponse | null>(null);
+
+  readonly noticeOpen = signal(false);
+  readonly noticeTitle = signal('No se pudo consultar');
+
+  /**
+   * The full error text goes in the modal, never in the line where it happened.
+   *
+   * The message that forced this is the tunnel failure: ~250 characters telling
+   * you that the port is open but MySQL never answered, what to check (the
+   * security group, DNS from the instance) and where the log is. That is a
+   * paragraph, and a paragraph in `.error-box` pushes the whole page down — see
+   * `docs/lenguaje-visual.md`, "Avisos que no caben en la línea donde ocurren".
+   * What stays inline is a one-line marker that reopens the modal.
+   *
+   * Closing the modal is presentation only: `error()` keeps the text, so the
+   * marker stays and reopening it is always possible.
+   */
+  private errorSeq = 0;
+  private dismissedSeq = 0;
+
+  openNotice(): void {
+    this.noticeOpen.set(true);
+  }
+
+  /**
+   * Show a failure and open its modal.
+   *
+   * The two counters make dismissing stick: `noticeOpen` is driven by
+   * `errorSeq > dismissedSeq`, so a closed notice does not pop back open on the
+   * next change detection, but a NEW failure does reopen it.
+   */
+  private fail(message: string, title = 'No se pudo consultar'): void {
+    this.error.set(message);
+    this.noticeTitle.set(title);
+    this.errorSeq += 1;
+    if (this.errorSeq > this.dismissedSeq) this.noticeOpen.set(true);
+  }
+
+  dismissNotice(): void {
+    this.dismissedSeq = this.errorSeq;
+    this.noticeOpen.set(false);
+  }
 
   /** `rows` is optional in the contract; normalize it once for the template. */
   readonly rows = computed(() => this.result()?.rows ?? []);
@@ -244,7 +317,7 @@ export class SqlPage {
   constructor() {
     this.envService.list().then(
       (envs) => this.environments.set(envs.environments),
-      (err) => this.error.set('No se pudieron cargar los ambientes: ' + toApiError(err).message),
+      (err) => this.fail('No se pudieron cargar los ambientes: ' + toApiError(err).message),
     );
   }
 
@@ -271,11 +344,11 @@ export class SqlPage {
   runQuery() {
     const env = this.env();
     if (!env) {
-      this.error.set('Seleccioná el ambiente.');
+      this.fail('Seleccioná el ambiente.');
       return;
     }
     if (!this.sql().trim()) {
-      this.error.set('Pegá la consulta que querés ejecutar.');
+      this.fail('Pegá la consulta que querés ejecutar.');
       return;
     }
 
@@ -299,7 +372,7 @@ export class SqlPage {
         },
         (err) => {
           this.busy.set(false);
-          this.error.set(toApiError(err).message);
+          this.fail(toApiError(err).message);
         },
       );
   }
@@ -307,11 +380,11 @@ export class SqlPage {
   private migrate(dryRun: boolean): void {
     const text = this.sql().trim();
     if (!this.destEnv()) {
-      this.error.set('Elegí el ambiente destino.');
+      this.fail('Elegí el ambiente destino.');
       return;
     }
     if (!dryRun && !this.confirmChecked()) {
-      this.error.set('Confirmá que querés migrar los datos a ' + this.destEnv() + '.');
+      this.fail('Confirmá que querés migrar los datos a ' + this.destEnv() + '.');
       return;
     }
 
@@ -338,7 +411,7 @@ export class SqlPage {
         },
         (err) => {
           this.busy.set(false);
-          this.error.set(toApiError(err).message);
+          this.fail(toApiError(err).message, dryRun ? 'No se pudo simular' : 'No se pudo migrar');
         },
       );
   }
