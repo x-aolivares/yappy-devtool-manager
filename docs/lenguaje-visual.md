@@ -154,33 +154,62 @@ mentiría sobre la semántica. Se quedan como `.checkbox-row` nativos.
 
 Cuando la unidad de una lista lleva sus propios controles adentro, la forma
 correcta es una **tabla**, no una pila de cajas. El caso es Migrar datos: cada
-tabla del origen es una fila con su casilla de selección y su filtro de fechas.
+tabla del origen es una fila con su casilla de selección y su columna de fecha. El
+filtro de fechas no vive en la fila: es uno para la migración entera y va arriba.
 
 Lo que había antes era una caja por tabla marcada. Con seis tablas marcadas
 ocupaba media pantalla para repetir seis veces el mismo shape, y no dejaba
 comparar de un vistazo qué tabla tenía rango y cuál no.
 
-**`.filter-table`** — cuatro columnas: `Tabla` (casilla + nombre), `Columna de
-fecha` (el `<select>`), `Modo` y `Rango`. Cada rama que no tiene nada que mostrar
-—sin marcar, cargando, error, sin columnas de fecha— usa `colspan="3"` para que
-el mensaje no quede aprisionado en una celda angosta.
+**`.filter-table`** — dos columnas: `Tabla` (casilla + nombre) y `Columna de
+fecha` (el `<select>`). El `min-width: 44rem` sigue deciding cómo se comporta en
+pantalla angosta: por debajo de ese ancho la tabla hace scroll horizontal en vez
+de aplastar los controles. Va envuelta en `.table-scroll`.
 
-**El `min-width: 44rem` es lo que decide cómo se comporta en pantalla angosta**:
-por debajo de ese ancho la tabla hace scroll horizontal en vez de aplastar los
-`<input type="date">` hasta volverlos ilegibles. Va envuelta en `.table-scroll`.
+### El filtro es de la página; la columna es de la fila
 
-### El modo es UN booleano, no dos columnas
+El filtro empezó con cuatro columnas —`Columna de fecha`, `Modo` y `Rango`, además
+de la de la tabla— y las tres últimas salieron de la fila. La razón no es
+estética: **el período es la misma pregunta para todas las tablas** ("copiáselo de
+marzo") y la columna no ("`fecha` en una, `created_at` en otra, ninguna en una
+tercera").
+
+Con el filtro en cada fila había que elegir el mismo modo y las mismas fechas seis
+veces, y quedaban seis posibilidades de que una se quedara distinta. Eso es
+justo el error que la página existe para evitar, y el costo de evitarlo era
+insignificante al lado del riesgo.
+
+Quedó un panel **Filtro por fecha** arriba de la tabla, con los tres modos —Un
+día, Un mes, Rango— y una sola ventana. Debajo, la tabla con dos columnas. El
+`.filter-table--narrow` es la misma tabla con menos columnas, no otra regla.
+
+**El modo es UN booleano, no dos columnas**
 
 El wireframe tenía "solo un día" y "rango de fecha" como dos columnas con un ✓ y
 un ✗. Son **el mismo booleano partido en dos**, y además el dibujo se
 contradecía: la fila con "un solo día ✓" mostraba dos campos de fecha y la de
 "rango ✓" mostraba uno.
 
-Quedó como **una columna `Modo`** con el mismo segmentado de `.radio-row` del
-resto de la app, en versión chica (`.radio-row--tight`). Menos columnas, misma
-información, y el ancho que sobraba queda para los campos de fecha, que son lo
-que se squeeze. Los radios usan `[name]="'migrate-mode-' + table"` para que cada
-fila sea un grupo propio.
+Quedó como **un segmentado de `.radio-row`** —el mismo del resto de la app—
+con `name="migrate-data-mode"` fijo, porque ahora es un grupo único y no uno por
+fila.
+
+### Tres modos, y sólo el rango admite un límite suelto
+
+Un día y un mes son ventanas cerradas: no hay respuesta parcial, así que un campo
+vacío es "todavía no está decidido". El rango sí admite **un solo límite**, porque
+"desde marzo en adelante" es una migración más y no hace falta inventar un 2099
+para expresarla.
+
+Un modo sin campo cargado **no** es "sin filtro": es "no decidido todavía", y
+frena el envío mientras haya alguna tabla con columna elegida. La forma honesta de
+decir "la tabla entera" sigue siendo `Todo (sin filtro)` en el `<select>` de esa
+tabla.
+
+El modo se puede cambiar sin perder la ventana: al cambiar, la ventana resuelta se
+escribe en los campos del modo nuevo (a *rango*, los dos límites; a *día*, el
+inferior; a *mes*, el mes de ese inferior). Perder el mes que el usuario acababa
+de elegir porque quiso ver uno de sus días sería un retroceso sin motivo.
 
 ## Título de panel con acciones a la derecha
 

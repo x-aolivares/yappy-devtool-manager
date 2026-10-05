@@ -207,6 +207,36 @@ describe('SqlPage', () => {
     expect(comp.canMigrate()).toBe(false);
   });
 
+  // --- stored procedures --------------------------------------------------
+  //
+  // `CALL` no es un SELECT: es lo único que esta sección corre que puede
+  // escribir. Antes el backend lo rechazaba y la página no podía llamar un
+  // procedure; ahora entra, y lo que se verifica es que entra *por esa vía*
+  // y que el resto de las escrituras siguen sin entrar.
+
+  it('la página ofrece llamar un stored procedure', async () => {
+    const fixture = TestBed.createComponent(SqlPage);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+
+    // El aviso de que un procedure puede escribir va en la intro, no escondido:
+    // es la diferencia entre "consultar" y "correr algo que puede escribir".
+    expect(el.textContent).toContain('stored procedure');
+    expect(el.textContent).toContain('puede escribir');
+  });
+
+  it('un CALL se manda al servicio como cualquier otra consulta', async () => {
+    const fixture = TestBed.createComponent(SqlPage);
+    const comp = fixture.componentInstance as any;
+    comp.envs.set(['dev']);
+    comp.sql.set("CALL sp_migrar_pagos('2026-03-01')");
+    comp.runQuery();
+    await settle(fixture);
+
+    expect(sentQueries[0].code).toBe("CALL sp_migrar_pagos('2026-03-01')");
+    expect(comp.error()).toBeNull();
+  });
+
   // --- el error va a un modal, no a la línea donde ocurrió -------------------
   //
   // El mensaje que forzó esto es el del túnel muerto: ~250 caracteres que dicen

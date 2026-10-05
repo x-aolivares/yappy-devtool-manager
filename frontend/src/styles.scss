@@ -439,16 +439,26 @@ h2 {
   }
 }
 
+/* La tabla con dos columnas: la casilla y el `<select>` de columna de fecha. El
+   `min-width` de 44rem era el de la versión con modo y rango por fila; con el
+   filtro arriba de la tabla la fila ya no tiene nada que squeeze, así que este
+   modificador lo deja en lo que dos columnas necesitan de verdad. */
+.filter-table--narrow {
+  min-width: 28rem;
+}
+
 /* Los dos límites del rango, en paralelo y alineados por la base: los labels
-   van arriba y los inputs abajo, así los dos tienen la misma altura. */
+   van arriba y los inputs abajo, así los dos tienen la misma altura. Vive fuera
+   de la tabla ahora, en el panel del filtro. */
 .filter-table__range {
   display: flex;
   gap: 0.5rem;
   align-items: flex-end;
 }
 
-/* Segmentado dentro de una celda: la versión chica, porque la columna se留给
-   los inputs de fecha. Comparte toda la lógica de estado con `.radio-row`. */
+/* Segmentado chico. El de Migrar datos ya no está dentro de una celda —el filtro
+   es de la página— así que queda para cuando haga falta uno en línea. Comparte
+   toda la lógica de estado con `.radio-row`. */
 .radio-row--tight {
   label {
     min-height: 0;

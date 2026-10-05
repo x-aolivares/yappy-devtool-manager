@@ -4,9 +4,15 @@
 answers a different question: "show me the rows". It returns the column names and
 a capped list of rows so the browser never receives an unbounded result set.
 
-Only statements that *read* are accepted. A SELECT that turns out to be a write
-is not something this endpoint should attempt, so anything else is rejected up
-front rather than executed.
+Only statements that *read* are accepted, plus ``CALL`` for a stored procedure.
+A SELECT that turns out to be a write is not something this endpoint should
+attempt, so anything else is rejected up front rather than executed.
+
+``CALL`` is the one exception and it is not an oversight: running a stored
+procedure is a thing this section has to be able to do, and a procedure is by
+nature neither a plain read nor a plain write. What keeps that from being a hole
+is that ``CALL`` is named explicitly — ``INSERT``/``UPDATE``/``DELETE`` still do
+not get in — and the page says out loud that the procedure can write.
 """
 
 from __future__ import annotations
@@ -36,6 +42,16 @@ MAX_ROWS = 500
 DEFAULT_STATEMENT_TIMEOUT_MS = 60_000
 
 _READ_ONLY_HEAD = re.compile(r"^\s*(SELECT|WITH|SHOW|DESCRIBE|DESC|EXPLAIN)\b", re.I)
+
+#: Statements that *invoke* a stored routine rather than read a table.
+#:
+#: ``CALL`` is how a procedure is run. It is here and not in ``_READ_ONLY_HEAD``
+#: because it is not read-only: a procedure can insert, update and delete, and the
+#: person pasting it is doing that on purpose. Letting it through is what makes
+#: "Ejecutar SQL" able to run a stored procedure; what keeps it honest is
+#: :func:`ensure_runnable_statement`, which rejects everything else and still
+#: refuses a bare write.
+_ROUTINE_HEAD = re.compile(r"^\s*(CALL|EXEC|EXECUTE)\b", re.I)
 
 #: Statements that read but are not row-returning the way the grid expects.
 _NO_ROWS = re.compile(r"^\s*(SHOW\s+(VARIABLES|STATUS|INDEX|CREATE|GRANTS|WARNINGS|ENGINES))\b", re.I)
@@ -77,7 +93,12 @@ def _normalize_row(row: dict) -> dict:
 
 
 def ensure_single_read_statement(sql: str) -> str:
-    """Validate that ``sql`` is one readable statement and return it stripped."""
+    """Validate that ``sql`` is one readable statement and return it stripped.
+
+    Accepts ``CALL`` too, for the stored procedures this page now runs: a
+    procedure is the one thing here that is neither a plain read nor a plain
+    write, and refusing it meant the section could not run one at all.
+    """
     if not sql or not sql.strip():
         raise QueryError("Pegá la consulta que querés ejecutar.")
 
@@ -94,12 +115,13 @@ def ensure_single_read_statement(sql: str) -> str:
         )
 
     statement = statements[0]
-    if not _READ_ONLY_HEAD.match(statement):
-        raise QueryError(
-            "Solo se admiten consultas de lectura "
-            "(SELECT, WITH, SHOW, DESCRIBE o EXPLAIN)."
-        )
-    return statement
+    if _READ_ONLY_HEAD.match(statement) or _ROUTINE_HEAD.match(statement):
+        return statement
+    raise QueryError(
+        "Solo se admiten consultas de lectura (SELECT, WITH, SHOW, DESCRIBE o "
+        "EXPLAIN) o la llamada a un stored procedure (CALL). "
+        "Para escribir usá la sección Compilar."
+    )
 
 
 def _statement_timeout_ms(cfg) -> int:
@@ -136,10 +158,42 @@ def _apply_statement_timeout(conn, timeout_ms: int) -> None:
         pass
 
 
+def _first_populated_set(cur, limit: int) -> tuple[list[str], list[dict]]:
+    """The first result set that actually has columns, draining the ones before it.
+
+    A stored procedure is the reason this exists. ``CALL`` may answer with several
+    result sets in a row — an ``OUT`` parameter here, a status row there, the
+    table you cared about last — and ``cur.description`` only ever describes the
+    *current* one. Reading just the first would show whatever the procedure
+    happened to emit first, which for a procedure that does its work before
+    selecting is a row that says nothing.
+
+    So it walks the sets and returns the first one with a description, which is
+    the first one with something to show.
+
+    It stops there on purpose. The remaining sets are not drained because the
+    connection is opened and closed per request — :func:`connect` yields one
+    connection that nothing else reuses — so a set left unread cannot reach
+    another query. Draining them would be work for a caller that is about to
+    hang up anyway.
+    """
+    while True:
+        fields = cur.description or []
+        if fields:
+            return [f[0] for f in fields], [_normalize_row(r) for r in cur.fetchmany(limit)]
+        if not cur.nextset():
+            return [], []
+
+
 def run_select(cfg: Config, sql: str, limit: int = MAX_ROWS) -> QueryResult:
-    """Run one read statement and return its rows, capped at ``limit``."""
+    """Run one readable statement and return its rows, capped at ``limit``.
+
+    A ``CALL`` goes through here as well: the procedure ran either way, and its
+    result set is what there is to show.
+    """
     statement = ensure_single_read_statement(sql)
     limit = max(1, min(int(limit or MAX_ROWS), MAX_ROWS))
+    is_routine = bool(_ROUTINE_HEAD.match(statement))
 
     with connect(cfg) as conn:
         _apply_statement_timeout(conn, _statement_timeout_ms(cfg))
@@ -151,9 +205,26 @@ def run_select(cfg: Config, sql: str, limit: int = MAX_ROWS) -> QueryResult:
                 raise SyncError(str(exc)) from exc
             ms = (time.perf_counter() - start) * 1000
 
-            fields = cur.description or []
-            columns = [f[0] for f in fields]
-            rows = [_normalize_row(r) for r in cur.fetchmany(limit)]
+            columns, rows = _first_populated_set(cur, limit)
+            if is_routine and not columns:
+                # A procedure that writes and returns nothing is a legitimate
+                # outcome, and reporting it as "0 filas" would read as if the
+                # query had found no data. Say what actually happened instead.
+                affected = cur.rowcount
+                ms = (time.perf_counter() - start) * 1000
+                return QueryResult(
+                    columns=["mensaje"],
+                    rows=[
+                        {
+                            "mensaje": (
+                                f"El procedimiento se ejecutó y no devolvió filas"
+                                + (f" ({affected} fila(s) afectadas)." if affected and affected > 0 else ".")
+                            )
+                        }
+                    ],
+                    total=1,
+                    ms=round(ms, 1),
+                )
 
     if _NO_ROWS.match(statement):
         # SHOW CREATE/INDEX etc. arrive as one padded row; hand it over verbatim.

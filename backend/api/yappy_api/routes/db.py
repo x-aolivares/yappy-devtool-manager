@@ -479,7 +479,15 @@ def api_compile_schema(req: SchemaCompileRequest):
 
 @router.post("/api/query", operation_id="query_db", response_model=QueryResponse)
 def api_query(req: QueryRequest):
-    """Run one read-only statement and return its rows."""
+    """Run one readable statement and return its rows.
+
+    A ``CALL`` to a stored procedure is accepted here, and it is the one write
+    this endpoint allows: running a procedure is what the "Ejecutar SQL" section
+    has to be able to do, and a procedure is neither a plain read nor a plain
+    write. Everything else that writes —``INSERT``, ``UPDATE``, ``DELETE``, DDL—
+    is still refused by :func:`dbquery.ensure_single_read_statement`, and the
+    section's copy says out loud that a procedure can write.
+    """
     cfg = env_config(req.env)
     try:
         result = dbquery.run_select(cfg, req.code, limit=req.limit)

@@ -150,12 +150,15 @@ function optionsOf(el: HTMLElement, table: string): string[] {
 }
 
 /**
- * Marca una tabla **con rango de fechas**.
+ * Marca una tabla **y deja la ventana global lista para enviar**.
  *
  * No es una comodidad: marcar una tabla le pone por defecto la primera columna
- * de fecha, y columna sin ninguna fecha no es enviable — significaría "sin
+ * de fecha, y columna elegida sin ventana no es enviable — significaría "sin
  * filtro", o sea la tabla entera. Un test que quiere llegar al submit tiene que
- * pasar por un rango, como el usuario.
+ * pasar por una ventana, como el usuario.
+ *
+ * El filtro es de la página, así que se arma una vez y todas las tablas marcadas
+ * lo reciben.
  */
 async function marcarConRango(
   comp: any,
@@ -164,10 +167,10 @@ async function marcarConRango(
   from = '2026-03-01',
   to = '2026-03-31',
 ): Promise<void> {
+  comp.dateMode.set('range');
+  comp.dateFrom.set(from);
+  comp.dateTo.set(to);
   comp.toggle(table, true);
-  await settle(fixture);
-  comp.setFrom(table, from);
-  comp.setTo(table, to);
   await settle(fixture);
 }
 
@@ -235,48 +238,52 @@ describe('MigrateDataPage tablas y columnas de fecha', () => {
     await settle(fixture);
 
     // El aviso va en la fila, corto: la celda de una tabla no es lugar para un
-    // párrafo. Lo que importa es que el filtro no aparece.
+    // párrafo. Lo que importa es que la fila no ofrece columna: sin ella no hay
+    // sobre qué aplicar la ventana, y la tabla se migra completa.
     expect(el.textContent).toContain('Sin columnas de fecha');
     expect(el.querySelector('#migrate-date-column-config')).toBeNull();
-    expect(el.querySelector('#migrate-from-config')).toBeNull();
-    expect(el.querySelector('#migrate-to-config')).toBeNull();
     expect(comp.filters().config.column).toBe('');
+    expect(comp.selection()[0]).toEqual({
+      table: 'config',
+      date_column: null,
+      date_from: null,
+      date_to: null,
+    });
   });
 
   it('no deja escribir un nombre de columna que no sea de la tabla', async () => {
-    const { fixture, comp, el } = await ready();
+    const { fixture, comp } = await ready();
     await marcarConRango(comp, fixture);
 
+    // El `<select>` sólo ofrece columnas reales, así que `usuario_id` no llega ni
+    // a la validación: si llegara, no se cuela en el SQL.
     comp.setColumn('orders', 'usuario_id');
     await settle(fixture);
 
     expect(comp.filters().orders.column).toBe('');
     expect(comp.selection()[0].date_column).toBeNull();
-    // Sin columna no hay Modo ni Rango que mostrar: los controles desaparecen en
-    // vez de quedar vacíos.
+  });
+
+  it('la fila no tiene ya los controles de fecha: viven arriba de la tabla', async () => {
+    const { fixture, comp, el } = await ready();
+    await marcarConRango(comp, fixture);
+
+    // La fila conserva su columna —que sí es por tabla— pero no su ventana. Si
+    // estos ids vuelven a aparecer, el filtro volvió a ser por fila.
+    expect(el.querySelector('#migrate-date-column-orders')).not.toBeNull();
+    expect(el.querySelector('#migrate-data-from')).not.toBeNull();
+    expect(el.querySelector('#migrate-day-orders')).toBeNull();
     expect(el.querySelector('#migrate-from-orders')).toBeNull();
     expect(el.querySelector('#migrate-to-orders')).toBeNull();
   });
 
-  it('una columna de fecha elegida deja habilitados los dos campos de fecha', async () => {
-    const { fixture, comp, el } = await ready();
+  it('con "Todo" la tabla se manda entera aunque la ventana esté cargada', async () => {
+    const { fixture, comp } = await ready();
     await marcarConRango(comp, fixture);
-
-    expect(el.querySelector('#migrate-from-orders')?.hasAttribute('disabled')).toBeFalsy();
-    expect(el.querySelector('#migrate-to-orders')?.hasAttribute('disabled')).toBeFalsy();
-  });
-
-  it('con "Todo" no muestra los campos de fecha y limpia los que había', async () => {
-    const { fixture, comp, el } = await ready();
-    await marcarConRango(comp, fixture);
-    comp.setDay('orders', '2026-03-01');
-    await settle(fixture);
 
     comp.setColumn('orders', '');
     await settle(fixture);
 
-    expect(el.querySelector('#migrate-from-orders')).toBeNull();
-    expect(comp.filters().orders.dateFrom).toBe('');
     expect(comp.selection()[0]).toEqual({
       table: 'orders',
       date_column: null,
@@ -288,12 +295,9 @@ describe('MigrateDataPage tablas y columnas de fecha', () => {
   it('los campos de fecha muestran los límites cargados', async () => {
     const { fixture, comp, el } = await ready();
     await marcarConRango(comp, fixture);
-    comp.setFrom('orders', '2026-03-01');
-    comp.setTo('orders', '2026-03-31');
-    await settle(fixture);
 
-    expect((el.querySelector('#migrate-from-orders') as HTMLInputElement).value).toBe('2026-03-01');
-    expect((el.querySelector('#migrate-to-orders') as HTMLInputElement).value).toBe('2026-03-31');
+    expect((el.querySelector('#migrate-data-from') as HTMLInputElement).value).toBe('2026-03-01');
+    expect((el.querySelector('#migrate-data-to') as HTMLInputElement).value).toBe('2026-03-31');
   });
 
   it('desmarcar y remarkar no vuelve a preguntar las columnas', async () => {
@@ -315,7 +319,9 @@ describe('MigrateDataPage tablas y columnas de fecha', () => {
 
     comp.toggleAll(true);
     await settle(fixture);
-    for (const t of TABLES) comp.setTo(t, '2026-03-31');
+    // La ventana es una sola para la migración entera: alcanza con cargarla una vez.
+    comp.dateMode.set('month');
+    comp.month.set('2026-03');
     await settle(fixture);
 
     expect(comp.includedTables()).toEqual(TABLES);
@@ -412,13 +418,13 @@ describe('MigrateDataPage un solo día', () => {
     const { fixture, comp, el } = await ready();
     await marcarConRango(comp, fixture);
 
-    comp.setSingleDay('orders', true);
+    comp.setMode('day');
     await settle(fixture);
-    comp.setDay('orders', '2026-03-01');
+    comp.day.set('2026-03-01');
     await settle(fixture);
 
-    expect(el.querySelector('#migrate-day-orders')).not.toBeNull();
-    expect(el.querySelector('#migrate-from-orders')).toBeNull();
+    expect(el.querySelector('#migrate-data-day')).not.toBeNull();
+    expect(el.querySelector('#migrate-data-from')).toBeNull();
     expect(comp.selection()[0]).toEqual({
       table: 'orders',
       date_column: 'created_at',
@@ -427,16 +433,40 @@ describe('MigrateDataPage un solo día', () => {
     });
   });
 
-  it('explica en la pantalla que los dos límites iguales son un solo día', async () => {
-    const { fixture, comp, el } = await ready();
+  it('un mes cubre el mes entero, del primero al último día', async () => {
+    const { fixture, comp } = await ready();
     await marcarConRango(comp, fixture);
-    comp.setFrom('orders', '2026-03-01');
-    comp.setTo('orders', '2026-03-01');
+
+    comp.setMode('month');
+    comp.month.set('2026-02');
     await settle(fixture);
 
-    expect(comp.isSameDay(comp.filters().orders)).toBe(true);
-    expect(el.textContent).toContain('Un solo día: 2026-03-01');
-    expect(el.textContent).toContain('la ventana es ese día entero');
+    // Febrero de 2026: 28 días. El backend renderiza el tope exclusivo un día
+    // después, así que mandar `2026-02-28` como `date_to` incluye todo el día 28.
+    expect(comp.selection()[0].date_from).toBe('2026-02-01');
+    expect(comp.selection()[0].date_to).toBe('2026-02-28');
+  });
+
+  it('un mes bisiesto llega al 29, no al 28', async () => {
+    const { fixture, comp } = await ready();
+    await marcarConRango(comp, fixture);
+
+    comp.setMode('month');
+    comp.month.set('2024-02');
+    await settle(fixture);
+
+    expect(comp.selection()[0].date_to).toBe('2024-02-29');
+  });
+
+  it('explica en la pantalla que los dos límites iguales son un solo día', async () => {
+    const { fixture, comp, el } = await ready();
+    await marcarConRango(comp, fixture, 'orders', '2026-03-01', '2026-03-01');
+    comp.setMode('range');
+    await settle(fixture);
+
+    expect(comp.isSameDay({ from: '2026-03-01', to: '2026-03-01' })).toBe(true);
+    expect(el.textContent).toContain('Se copia el día');
+    expect(el.textContent).toContain('2026-03-01');
   });
 
   it('el rango ofrece los dos límites, y cada uno va en su input', async () => {
@@ -448,12 +478,142 @@ describe('MigrateDataPage un solo día', () => {
     // Se afirma sobre los dos inputs y sus labels, no sobre la prosa que
     // explicaba la inclusividad. Los labels dicen "inclusive" y el backend
     // renderiza el tope exclusivo un día después: eso es lo que hay que verificar.
-    expect(el.querySelector('#migrate-from-orders')).not.toBeNull();
-    expect(el.querySelector('#migrate-to-orders')).not.toBeNull();
-    expect(el.querySelector('label[for="migrate-from-orders"]')?.textContent).toContain(
-      'Desde',
+    expect(el.querySelector('#migrate-data-from')).not.toBeNull();
+    expect(el.querySelector('#migrate-data-to')).not.toBeNull();
+    expect(el.querySelector('label[for="migrate-data-from"]')?.textContent).toContain('Desde');
+    expect(el.querySelector('label[for="migrate-data-to"]')?.textContent).toContain('Hasta');
+  });
+
+  it('el filtro vive fuera de la tabla: un solo juego de controles para todas', async () => {
+    const { fixture, comp, el } = await ready();
+    comp.toggleAll(true);
+    await settle(fixture);
+
+    // Lo que se afirma es que hay UN juego de controles, no uno por fila: seis
+    // tablas marcadas con seis juegos distintos era el problema.
+    expect(el.querySelectorAll('input[name="migrate-data-mode"]').length).toBe(3);
+    // El modo por defecto es mes, así que el campo que se asserta es el de mes.
+    expect(el.querySelectorAll('#migrate-data-month')).toHaveLength(1);
+
+    comp.setMode('range');
+    await settle(fixture);
+    expect(el.querySelectorAll('#migrate-data-from')).toHaveLength(1);
+    expect(el.querySelectorAll('#migrate-data-to')).toHaveLength(1);
+
+    // Y la tabla quedó con dos columnas: la tabla y su columna de fecha.
+    expect(el.querySelectorAll('table.filter-table thead th').length).toBe(2);
+  });
+
+  it('el resumen de la ventana dice qué se va a copiar', async () => {
+    const { fixture, comp, el } = await ready();
+    comp.toggle('orders', true);
+    await settle(fixture);
+    comp.dateMode.set('month');
+    comp.month.set('2026-03');
+    await settle(fixture);
+
+    // El texto traduce el modo a la ventana concreta: "un mes" no es un período
+    // que se pueda leer de un vistazo sin saber si es marzo o todo marzo.
+    expect(el.textContent).toContain('2026-03-01');
+    expect(el.textContent).toContain('2026-03-31');
+  });
+
+  it('un rango sin ningún límite cargado no es enviable', async () => {
+    const { fixture, comp } = await ready();
+    comp.dateMode.set('range');
+    comp.toggle('orders', true);
+    await settle(fixture);
+
+    // Modo elegido y cero fechas es "todavía no está decidido", no "sin filtro".
+    expect(comp.window()).toBeNull();
+    expect(comp.filterlessTables()).toEqual(['orders']);
+    expect(comp.canSubmit()).toBe(false);
+  });
+
+  it('todas las tablas marcadas reciben la misma ventana', async () => {
+    const { fixture, comp } = await ready();
+    comp.toggleAll(true);
+    await settle(fixture);
+    comp.dateMode.set('month');
+    comp.month.set('2026-03');
+    await settle(fixture);
+
+    const conColumna = comp.selection().filter((t: any) => t.date_column);
+    expect(conColumna.length).toBe(2); // `config` no tiene columnas de fecha
+    for (const t of conColumna) {
+      expect(t.date_from).toBe('2026-03-01');
+      expect(t.date_to).toBe('2026-03-31');
+    }
+  });
+
+  it('la columna sigue siendo por tabla, la ventana no', async () => {
+    const { fixture, comp } = await ready();
+    comp.toggleAll(true);
+    await settle(fixture);
+    comp.dateMode.set('month');
+    comp.month.set('2026-03');
+
+    // Cada tabla puede filtrar por su propia columna: eso no se unificó.
+    comp.setColumn('orders', 'updated_at');
+    await settle(fixture);
+
+    const byTable = Object.fromEntries(
+      comp.selection().map((t: any) => [t.table, t.date_column]),
     );
-    expect(el.querySelector('label[for="migrate-to-orders"]')?.textContent).toContain('Hasta');
+    expect(byTable).toEqual({ orders: 'updated_at', lines: 'created_at', config: null });
+  });
+
+  it('cambiar de rango a mes conserva la ventana', async () => {
+    const { fixture, comp } = await ready();
+    await marcarConRango(comp, fixture);
+
+    comp.setMode('month');
+    await settle(fixture);
+
+    // 1–31 de marzo sigue siendo marzo. Perder la ventana porque el usuario
+    // quiso ver un mes en vez de un rango sería un retroceso sin motivo.
+    expect(comp.window()).toEqual({ from: '2026-03-01', to: '2026-03-31' });
+  });
+
+  it('cambiar de rango a día toma el primer día de la ventana', async () => {
+    const { fixture, comp } = await ready();
+    await marcarConRango(comp, fixture);
+
+    comp.setMode('day');
+    await settle(fixture);
+
+    expect(comp.day()).toBe('2026-03-01');
+    expect(comp.window()).toEqual({ from: '2026-03-01', to: '2026-03-01' });
+  });
+
+  it('un rango que se abrió en un día vuelve como ese día, no como el mes entero', async () => {
+    const { fixture, comp } = await ready();
+    await marcarConRango(comp, fixture);
+    comp.setMode('day');
+    await settle(fixture);
+
+    comp.setMode('range');
+    await settle(fixture);
+
+    // El modo `day` ya había reducido la ventana a un día, así que volver al
+    // rango devuelve ese día y no el mes que tenía antes: se conserva *la
+    // ventana que se estaba mirando*, no un histórico de cada campo escrito.
+    expect(comp.window()).toEqual({ from: '2026-03-01', to: '2026-03-01' });
+  });
+
+  it('un rango al revés no es enviable y lo dice', async () => {
+    const { fixture, comp } = await ready();
+    await marcarConRango(comp, fixture);
+    comp.setMode('range');
+    comp.dateFrom.set('2026-03-31');
+    comp.dateTo.set('2026-03-01');
+    await settle(fixture);
+
+    // Renderizada tal cual sería una ventana que nunca matchea nada, y "0 filas
+    // migradas" se lee como "no había datos" en vez de "las fechas están al revés".
+    expect(comp.window()).toBeNull();
+    expect(comp.canSubmit()).toBe(false);
+    expect(comp.submitHint()).toContain('posterior a la final');
   });
 });
 
@@ -525,13 +685,14 @@ describe('MigrateDataPage simular y migrar', () => {
   it('manda exactamente las tablas marcadas con sus filtros', async () => {
     const { fixture, comp } = await ready();
 
-    // `lines` marcada con un rango, `config` marcada entera, `orders` sin marcar.
+    // `lines` marcada con filtro, `config` marcada entera, `orders` sin marcar.
+    comp.dateMode.set('range');
+    comp.dateFrom.set('2026-03-01');
+    comp.dateTo.set('2026-03-31');
     comp.toggle('lines', true);
     comp.toggle('config', true);
     await settle(fixture);
     comp.setColumn('lines', 'created_at');
-    comp.setFrom('lines', '2026-03-01');
-    comp.setTo('lines', '2026-03-31');
     await settle(fixture);
 
     comp.simulate();
@@ -559,9 +720,9 @@ describe('MigrateDataPage simular y migrar', () => {
 
   it('permite una sola de las dos fechas', async () => {
     const { fixture, comp } = await ready();
+    comp.dateMode.set('range');
+    comp.dateFrom.set('2026-03-01');
     comp.toggle('lines', true);
-    await settle(fixture);
-    comp.setFrom('lines', '2026-03-01');
     await settle(fixture);
 
     comp.simulate();
@@ -704,7 +865,7 @@ describe('MigrateDataPage resultado', () => {
     expect(comp.filters().orders.column).toBe('created_at');
     expect(comp.filterlessTables()).toEqual(['orders']);
     expect(comp.canSubmit()).toBe(false);
-    expect(comp.submitHint()).toContain('se copiaría entera');
+    expect(comp.submitHint()).toContain('se copiarían enteras');
     expect(button(el, 'Simular').disabled).toBe(true);
 
     comp.simulate();
@@ -714,9 +875,9 @@ describe('MigrateDataPage resultado', () => {
 
   it('con un solo límite ya se puede enviar: "desde marzo en adelante"', async () => {
     const { fixture, comp } = await ready();
+    comp.dateMode.set('range');
+    comp.dateFrom.set('2026-03-01');
     comp.toggle('orders', true);
-    await settle(fixture);
-    comp.setFrom('orders', '2026-03-01');
     await settle(fixture);
 
     // Un rango abierto por un lado es una migración como cualquier otra: no

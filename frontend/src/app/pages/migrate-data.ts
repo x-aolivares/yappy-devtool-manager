@@ -33,10 +33,6 @@ interface TableState {
   readonly error: string | null;
   /** '' = Todo (sin filtro). */
   readonly column: string;
-  readonly dateFrom: string;
-  readonly dateTo: string;
-  /** Modo "un solo día": un único campo escribe los dos límites. */
-  readonly singleDay: boolean;
 }
 
 function blankState(table: string): TableState {
@@ -47,15 +43,37 @@ function blankState(table: string): TableState {
     loading: false,
     error: null,
     column: '',
-    dateFrom: '',
-    dateTo: '',
-    singleDay: false,
   };
+}
+
+/** Cómo se acota la ventana de fechas. Es uno para toda la migración. */
+type DateMode = 'day' | 'month' | 'range';
+
+/** La ventana resuelta de un `DateMode` más sus campos, o `null` si está incompleta. */
+interface DateWindow {
+  readonly from: string;
+  readonly to: string;
+}
+
+/**
+ * The last day of a `YYYY-MM`, or `''` when the value isn't a month.
+ *
+ * `Date.UTC(year, mon, 0)` is day zero of the *next* month, which is the last
+ * day of this one — the one thing `Date` arithmetic gets right about months
+ * without a table of lengths, and correct for February in a leap year too.
+ */
+function lastDayOfMonth(month: string): string {
+  const parts = /^(\d{4})-(\d{2})$/.exec(month);
+  if (!parts) return '';
+  const year = Number(parts[1]);
+  const mon = Number(parts[2]);
+  if (mon < 1 || mon > 12) return '';
+  return `${month}-${String(new Date(Date.UTC(year, mon, 0)).getUTCDate()).padStart(2, '0')}`;
 }
 
 /**
  * Migrar datos: copiar un conjunto de tablas de un ambiente a otro, con un filtro
- * por fecha por tabla.
+ * por fecha.
  *
  * Es el hermano de volumen de "Migrar info" (en *Ejecutar SQL*): allá el origen
  * de las filas es una consulta que escribe el usuario —con joins, alias y una
@@ -64,12 +82,27 @@ function blankState(table: string): TableState {
  * `REPLACE INTO`, el orden de escritura, la reconciliación de columnas y el
  * `SELECT` que se devuelve son los mismos: sólo cambia de dónde sale el `SELECT`.
  *
+ * **La ventana de fechas es una sola para toda la migración; la columna no.** La
+ * columna de cada tabla es una pregunta distinta por tabla —`fecha` en una,
+ * `created_at` en otra, y algunas no tienen ninguna— así que sigue en la fila. El
+ * *período* es la misma pregunta para todas: "copiáseto de marzo". Ponerlo en cada
+ * fila obligaba a repetir el mismo modo y las mismas fechas seis veces y dejaba
+ * seis posibilidades de que una se quedara distinta, que es el error que esta
+ * página existe para evitar.
+ *
  * El filtro se arma con las columnas de fecha **reales** de la tabla
  * (`/api/db/date-columns`) y no con texto libre: el `<select>` sólo ofrece lo que
  * el origen tiene, y el backend valida el mismo nombre contra esa misma lista
  * antes de escribir una sola fila. Una tabla sin columnas DATE/DATETIME/TIMESTAMP
  * no se filtra — se migra completa, y la página lo dice en vez de esconder el
  * filtro detrás de un campo vacío.
+ *
+ * El modo del filtro se elige una vez para todas: un día, un mes o un rango. Los
+ * dos primeros resuelven a una ventana cerrada y el tercero admite un solo
+ * límite, porque "desde marzo en adelante" es una migración más y no hace falta
+ * inventar un 2099 para expresarla. Un modo sin campo cargado **no** es "sin
+ * filtro": es "todavía no está decidido", y frena el envío mientras haya alguna
+ * tabla con columna elegida.
  *
  * Cada consulta es una conexión al origen, y abrirla no es gratis: por eso se
  * hacen **perezosamente**, sólo al marcar la tabla, y con un token de secuencia
@@ -138,6 +171,107 @@ function blankState(table: string): TableState {
     @if (tableList().length) {
       <div class="panel">
         <div class="section-title section-title--plain">
+          <strong>Filtro por fecha</strong>
+          <span class="muted" style="font-size:0.75rem;">
+            La misma ventana para todas las tablas marcadas
+          </span>
+        </div>
+
+        <div class="radio-row">
+          <label>
+            <input
+              type="radio"
+              name="migrate-data-mode"
+              [checked]="dateMode() === 'day'"
+              (change)="setMode('day')"
+            />
+            Un día
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="migrate-data-mode"
+              [checked]="dateMode() === 'month'"
+              (change)="setMode('month')"
+            />
+            Un mes
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="migrate-data-mode"
+              [checked]="dateMode() === 'range'"
+              (change)="setMode('range')"
+            />
+            Rango
+          </label>
+        </div>
+
+        <div class="migrate-data-window">
+          @switch (dateMode()) {
+            @case ('day') {
+              <span class="field">
+                <label class="field-label" for="migrate-data-day">Día</label>
+                <input
+                  type="date"
+                  id="migrate-data-day"
+                  [value]="day()"
+                  (input)="day.set($any($event.target).value)"
+                />
+              </span>
+            }
+            @case ('month') {
+              <span class="field">
+                <label class="field-label" for="migrate-data-month">Mes</label>
+                <input
+                  type="month"
+                  id="migrate-data-month"
+                  [value]="month()"
+                  (input)="month.set($any($event.target).value)"
+                />
+              </span>
+            }
+            @case ('range') {
+              <div class="filter-table__range">
+                <span>
+                  <label class="field-label" for="migrate-data-from">Desde (inclusive)</label>
+                  <input
+                    type="date"
+                    id="migrate-data-from"
+                    [value]="dateFrom()"
+                    (input)="dateFrom.set($any($event.target).value)"
+                  />
+                </span>
+                <span>
+                  <label class="field-label" for="migrate-data-to">Hasta (inclusive)</label>
+                  <input
+                    type="date"
+                    id="migrate-data-to"
+                    [value]="dateTo()"
+                    (input)="dateTo.set($any($event.target).value)"
+                  />
+                </span>
+              </div>
+            }
+          }
+
+          @if (window(); as win) {
+            <p class="muted migrate-data-window__note">
+              @if (isSameDay(win)) {
+                Se copia el día <strong>{{ win.from }}</strong> completo.
+              } @else {
+                Se copia del <strong>{{ win.from || '…' }}</strong> al
+                <strong>{{ win.to || '…' }}</strong>, inclusive.
+              }
+            </p>
+          }
+        </div>
+      </div>
+    }
+
+    @if (tableList().length) {
+      <div class="panel">
+        <div class="section-title section-title--plain">
           <strong>Tablas a migrar</strong>
           <span class="actions">
             <span class="muted" style="font-size:0.75rem;">
@@ -161,8 +295,6 @@ function blankState(table: string): TableState {
               <tr>
                 <th>Tabla</th>
                 <th>Columna de fecha</th>
-                <th>Modo</th>
-                <th>Rango</th>
               </tr>
             </thead>
             <tbody>
@@ -185,13 +317,13 @@ function blankState(table: string): TableState {
                   </td>
 
                   @if (!row.state?.included) {
-                    <td colspan="3"></td>
+                    <td></td>
                   } @else if (row.state.loading) {
-                    <td colspan="3" class="muted" style="font-size:0.75rem;">
+                    <td class="muted" style="font-size:0.75rem;">
                       <span class="spinner"></span> Buscando columnas…
                     </td>
                   } @else if (row.state.error) {
-                    <td colspan="3">
+                    <td>
                       <button
                         type="button"
                         class="table-alert"
@@ -202,9 +334,7 @@ function blankState(table: string): TableState {
                       </button>
                     </td>
                   } @else if (!row.state.columns?.length) {
-                    <td colspan="3" class="muted" style="font-size:0.75rem;">
-                      Sin columnas de fecha
-                    </td>
+                    <td class="muted" style="font-size:0.75rem;">Sin columnas de fecha</td>
                   } @else {
                     <td>
                       <select
@@ -219,77 +349,6 @@ function blankState(table: string): TableState {
                           </option>
                         }
                       </select>
-                    </td>
-
-                    <td>
-                      @if (row.state.column) {
-                        <div class="radio-row radio-row--tight">
-                          <label>
-                            <input
-                              type="radio"
-                              [name]="'migrate-mode-' + row.table"
-                              [checked]="row.state.singleDay"
-                              (change)="setSingleDay(row.table, true)"
-                            />
-                            Un solo día
-                          </label>
-                          <label>
-                            <input
-                              type="radio"
-                              [name]="'migrate-mode-' + row.table"
-                              [checked]="!row.state.singleDay"
-                              (change)="setSingleDay(row.table, false)"
-                            />
-                            Rango
-                          </label>
-                        </div>
-                      }
-                    </td>
-
-                    <td>
-                      @if (row.state.column) {
-                        @if (row.state.singleDay) {
-                          <input
-                            type="date"
-                            [id]="'migrate-day-' + row.table"
-                            [value]="row.state.dateFrom"
-                            (input)="setDay(row.table, $any($event.target).value)"
-                          />
-                        } @else {
-                          <div class="filter-table__range">
-                            <span>
-                              <label class="field-label" [for]="'migrate-from-' + row.table">
-                                Desde (inclusive)
-                              </label>
-                              <input
-                                type="date"
-                                [id]="'migrate-from-' + row.table"
-                                [value]="row.state.dateFrom"
-                                (input)="setFrom(row.table, $any($event.target).value)"
-                              />
-                            </span>
-                            <span>
-                              <label class="field-label" [for]="'migrate-to-' + row.table">
-                                Hasta (inclusive)
-                              </label>
-                              <input
-                                type="date"
-                                [id]="'migrate-to-' + row.table"
-                                [value]="row.state.dateTo"
-                                (input)="setTo(row.table, $any($event.target).value)"
-                              />
-                            </span>
-                          </div>
-                          @if (isSameDay(row.state)) {
-                            <p class="muted" style="margin-top:0.375rem; font-size:0.75rem;">
-                              <strong>Un solo día: {{ row.state.dateFrom }}.</strong> Los dos
-                              límites quedan iguales porque la ventana es ese día entero.
-                            </p>
-                          }
-                        }
-                      } @else {
-                        <span></span>
-                      }
                     </td>
                   }
                 </tr>
@@ -416,6 +475,18 @@ function blankState(table: string): TableState {
       </ul>
     </app-notice-modal>
   `,
+  styles: `
+    /* El filtro es de la página, no de una fila: los controles del modo van en su
+       propia línea y el resumen de la ventana debajo, para que se lea como una
+       decisión única y no como algo que se completa tabla por tabla. */
+    .migrate-data-window {
+      margin-top: 0.75rem;
+    }
+    .migrate-data-window__note {
+      margin-top: 0.5rem;
+      font-size: 0.75rem;
+    }
+  `,
 })
 export class MigrateDataPage {
   private readonly envService = inject(EnvironmentService);
@@ -435,6 +506,22 @@ export class MigrateDataPage {
 
   /** One entry per table the user touched, marked or not. */
   readonly filters = signal<Record<string, TableState>>({});
+
+  /**
+   * The date filter is one decision for the whole migration, not one per table.
+   *
+   * It used to live in every row, which meant filling the same two fields and
+   * picking the same mode six times to migrate six tables of the same window —
+   * and six chances to pick six different windows by accident, which is the one
+   * mistake this page exists to prevent. The column stays per table because it
+   * genuinely differs (`fecha` in one table, `created_at` in another); the window
+   * is the same question asked once.
+   */
+  readonly dateMode = signal<DateMode>('month');
+  readonly day = signal('');
+  readonly month = signal('');
+  readonly dateFrom = signal('');
+  readonly dateTo = signal('');
 
   readonly busy = signal(false);
   readonly busyText = signal('');
@@ -497,18 +584,55 @@ export class MigrateDataPage {
    * *and* null dates — a column left over from before cannot filter a migration
    * that no longer wants a filter.
    */
-  readonly selection = computed<TableSelectionRequest[]>(() =>
-    this.includedTables().map((table) => {
-      const state = this.filters()[table];
-      const column = state?.column ?? '';
+  /**
+   * The window the current mode and fields describe, or `null` when they don't
+   * describe a complete one.
+   *
+   * `null` is not "no filter": it is "not decided yet", and it blocks the submit
+   * for every table that picked a column. A half-filled range that silently
+   * migrated the whole table is the accident `filterlessTables` exists for.
+   */
+  readonly window = computed<DateWindow | null>(() => {
+    switch (this.dateMode()) {
+      case 'day': {
+        const day = this.day();
+        return day ? { from: day, to: day } : null;
+      }
+      case 'month': {
+        const month = this.month();
+        const to = lastDayOfMonth(month);
+        return to ? { from: `${month}-01`, to } : null;
+      }
+      case 'range': {
+        const from = this.dateFrom();
+        const to = this.dateTo();
+        // One bound is a real request ("desde marzo en adelante"), so a half
+        // range is a window — unlike the single-day and single-month modes,
+        // where there is no partial answer.
+        if (!from && !to) return null;
+        if (from && to && from > to) return null; // al revés: nunca matchea nada
+        return { from, to };
+      }
+    }
+  });
+
+  /** True when the mode picked is not the range, i.e. it needs exactly one field. */
+  readonly needsOneField = computed(() => this.dateMode() !== 'range');
+
+  readonly selection = computed<TableSelectionRequest[]>(() => {
+    const win = this.window();
+    return this.includedTables().map((table) => {
+      const column = this.filters()[table]?.column ?? '';
       return {
         table,
         date_column: column || null,
-        date_from: column && state?.dateFrom ? state.dateFrom : null,
-        date_to: column && state?.dateTo ? state.dateTo : null,
+        // The window belongs to the page, so every filtered table gets the same
+        // one. A table with no column sends null bounds: it migrates whole.
+        date_from: column && win ? win.from || null : null,
+        date_to: column && win ? win.to || null : null,
       };
-    }),
-  );
+    });
+  });
 
   /**
    * Marked tables that asked to be filtered by date and never said by how much.
@@ -528,10 +652,7 @@ export class MigrateDataPage {
    * migration like any other.
    */
   readonly filterlessTables = computed(() =>
-    this.includedTables().filter((t) => {
-      const s = this.filters()[t];
-      return !!s?.column && !s.dateFrom && !s.dateTo;
-    }),
+    this.includedTables().filter((t) => !!this.filters()[t]?.column && !this.window()),
   );
 
   /**
@@ -541,8 +662,8 @@ export class MigrateDataPage {
   readonly canSubmit = computed(() => {
     if (!this.envB() || !this.envA() || this.sameEnv() || !this.schema()) return false;
     if (!this.selection().length) return false;
-    // Columna elegida sin ninguna fecha: el filtro no acotaría nada y la tabla
-    // entera se copiaría. Ver `filterlessTables`.
+    // Columna elegida sin ventana: el filtro no acotaría nada y la tabla entera
+    // se copiaría. Ver `filterlessTables`.
     if (this.filterlessTables().length) return false;
     return this.includedTables().every((t) => {
       const state = this.filters()[t];
@@ -560,11 +681,17 @@ export class MigrateDataPage {
       return 'Esperando las columnas de fecha de las tablas marcadas.';
     if (this.includedTables().some((t) => this.filters()[t]?.error))
       return 'Hay una tabla marcada cuyas columnas de fecha no se pudieron leer.';
-    const sueltas = this.filterlessTables();
-    if (sueltas.length === 1)
-      return `${sueltas[0]} tiene columna de fecha elegida pero ninguna fecha: se copiaría entera. Poné el rango, o elegí "Todo (sin filtro)".`;
-    if (sueltas.length)
-      return `${sueltas.length} tablas tienen columna de fecha elegida pero ninguna fecha: se copiarían enteras. Poné el rango, o elegí "Todo (sin filtro)".`;
+
+    // La ventana es una para toda la migración, así que el aviso es del filtro y
+    // no de una tabla: una columna elegida sin ventana se copiaría entera.
+    if (!this.window() && this.includedTables().some((t) => this.filters()[t]?.column)) {
+      const reversed = this.dateMode() === 'range' && !!this.dateFrom() && !!this.dateTo();
+      if (reversed) return 'La fecha inicial es posterior a la final: revisá el orden.';
+      return (
+        'Elegí la ventana de fechas: hay tablas con columna de fecha elegida y sin filtro, ' +
+        'y se copiarían enteras. O completá la ventana, o elegí "Todo (sin filtro)" en esas tablas.'
+      );
+    }
     return '';
   });
 
@@ -709,37 +836,43 @@ export class MigrateDataPage {
     const state = this.filters()[table];
     const columns = state?.columns ?? [];
     const safe = column && columns.some((c) => c.name === column) ? column : '';
-    // The dates travel with the column: without one there is nothing to bound.
-    this.patch(table, { column: safe, dateFrom: '', dateTo: '' });
+    // The window is not per table, so nothing else travels with the column.
+    this.patch(table, { column: safe });
   }
 
-  setSingleDay(table: string, singleDay: boolean): void {
-    if (!singleDay) {
-      this.patch(table, { singleDay });
-      return;
+  /**
+   * Switching the mode keeps the window it described.
+   *
+   * The three modes write different fields, and clearing all of them would throw
+   * away a month the user already picked just because they wanted to look at one
+   * of its days. So the window resolved *before* the switch is carried into the
+   * fields of the new mode, always the closest reading of what was already on
+   * screen:
+   *
+   * - to **range**, the two bounds as they were;
+   * - to **day**, the lower bound, which is the day the window opened on;
+   * - to **month**, the month that lower bound falls in.
+   *
+   * Only those fields are touched. Switching to a month from a window that is
+   * longer than a month widens it, and that is visible in the summary line right
+   * below the controls rather than something to refuse over.
+   */
+  setMode(mode: DateMode): void {
+    const previous = this.window();
+    this.dateMode.set(mode);
+    if (!previous?.from) return;
+    if (mode === 'range') {
+      this.dateFrom.set(previous.from);
+      this.dateTo.set(previous.to);
+    } else if (mode === 'day') {
+      this.day.set(previous.from);
+    } else {
+      this.month.set(previous.from.slice(0, 7));
     }
-    // One day means both bounds, and a window with only a lower bound is not what
-    // "un solo día" says — so the upper bound comes from the same field.
-    const state = this.filters()[table];
-    const day = state?.dateTo || state?.dateFrom || '';
-    this.patch(table, { singleDay, dateFrom: day, dateTo: day });
   }
 
-  /** The single day writes both bounds, which is the whole point of the mode. */
-  setDay(table: string, day: string): void {
-    this.patch(table, { dateFrom: day, dateTo: day });
-  }
-
-  setFrom(table: string, day: string): void {
-    this.patch(table, { dateFrom: day });
-  }
-
-  setTo(table: string, day: string): void {
-    this.patch(table, { dateTo: day });
-  }
-
-  isSameDay(state: TableState): boolean {
-    return !!state.dateFrom && state.dateFrom === state.dateTo;
+  isSameDay(win: DateWindow): boolean {
+    return !!win.from && win.from === win.to;
   }
 
   simulate(): void {

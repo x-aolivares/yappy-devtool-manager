@@ -28,7 +28,9 @@ import { StatusBadge } from '../shared/status-badge';
   template: `
     <h1>Ejecutar SQL</h1>
     <p class="muted">
-      Corré una consulta de lectura contra un ambiente y mirá el resultado.
+      Corré una consulta de lectura contra un ambiente y mirá el resultado. También podés
+      llamar un stored procedure con <code>CALL</code>: puede escribir, así que fijate qué hace
+      antes de correrlo.
     </p>
 
     <div class="panel">
@@ -50,7 +52,7 @@ import { StatusBadge } from '../shared/status-badge';
           rows="8"
           [value]="sql()"
           (input)="sql.set($any($event.target).value)"
-          placeholder="SELECT * FROM schema_abc.table_abc abc, schema_zxc.zxc zxc&#10;WHERE zxc.abc_id = abc.abc_id&#10;  AND zxc.zxc_status = 'COMPLETED'&#10;  AND abc.abc_type = 'M2P'"
+          placeholder="SELECT * FROM schema_abc.table_abc abc, schema_zxc.zxc zxc&#10;WHERE zxc.abc_id = abc.abc_id&#10;  AND zxc.zxc_status = 'COMPLETED'&#10;  AND abc.abc_type = 'M2P'&#10;&#10;-- o un stored procedure:&#10;CALL sp_abc('2026-03-01')"
         ></textarea>
       </div>
 

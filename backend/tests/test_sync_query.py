@@ -11,7 +11,7 @@ from yappy_library.adapters.database.connection import SyncError
 class FakeCursor:
     def __init__(self, owner):
         self.owner = owner
-        self.rowcount = 0
+        self.rowcount = owner.rowcount
 
     def __enter__(self):
         return self
@@ -24,9 +24,19 @@ class FakeCursor:
         if self.owner.raise_on and self.owner.raise_on in sql:
             raise RuntimeError("Unknown column 'x'")
         self._rows = self.owner.rows
+        self.rowcount = self.owner.rowcount
 
     def fetchmany(self, size):
         return list(self.owner.rows[:size])
+
+    def nextset(self):
+        # `CALL` puede devolver varios result sets seguidos y el cursor se avanza
+        # al siguiente. Sin `result_sets` hay uno solo, así que esto es el fin.
+        self.owner.sets_read += 1
+        if self.owner.sets_read >= len(self.owner.result_sets or [1]):
+            return False
+        self.owner._use_set(self.owner.sets_read)
+        return True
 
     @property
     def description(self):
@@ -34,11 +44,27 @@ class FakeCursor:
 
 
 class FakeConn:
-    def __init__(self, rows=None, columns=("id", "name"), raise_on=None):
+    def __init__(self, rows=None, columns=("id", "name"), raise_on=None, result_sets=None):
         self.rows = rows if rows is not None else []
         self.description = [(c, None, None, None, None, None, None) for c in columns]
         self.raise_on = raise_on
         self.executed = []
+        #: `rowcount` de MySQL: las filas que la última sentencia tocó. Sólo
+        #: importa para un `CALL` que no devuelve filas.
+        self.rowcount = 0
+        #: Los result sets que un `CALL` puede devolver seguidos, cada uno con sus
+        #: filas y sus columnas. `None` = un solo set, el caso normal de un SELECT.
+        self.result_sets = result_sets
+        self.sets_read = 0
+        if result_sets:
+            self._use_set(0)
+
+    def _use_set(self, index: int) -> None:
+        rs = self.result_sets[index]
+        self.rows = rs.get("rows", [])
+        self.description = [
+            (c, None, None, None, None, None, None) for c in rs.get("columns", ())
+        ]
 
     def cursor(self, dict_mode=False):
         return FakeCursor(self)
@@ -64,6 +90,11 @@ def use_conn(monkeypatch):
     return _install
 
 
+def _one_set(columns, rows):
+    """A connection that answers with exactly one result set."""
+    return FakeConn(rows=rows, columns=columns)
+
+
 # --- validation -------------------------------------------------------------
 
 
@@ -80,10 +111,122 @@ def test_multiple_statements_are_rejected():
 
 
 def test_write_statements_are_rejected():
+    # `CALL` sí entra (abajo hay tests de eso) porque es la vía para correr un
+    # stored procedure. Estas son las escrituras que siguen sin entrar.
     for sql in ("DELETE FROM t", "UPDATE t SET a = 1", "DROP TABLE t", "INSERT INTO t VALUES (1)"):
         with pytest.raises(q.QueryError) as exc:
             q.ensure_single_read_statement(sql)
         assert "consultas de lectura" in str(exc.value)
+
+
+def test_a_stored_procedure_call_is_accepted():
+    for sql in (
+        "CALL sp_pagos('2026-03-01')",
+        "call sp_pagos()",
+        "EXEC sp_pagos",
+        "EXECUTE sp_pagos @fecha = '2026-03-01'",
+    ):
+        assert q.ensure_single_read_statement(sql) == sql
+
+
+def test_the_rejection_names_both_ways_in():
+    """El error tiene que decir qué se admite, no sólo qué no: si alguien pega
+    un `TRUNCATE` y ve "no se admiten consultas de lectura" no sabe que existe
+    una salida para lo que sí quiere hacer."""
+    with pytest.raises(q.QueryError) as exc:
+        q.ensure_single_read_statement("TRUNCATE TABLE t")
+    message = str(exc.value)
+    assert "CALL" in message
+    assert "SELECT" in message
+
+
+def test_a_call_with_several_statements_is_still_rejected():
+    with pytest.raises(q.QueryError) as exc:
+        q.ensure_single_read_statement("CALL sp_a(); CALL sp_b();")
+    assert "2 sentencias" in str(exc.value)
+
+
+# --- stored procedures -------------------------------------------------------
+
+
+def test_a_call_shows_the_rows_of_its_result_set(use_conn):
+    conn = use_conn(rows=[{"pedido_id": 7, "estado": "OK"}])
+    conn.description = [("pedido_id", None, None, None, None, None, None), ("estado", None, None, None, None, None, None)]
+
+    result = q.run_select(object(), "CALL sp_reporte()")
+
+    assert result.columns == ["pedido_id", "estado"]
+    assert result.rows == [{"pedido_id": 7, "estado": "OK"}]
+
+
+def test_a_call_skips_the_result_sets_that_have_no_columns(use_conn):
+    """Un procedure que hace su trabajo y recién después devuelve la tabla: leer
+    sólo el primer result set mostraría la fila de estado, que no dice nada."""
+    use_conn(
+        result_sets=[
+            {"columns": (), "rows": []},  # el OUT param / la fila de estado
+            {"columns": ("id",), "rows": [{"id": 1}, {"id": 2}]},
+        ]
+    )
+
+    result = q.run_select(object(), "CALL sp_reporte()")
+
+    assert result.columns == ["id"]
+    assert result.rows == [{"id": 1}, {"id": 2}]
+
+
+def test_reading_a_call_stops_at_the_first_set_with_columns(use_conn):
+    """No drena los sets que vienen después, y no debería: la conexión es de esta
+    request y se cierra al terminar, así que un set sin leer no llega a otro
+    consulta. Lo que importa es que no se avanza de más."""
+    conn = use_conn(
+        result_sets=[
+            {"columns": (), "rows": []},
+            {"columns": ("id",), "rows": [{"id": 1}]},
+            {"columns": ("otro",), "rows": [{"otro": 2}]},
+        ]
+    )
+
+    result = q.run_select(object(), "CALL sp_reporte()")
+
+    assert result.columns == ["id"]
+    # Un `nextset` de más: se llega al que tiene columnas y se corta.
+    assert conn.sets_read == 1
+
+
+def test_a_call_that_returns_nothing_says_it_ran(use_conn):
+    """Un procedure que escribe y no devuelve nada es un resultado legítimo.
+    Reportarlo como "0 filas" se lee como si la consulta no hubiera encontrado
+    datos, que es otra cosa."""
+    conn = use_conn(rows=[])
+    conn.description = []
+    conn.rowcount = 12
+
+    result = q.run_select(object(), "CALL sp_migrar()")
+
+    assert len(result.rows) == 1
+    assert "se ejecutó" in result.rows[0]["mensaje"]
+    assert "12" in result.rows[0]["mensaje"]
+
+
+def test_a_select_with_no_rows_is_still_reported_as_zero(use_conn):
+    """La distinguishes con un SELECT vacío: 0 filas de datos es un dato."""
+    use_conn(rows=[])
+
+    result = q.run_select(object(), "SELECT id FROM t WHERE 0")
+
+    assert result.rows == []
+    assert result.total == 0
+
+
+def test_a_failing_call_is_a_sync_error(use_conn):
+    conn = use_conn(rows=[])
+    conn.raise_on = "CALL"
+
+    with pytest.raises(SyncError) as exc:
+        q.run_select(object(), "CALL sp_que_no_existe()")
+
+    assert "Unknown column" in str(exc.value) or "sp_que_no_existe" in str(exc.value)
 
 
 def test_read_statements_are_accepted():
