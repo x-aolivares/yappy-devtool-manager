@@ -32,6 +32,16 @@ def _detach_log_path(name: str) -> Path:
     return log_dir / f"{slug}.log"
 
 
+def tunnel_log_path(local_port: int) -> Path:
+    """Where the AWS CLI output of the tunnel on ``local_port`` is kept.
+
+    ``~/.yappy/logs/tunnel-<port>.log``, truncated per attempt: the log you want
+    when a tunnel misbehaves is the one belonging to the tunnel that just
+    started, not an append-only history of every attempt.
+    """
+    return _detach_log_path(f"tunnel-{local_port}")
+
+
 @functools.lru_cache(maxsize=None)
 def _aws_cmd() -> list[str]:
     """Return a working aws invocation: binary or python -m awscli."""
@@ -177,6 +187,7 @@ class BaseCommand:
         profile: str,
         remote_host: str | None = None,
         quiet: bool = False,
+        log_file: str | Path | None = None,
     ) -> subprocess.Popen:
         if remote_host:
             doc = "AWS-StartPortForwardingSessionToRemoteHost"
@@ -191,15 +202,32 @@ class BaseCommand:
                 "portNumber": [str(port)],
                 "localPortNumber": [str(local_port)],
             }
-        devnull = subprocess.DEVNULL if quiet else None
-        proc = self.popen([
-            *_aws_cmd(), "ssm", "start-session",
-            "--target", instance,
-            "--document-name", doc,
-            "--parameters", json.dumps(params),
-            "--profile", profile,
-            "--region", region,
-        ], stdout=devnull, stderr=devnull)
+
+        # `quiet` used to mean DEVNULL, which also swallowed the AWS CLI's own
+        # diagnostics. A tunnel that failed to bind its local port then looked
+        # exactly like one that was still coming up, which is how a request ends
+        # up waiting forever on a tunnel that was never going to work.
+        handle = None
+        if log_file:
+            path = Path(log_file)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            handle = open(path, "w", encoding="utf-8", errors="replace")
+            sink = handle
+        else:
+            sink = subprocess.DEVNULL if quiet else None
+
+        try:
+            proc = self.popen([
+                *_aws_cmd(), "ssm", "start-session",
+                "--target", instance,
+                "--document-name", doc,
+                "--parameters", json.dumps(params),
+                "--profile", profile,
+                "--region", region,
+            ], stdout=sink, stderr=sink)
+        finally:
+            if handle is not None:
+                handle.close()
         process_tracker.track_process(pid=proc.pid, resource="tunnel", target=profile)
         return proc
 

@@ -26,6 +26,15 @@ from .exec import split_statements
 #: Hard ceiling on rows returned to the browser. The UI paginates client-side.
 MAX_ROWS = 500
 
+#: Server-side cap, in milliseconds, for one interactive query.
+#:
+#: MySQL aborts the statement with ER_QUERY_TIMEOUT, which reaches the browser as
+#: a message that says what happened. A client-side timeout cannot do that: it
+#: just gives up, leaving the statement running on the server and the connection
+#: in an unknown state. Overridable per environment with ``DB_QUERY_TIMEOUT_MS``;
+#: set it to ``0`` to let queries run as long as they take.
+DEFAULT_STATEMENT_TIMEOUT_MS = 60_000
+
 _READ_ONLY_HEAD = re.compile(r"^\s*(SELECT|WITH|SHOW|DESCRIBE|DESC|EXPLAIN)\b", re.I)
 
 #: Statements that read but are not row-returning the way the grid expects.
@@ -93,12 +102,47 @@ def ensure_single_read_statement(sql: str) -> str:
     return statement
 
 
+def _statement_timeout_ms(cfg) -> int:
+    """Read ``DB_QUERY_TIMEOUT_MS``, falling back to the module default.
+
+    ``cfg`` is duck-typed on purpose: the caller's config may be a stub in a
+    test, and a missing or unparseable value must degrade to the default rather
+    than to an exception.
+    """
+    getter = getattr(cfg, "get", None)
+    raw = getter("DB_QUERY_TIMEOUT_MS") if callable(getter) else None
+    if raw is None or not str(raw).strip():
+        return DEFAULT_STATEMENT_TIMEOUT_MS
+    try:
+        return int(str(raw).strip())
+    except ValueError:
+        return DEFAULT_STATEMENT_TIMEOUT_MS
+
+
+def _apply_statement_timeout(conn, timeout_ms: int) -> None:
+    """Cap the session's statement time so a runaway query ends as an error.
+
+    Best-effort by design. ``max_execution_time`` only exists on MySQL 5.7.8+
+    and only binds SELECT, so an older Aurora or a SHOW answers with "Unknown
+    system variable"; that is not worth failing the query over, because the
+    connection's read timeout is still there as the hard backstop.
+    """
+    if timeout_ms <= 0:
+        return
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SET SESSION max_execution_time = %s", (timeout_ms,))
+    except Exception:
+        pass
+
+
 def run_select(cfg: Config, sql: str, limit: int = MAX_ROWS) -> QueryResult:
     """Run one read statement and return its rows, capped at ``limit``."""
     statement = ensure_single_read_statement(sql)
     limit = max(1, min(int(limit or MAX_ROWS), MAX_ROWS))
 
     with connect(cfg) as conn:
+        _apply_statement_timeout(conn, _statement_timeout_ms(cfg))
         with conn.cursor(DictCursor) as cur:
             start = time.perf_counter()
             try:

@@ -22,7 +22,7 @@ import pymysql
 from dotenv import dotenv_values
 
 from yappy_library.adapters.database.credentials import generate_token
-from yappy_library.adapters.processes import BaseCommand
+from yappy_library.adapters.processes import BaseCommand, tunnel_log_path
 from yappy_library.config import Config
 from yappy_library.paths import project_config_dir
 
@@ -46,15 +46,74 @@ def _resolve_user(cfg: Config, local: dict[str, str]) -> str:
     )
 
 
-def _wait_for_port(port: int, timeout: float = 20.0) -> None:
+#: The MySQL handshake starts with a 4-byte little-endian payload length, a
+#: 1-byte sequence id, and then the payload, whose first byte is the protocol
+#: version. Reading those 5 bytes is enough to know that something on the other
+#: end speaks MySQL.
+_MYSQL_GREETING_HEADER = 5
+_MYSQL_PROTOCOL_VERSION = 10
+
+#: Upper bound on the MySQL protocol exchange, in seconds.
+#:
+#: ``connect_timeout`` alone is not a bound at all here: the TCP connect to
+#: ``127.0.0.1`` succeeds in milliseconds whether or not the SSM data channel
+#: behind it works, so what actually needs bounding is the *read* of the server
+#: greeting. Generous on purpose — a statement that streams rows resets it — and
+#: the interactive page caps itself lower with a server-side timeout.
+READ_TIMEOUT = 120
+WRITE_TIMEOUT = 120
+
+
+def _recv_exactly(sock: socket.socket, size: int) -> bytes:
+    """Read exactly ``size`` bytes, or fewer if the peer stops sending."""
+    chunks: list[bytes] = []
+    remaining = size
+    while remaining > 0:
+        chunk = sock.recv(remaining)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
+
+
+def _mysql_greeting(port: int, timeout: float) -> bool:
+    """True when ``port`` answers with a MySQL server greeting.
+
+    A successful TCP connect is *not* proof that a tunnel works:
+    ``session-manager-plugin`` binds the local port as soon as the session
+    starts, and when the remote leg is dead — the instance cannot reach the
+    target host, or the data channel dropped — it keeps accepting connections
+    that never produce a single byte, nor a FIN. Waiting on the greeting is
+    what separates "the tunnel is up" from "the port is merely listening", and
+    it is the difference between an error and an indefinite hang.
+    """
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=timeout) as sock:
+            sock.settimeout(timeout)
+            header = _recv_exactly(sock, _MYSQL_GREETING_HEADER)
+    except OSError:
+        return False
+    return len(header) == _MYSQL_GREETING_HEADER and header[4] == _MYSQL_PROTOCOL_VERSION
+
+
+def _wait_for_port(port: int, timeout: float = 30.0) -> None:
+    """Block until ``port`` answers with a MySQL greeting, or raise ``SyncError``."""
     deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            with socket.create_connection(("127.0.0.1", port), timeout=1):
-                return
-        except OSError:
-            time.sleep(0.5)
-    raise SyncError(f"El túnel SSM no se abrió en localhost:{port}")
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        if _mysql_greeting(port, timeout=min(5.0, max(0.5, remaining))):
+            return
+        time.sleep(0.5)
+    raise SyncError(
+        f"El túnel SSM no respondió en localhost:{port}: el puerto está abierto pero no "
+        f"llegó el saludo de MySQL. Suele significar que la instancia no puede alcanzar "
+        f"el host remoto — revisá el security group que permite el puerto y que el "
+        f"endpoint resuelva desde la instancia. El log del túnel está en "
+        f"{tunnel_log_path(port)}"
+    )
 
 
 def _open(host: str, port: int, user: str, password: str) -> pymysql.connections.Connection:
@@ -64,6 +123,8 @@ def _open(host: str, port: int, user: str, password: str) -> pymysql.connections
         user=user,
         password=password,
         connect_timeout=15,
+        read_timeout=READ_TIMEOUT,
+        write_timeout=WRITE_TIMEOUT,
         autocommit=True,
     )
 
@@ -72,7 +133,10 @@ def _open(host: str, port: int, user: str, password: str) -> pymysql.connections
 def connect(cfg: Config) -> Iterator[pymysql.connections.Connection]:
     """Open a MySQL connection to the environment's database.
 
-    The SSM tunnel is created on demand for the operation and closed at the end.
+    A healthy tunnel on the local port is reused when there already is one —
+    either the one the operator opened by hand or one left behind by an earlier
+    request. Otherwise the tunnel is created on demand for the operation and
+    closed at the end.
     """
     local = _local_env_values()
     user = _resolve_user(cfg, local)
@@ -121,16 +185,23 @@ def connect(cfg: Config) -> Iterator[pymysql.connections.Connection]:
     local_port = cfg.db_port
     proc = None
     try:
-        proc = base.ssm_tunnel(
-            instance=instance,
-            port=int(remote_port),
-            local_port=local_port,
-            region=cfg.region,
-            profile=cfg.profile,
-            remote_host=remote_host,
-            quiet=True,
-        )
-        _wait_for_port(local_port)
+        # Reuse before spawning. A second `start-session` on a local port that is
+        # already forwarded cannot bind, so spawning one regardless leaked a
+        # process per request — one per click, none of them ever cleaned up,
+        # since the cleanup only runs when the request finishes. It also hid the
+        # failure, because the tunnel is started quietly.
+        if not _mysql_greeting(local_port, timeout=1.0):
+            proc = base.ssm_tunnel(
+                instance=instance,
+                port=int(remote_port),
+                local_port=local_port,
+                region=cfg.region,
+                profile=cfg.profile,
+                remote_host=remote_host,
+                quiet=True,
+                log_file=tunnel_log_path(local_port),
+            )
+            _wait_for_port(local_port)
         conn = _open("127.0.0.1", local_port, user, token)
         try:
             yield conn

@@ -285,6 +285,11 @@ export class SqlPage {
     this.confirmChecked.set(false);
     this.busyText.set(`Consultando ${env}...`);
 
+    // Sin timeout del lado del cliente a propósito: el backend ya acota el
+    // trabajo (probe del saludo de MySQL, `read_timeout` en la conexión y un
+    // `max_execution_time` de sesión), así que la promesa siempre resuelve. Un
+    // `setTimeout` acá solo sumaría un timer pendiente de 90s que deja la app
+    // "inestable" en Angular zoneless, sin agregar ninguna protección real.
     this.dbService
       .query({ env, code: this.sql() })
       .then(

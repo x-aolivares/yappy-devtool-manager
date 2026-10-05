@@ -215,4 +215,26 @@ describe('SqlPage', () => {
     // El id lo consulta el resto del flujo; el refactor visual no lo renombra.
     expect(el.querySelector('textarea#sql')).not.toBeNull();
   });
+
+  it('un error del backend se muestra y libera el botón', async () => {
+    // El camino que antes no existía: con el túnel muerto el backend cortaba
+    // colgándose, así que la página nunca volvía de `busy`. Ahora el error
+    // llega y el botón se rehabilita.
+    mockQuery = () => Promise.reject(new Error('El túnel SSM no respondió en localhost:8101'));
+    const fixture = TestBed.createComponent(SqlPage);
+    const comp = fixture.componentInstance as any;
+    comp.envs.set(['dev']);
+    comp.sql.set('SELECT * FROM `yappy`.`pedidos`');
+
+    comp.runQuery();
+    await settle(fixture);
+
+    expect(comp.busy()).toBe(false);
+    expect(comp.result()).toBeNull();
+    expect(el(fixture).querySelector('.error-box')).not.toBeNull();
+  });
+
+  function el(fixture: ComponentFixture<SqlPage>): HTMLElement {
+    return fixture.nativeElement as HTMLElement;
+  }
 });

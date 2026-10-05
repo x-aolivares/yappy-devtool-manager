@@ -19,7 +19,7 @@ class FakeCursor:
     def __exit__(self, *exc):
         return False
 
-    def execute(self, sql):
+    def execute(self, sql, args=None):
         self.owner.executed.append(sql)
         if self.owner.raise_on and self.owner.raise_on in sql:
             raise RuntimeError("Unknown column 'x'")
@@ -169,3 +169,77 @@ def test_limit_is_clamped_to_the_hard_maximum(use_conn):
     # An absurd limit must not be able to stream an unbounded result set.
     result = q.run_select(object(), "SELECT 1", limit=10_000)
     assert result.rows == []
+
+
+# --- statement timeout ------------------------------------------------------
+
+
+class _Cfg:
+    """A config whose only relevant key is ``DB_QUERY_TIMEOUT_MS``."""
+
+    def __init__(self, value=None):
+        self._value = value
+
+    def get(self, key, default=None):
+        return self._value if key == "DB_QUERY_TIMEOUT_MS" and self._value is not None else default
+
+
+def test_the_session_is_capped_before_the_statement_runs(use_conn):
+    """MySQL corta la sentencia y el error lo dice; un timeout del cliente sólo
+    abandona y deja la consulta corriendo en el servidor."""
+    conn = use_conn(rows=[])
+
+    q.run_select(object(), "SELECT 1")
+
+    assert any("max_execution_time" in stmt for stmt in conn.executed)
+    assert conn.executed.index("SELECT 1") > 0, "el tope va antes de la consulta"
+
+
+def test_the_default_cap_is_the_module_default():
+    assert q._statement_timeout_ms(object()) == q.DEFAULT_STATEMENT_TIMEOUT_MS
+    assert q._statement_timeout_ms(_Cfg()) == q.DEFAULT_STATEMENT_TIMEOUT_MS
+
+
+def test_the_cap_can_be_overridden_per_environment():
+    assert q._statement_timeout_ms(_Cfg("5000")) == 5000
+    assert q._statement_timeout_ms(_Cfg(" 5000 ")) == 5000
+
+
+def test_an_unparseable_cap_degrades_to_the_default_instead_of_raising():
+    assert q._statement_timeout_ms(_Cfg("pronto")) == q.DEFAULT_STATEMENT_TIMEOUT_MS
+
+
+def test_zero_disables_the_cap(use_conn):
+    """Consultas que legítimamente tardan: es una decisión del ambiente, no un error."""
+    conn = use_conn(rows=[])
+
+    q.run_select(_Cfg("0"), "SELECT 1")
+
+    assert not any("max_execution_time" in stmt for stmt in conn.executed)
+
+
+def test_a_server_without_the_variable_still_runs_the_query(use_conn):
+    """Aurora MySQL 5.7 no conoce `max_execution_time`. Perder el tope es
+    aceptable; perder la consulta no — el read timeout sigue como red de
+    seguridad."""
+    conn = use_conn(rows=[])
+    original = conn.cursor
+
+    def _cursor(dict_mode=False):
+        cur = original(dict_mode=dict_mode)
+        real_execute = cur.execute
+
+        def _execute(sql, args=None):
+            if "max_execution_time" in sql:
+                raise RuntimeError("Unknown system variable 'max_execution_time'")
+            return real_execute(sql)
+
+        cur.execute = _execute
+        return cur
+
+    conn.cursor = _cursor
+
+    result = q.run_select(object(), "SELECT id FROM t")
+
+    assert result.columns == ["id", "name"]
+    assert conn.executed == ["SELECT id FROM t"]
