@@ -228,39 +228,6 @@ type DestinationIndex = Record<SyncObject['kind'], Set<string>>;
       </div>
     </div>
 
-    @if (result(); as r) {
-      <div class="panel">
-        <div class="section-title"><strong>Resultado</strong></div>
-        <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
-          <app-badge [status]="r.status" />
-          <span class="muted">
-            {{ r.env_b }} → {{ r.env_a }} · {{ tables().length }} tabla(s) y
-            {{ procedures().length }} procedimiento(s)
-          </span>
-        </div>
-
-        @if (r.create_schema) {
-          <div class="note">
-            • El destino no tiene el esquema <code>{{ r.schema_name }}</code
-            >: el script lo crea.
-          </div>
-        }
-        @if (leftAlone().length) {
-          <div class="note">
-            • En {{ r.env_a }} quedan sin tocar {{ leftAlone().length }} tabla(s) que el origen no
-            tiene:
-            @for (t of leftAlone(); track t) {
-              <code>{{ t }}</code>
-            }
-            No aparecen en el script.
-          </div>
-        }
-        @for (n of r.notes ?? []; track n) {
-          <div class="note">• {{ n }}</div>
-        }
-      </div>
-    }
-
     <div class="panel">
       <div class="section-title section-title--plain">
         <strong>Script a ejecutar en {{ envA() || 'el destino' }}</strong>
@@ -390,12 +357,14 @@ export class SchemaSyncPage {
   readonly result = signal<SchemaCompileResponse | null>(null);
   readonly executed = signal<ExecuteSqlResponse | null>(null);
 
-  /** The lists the response reports, defaulted so the template doesn't deal with nulls. */
-  readonly tables = computed(() => this.result()?.tables ?? []);
-  readonly procedures = computed(() => this.result()?.procedures ?? []);
-  readonly leftAlone = computed(() => this.result()?.left_alone ?? []);
-
-  /** One row per object of the origin, tables first, alphabetical within each. */
+  /**
+   * One row per object of the origin, tables first, alphabetical within each.
+   *
+   * Sale de `objects()`, no de `result()`: la lista de objetos que se puede marcar
+   * es la del origen, que se lee al elegir el esquema. `result()` —lo que devolvió
+   * `/api/compile/schema`— ya no se pinta en ningún lado, así que ni el estado ni
+   * sus computeds tienen consumidor.
+   */
   readonly objectRows = computed<SyncObject[]>(() => this.objects() ?? []);
 
   /**

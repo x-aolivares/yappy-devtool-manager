@@ -187,36 +187,40 @@ describe('SchemaSyncPage generación', () => {
     expect(textarea(el).value).toContain('DROP TABLE IF EXISTS `yappy`.`orders`');
   });
 
-  it('muestra el estado, los conteos y todas las notas', async () => {
+  it('no muestra un panel de resultado: el script y las sentencias ya lo dicen', async () => {
     const { el } = await generate({ notes: ['Primera nota.', 'Segunda nota.'] });
 
-    expect(el.textContent).toContain('Se sincroniza el schema en la región Destino');
-    expect(el.textContent).toContain('dev → local');
-    expect(el.textContent).toContain('2 tabla(s) y 1 procedimiento(s)');
-    expect(el.textContent).toContain('Primera nota.');
-    expect(el.textContent).toContain('Segunda nota.');
+    // Se.Generation dejó de pintar el resumen de la respuesta. Lo que quedó es lo
+    // que el usuario usa: el script en el editor, el panel de objetos que ya
+    // estaba antes de generar, y —después de correr— las sentencias ejecutadas.
+    expect(el.textContent).not.toContain('Se sincroniza el schema en la región Destino');
+    expect(el.textContent).not.toContain('Primera nota.');
+    expect(el.textContent).not.toContain('Segunda nota.');
+    expect(el.textContent).not.toContain('Resultado');
+    expect(textarea(el).value).toContain('DROP TABLE');
   });
 
-  it('reporta que el destino no tiene el esquema', async () => {
-    const { el } = await generate({ create_schema: true });
+  it('el script del backend se siembra íntegro, con o sin panel de resultado', async () => {
+    const { comp, el } = await generate({ create_schema: true, script: CREATE_SCRIPT });
 
-    expect(el.textContent).toContain('El destino no tiene el esquema');
-    expect(el.textContent).toContain('el script lo crea');
+    // Lo que el panel mostraba no era el script, era un resumen. Quitarlo no puede
+    // haber tocado lo que el usuario va a correr, así que lo que se verifica es que
+    // el editor recibe el script tal cual, incluido su `CREATE DATABASE`.
+    expect(comp.script()).toBe(CREATE_SCRIPT);
+    expect(textarea(el).value).toContain('CREATE DATABASE IF NOT EXISTS');
+    expect(textarea(el).value).toContain('DROP TABLE IF EXISTS');
   });
 
-  it('lista las tablas del destino que no se tocan', async () => {
+  it('las tablas que el destino tiene de sobra no se mencionan en ninguna parte', async () => {
     const { el } = await generate({ left_alone: ['legacy', 'audit'] });
 
-    expect(el.textContent).toContain('quedan sin tocar 2 tabla(s) que el origen no tiene');
-    expect(el.textContent).toContain('legacy');
-    expect(el.textContent).toContain('audit');
-    expect(el.textContent).toContain('No aparecen en el script');
-  });
-
-  it('no inventa tablas sin tocar cuando el destino no tiene de sobra', async () => {
-    const { el } = await generate({ left_alone: [] });
-
+    // `left_alone` era del panel que se borró. Lo que no se toca tampoco necesita
+    // un aviso: no está en el script, y lo que no está en el script no corre.
     expect(el.textContent).not.toContain('quedan sin tocar');
+    expect(el.textContent).not.toContain('legacy');
+    expect(el.textContent).not.toContain('audit');
+    // El aviso de que el script borra y recrea sí sigue, y sigue debajo del editor.
+    expect(el.textContent).toContain('Las filas que están allá en esas tablas se pierden');
   });
 
   it('manda la lista exacta de objetos marcados', async () => {
