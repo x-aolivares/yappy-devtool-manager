@@ -5,9 +5,36 @@ from __future__ import annotations
 import os
 import threading
 import webbrowser
+from copy import deepcopy
 
-from yappy_library.adapters.logging import info
+from yappy_library.adapters.logging import LOG_TIME_FORMAT, info
 from yappy_library.config import Config
+
+
+def log_config() -> dict:
+    """Uvicorn's logging config with a timestamp on every line.
+
+    Uvicorn's default formatters are ``"%(levelprefix)s %(message)s"``, sin hora:
+    el access log delega la hora al que esté pipeando. Viendo la web en la
+    terminal —que es como se usa— no hay ningún reloj, y sin él no se puede
+    saber si un request tardó medio segundo o medio minuto, ni separar dos
+    corridas pegadas.
+
+    Se parte de :data:`uvicorn.config.LOGGING_CONFIG` y se le agregan
+    ``%(asctime)s`` y ``datefmt`` en vez de escribir el dict entero, para no
+    perder lo que uvicorn agregue en una versión nueva: los ``DefaultFormatter``
+    y ``AccessFormatter`` son suyos y saben cómo colorean el nivel.
+
+    La hora va **adelante**, no al final: al principio se lee como columna y no
+    hay que buscarla dentro de la línea.
+    """
+    import uvicorn
+
+    config = deepcopy(uvicorn.config.LOGGING_CONFIG)
+    for name in ("default", "access"):
+        config["formatters"][name]["fmt"] = "%(asctime)s " + config["formatters"][name]["fmt"]
+        config["formatters"][name]["datefmt"] = LOG_TIME_FORMAT
+    return config
 
 
 def run(host: str = "127.0.0.1", port: int = 8000, open_browser: bool = True) -> None:
@@ -37,7 +64,7 @@ def run(host: str = "127.0.0.1", port: int = 8000, open_browser: bool = True) ->
     info(f"Region Sync web -> {url}")
     if open_browser:
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(app, host=host, port=port, log_config=log_config())
 
 
 if __name__ == "__main__":
