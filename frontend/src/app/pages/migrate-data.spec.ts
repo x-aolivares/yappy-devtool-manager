@@ -501,11 +501,14 @@ describe('MigrateDataPage la tabla se pagina', () => {
     expect(comp.page.total()).toBe(2);
   });
 
-  it('con pocas tablas no aparece la barra', async () => {
+  it('con pocas tablas la barra no navega pero el tamaño sigue editable', async () => {
     const { el } = await ready();
 
     expect(el.querySelectorAll('table.filter-table tbody tr').length).toBe(3);
-    expect(el.querySelector('.table-pagination')).toBeNull();
+    // Con 3 tablas no hay nada que recorrer, pero el selector queda: una sola
+    // "página" puede seguir desbordando la pantalla.
+    expect(el.querySelector('.table-pagination__size select')).not.toBeNull();
+    expect(el.querySelectorAll('.table-pagination button').length).toBe(0);
   });
 });
 

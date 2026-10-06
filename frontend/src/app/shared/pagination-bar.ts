@@ -5,10 +5,16 @@
  * dibuja los controles. No sabe de dónde viene la lista, qué se está paginando ni
  * cuántas filas hay en total — todo eso ya está resuelto en `paginate.ts`.
  *
- * **No se dibuja si hay una sola página.** Una barra con "Página 1 de 1" y dos
- * botones apagados es ruido: informa que no tiene nada que informar. Con una sola
- * página el rango ("1–25 de 25") tampoco aporta, así que la barra entera
- * desaparece y la tabla queda como estaba.
+ * **El tamaño de página siempre se puede cambiar; la navegación, no siempre hace
+ * falta.** La barra se escondía entera cuando había una sola página, y eso tapaba
+ * justo el control que hacía falta: con 7 filas no hay paginación, así que el
+ * `<select>` desaparecía — pero "una sola página" de 25 filas puede seguir
+ * desbordando la pantalla, y bajarla a 5 es lo único que la deja entera a la vista.
+ * Un control que desaparece justo cuando lo necesitás no es un control.
+ *
+ * Así que ahora: con una sola página quedan el rango y el selector, y se van la
+ * etiqueta de página y los dos botones, que no tienen a dónde ir. Sin filas, no hay
+ * barra: ahí no hay nada que ajustar.
  *
  * El `<select>` de filas lleva su propia etiqueta, como el resto de los selects
  * pelados de la app — la regla del `.field-label` es sólo para cuando el control
@@ -25,8 +31,10 @@ import { PAGE_SIZES, Pagination } from './paginate';
         <span class="muted table-pagination__count">{{ p().rangeLabel() }}</span>
 
         <div class="actions table-pagination__controls">
-          @if (p().pageLabel(); as label) {
-            <span class="muted">{{ label }}</span>
+          @if (showNav()) {
+            @if (p().pageLabel(); as label) {
+              <span class="muted">{{ label }}</span>
+            }
           }
 
           <label class="table-pagination__size">
@@ -42,12 +50,19 @@ import { PAGE_SIZES, Pagination } from './paginate';
             </select>
           </label>
 
-          <button type="button" class="secondary" [disabled]="!p().canPrev()" (click)="p().prev()">
-            Anterior
-          </button>
-          <button type="button" class="secondary" [disabled]="!p().canNext()" (click)="p().next()">
-            Siguiente
-          </button>
+          @if (showNav()) {
+            <button type="button" class="secondary" [disabled]="!p().canPrev()" (click)="p().prev()">
+              Anterior
+            </button>
+            <button
+              type="button"
+              class="secondary"
+              [disabled]="!p().canNext()"
+              (click)="p().next()"
+            >
+              Siguiente
+            </button>
+          }
         </div>
       </div>
     }
@@ -60,15 +75,20 @@ export class PaginationBarComponent {
   protected readonly sizes = PAGE_SIZES;
 
   /**
-   * Sólo hay barra cuando hay algo que paginar.
+   * Sólo hay barra cuando hay filas que ajustar.
    *
    * Se calcula con `total` y no con `rangeLabel` porque el rango vacío es la otra
    * mitad de la misma idea: sin filas no hay ni barra ni etiqueta.
    */
-  protected readonly show = computed(() => {
-    const p = this.p();
-    return p.total() > 0 && p.pageCount() > 1;
-  });
+  protected readonly show = computed(() => this.p().total() > 0);
+
+  /**
+   * La navegación sólo aparece si hay algo que recorrer.
+   *
+   * "Página 1 de 1" y dos botones que nunca se encienden son ruido puro. El
+   * selector de tamaño se queda igual, que es el que sí tiene algo que hacer.
+   */
+  protected readonly showNav = computed(() => this.p().pageCount() > 1);
 
   onSize(value: string): void {
     this.p().setPageSize(Number(value));

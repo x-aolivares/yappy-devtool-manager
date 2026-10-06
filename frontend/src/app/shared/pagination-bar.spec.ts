@@ -33,22 +33,42 @@ describe('PaginationBarComponent', () => {
 
   const el = (f: ComponentFixture<Host>) => f.nativeElement as HTMLElement;
 
-  it('con una sola página no dibuja nada', async () => {
-    const { fixture } = await setup(3, 25);
-
-    expect(el(fixture).querySelector('.table-pagination')).toBeNull();
-  });
-
-  it('con una página exacta tampoco: no hay nada que recorrer', async () => {
-    const { fixture } = await setup(25, 25);
-
-    expect(el(fixture).querySelector('.table-pagination')).toBeNull();
-  });
-
-  it('sin filas tampoco', async () => {
+  it('sin filas no dibuja nada', async () => {
     const { fixture } = await setup(0, 25);
 
     expect(el(fixture).querySelector('.table-pagination')).toBeNull();
+  });
+
+  it('con una sola página deja el tamaño editable', async () => {
+    // El caso que motivó el cambio: con 7 filas no hay paginación, pero "una sola
+    // página" de 25 filas puede seguir desbordando la pantalla, y sin selector no
+    // hay forma de bajarla.
+    const { fixture, host } = await setup(7, 25);
+
+    const bar = el(fixture).querySelector('.table-pagination');
+    expect(bar).not.toBeNull();
+    expect(el(fixture).querySelector('.table-pagination__size select')).not.toBeNull();
+
+    // Y bajarla a 5 parte la tabla, que es justo lo que se quería.
+    const select = el(fixture).querySelector('.table-pagination__size select') as HTMLSelectElement;
+    select.value = '5';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    expect(host.p.pageSize()).toBe(5);
+    expect(host.p.pageCount()).toBe(2);
+    expect(el(fixture).querySelector('.table-pagination')?.textContent).toContain('1–5 de 7');
+  });
+
+  it('con una sola página no inventa navegación', async () => {
+    // "Página 1 de 1" y dos botones que nunca se encienden son ruido.
+    const { fixture } = await setup(25, 25);
+
+    const bar = el(fixture).querySelector('.table-pagination');
+    expect(bar).not.toBeNull();
+    expect(bar?.textContent).toContain('1–25 de 25');
+    expect(bar?.querySelectorAll('button').length).toBe(0);
+    expect(bar?.textContent).not.toContain('Página');
   });
 
   it('con más de una página muestra el rango y los controles', async () => {
@@ -105,12 +125,16 @@ describe('PaginationBarComponent', () => {
     expect(el(fixture).querySelector('.table-pagination')?.textContent).toContain('1–50 de 60');
   });
 
-  it('la barra desaparece si la lista se reduce a una página', async () => {
+  it('la navegación desaparece si la lista se reduce a una página', async () => {
     const { fixture, host } = await setup(60, 25);
 
     host.items.set(['una']);
     fixture.detectChanges();
 
-    expect(el(fixture).querySelector('.table-pagination')).toBeNull();
+    // La barra sigue —el tamaño se puede cambiar— pero sin botones ni etiqueta de
+    // página: ya no hay a dónde ir.
+    expect(el(fixture).querySelector('.table-pagination')).not.toBeNull();
+    expect(el(fixture).querySelectorAll('.table-pagination button').length).toBe(0);
+    expect(el(fixture).querySelector('.table-pagination')?.textContent).not.toContain('Página');
   });
 });

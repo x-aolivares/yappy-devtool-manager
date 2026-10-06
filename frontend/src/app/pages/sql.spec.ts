@@ -257,11 +257,14 @@ describe('SqlPage', () => {
     expect(primeraFila?.textContent?.trim()).toBe('26');
   });
 
-  it('con menos de una página no aparece la barra', async () => {
+  it('con menos de una página la barra no navega pero el tamaño sigue editable', async () => {
     const { el } = await consultarCon(queryWithRows(3));
 
     expect(el.querySelectorAll('table.data-table tbody tr').length).toBe(3);
-    expect(el.querySelector('.table-pagination')).toBeNull();
+    // Con 3 filas no hay nada que recorrer, pero el selector queda: una sola
+    // "página" puede seguir desbordando la pantalla.
+    expect(el.querySelector('.table-pagination__size select')).not.toBeNull();
+    expect(el.querySelectorAll('.table-pagination button').length).toBe(0);
   });
 
   it('poblar no depende de cuántas filas se ven: "Migrar info" sigue ahí', async () => {

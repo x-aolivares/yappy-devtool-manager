@@ -27,10 +27,18 @@
  */
 import { Signal, WritableSignal, computed, signal } from '@angular/core';
 
-/** Los tamaños que se ofrecen. Chicos a propósito: el default es el segundo. */
-export const PAGE_SIZES = [10, 25, 50, 100] as const;
+/**
+ * Los tamaños que se ofrecen.
+ *
+ * El mínimo es 5 y no 10 a propósito: con 7 filas y un mínimo de 10 no hay nada
+ * que ajustar, y una "única página" de 10 filas ya puede desbordar la pantalla en
+ * una laptop chica. Con 5 al menos existe un corte que deja el bloque entero a la
+ * vista.
+ *
+ * El default es 25: muestra de sobra sin empujar la tabla fuera de pantalla.
+ */
+export const PAGE_SIZES = [5, 10, 25, 50, 100] as const;
 
-/** 25 es el default porque muestra de sobra sin empujar la tabla fuera de pantalla. */
 export const DEFAULT_PAGE_SIZE = 25;
 
 export interface Pagination<T> {

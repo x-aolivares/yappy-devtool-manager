@@ -234,9 +234,22 @@ el usuario marcó y no habría forma de enterarse.
 
 - `paginate(source)` devuelve el estado: `visible()`, `visibleIndices()`, `current()`,
   `canPrev()`, `canNext()` y los controles `next/prev/goTo/setPageSize/reset`.
-- `app-pagination-bar [p]` dibuja los controles y **se oculta solo** si hay una
-  sola página. Con "Página 1 de 1" y dos botones apagados la barra informa que no
-  tiene nada que informar, y en una tabla de tres filas sería ruido.
+- `app-pagination-bar [p]` dibuja los controles.
+
+### El tamaño siempre editable; la navegación sólo si hay algo que recorrer
+
+La barra se escondía entera cuando había una sola página, y eso tapaba justo el
+control que hacía falta: **con 7 filas no hay paginación, así que el selector
+desaparecía** — pero "una sola página" de 25 filas puede seguir desbordando la
+pantalla, y bajarla a 5 es lo único que la deja entera a la vista. Un control que
+desaparece justo cuando lo necesitás no es un control.
+
+Así que con una sola página quedan el rango y el selector de filas, y se van la
+etiqueta de página y los dos botones, que no tienen a dónde ir. Sin filas, no hay
+barra: ahí no hay nada que ajustar.
+
+Por eso el mínimo de `PAGE_SIZES` es **5** y no 10: con 7 filas y un mínimo de 10
+seguiría sin haber nada que ajustar.
 
 **La barra va debajo de la tabla, no arriba.** Es la posición que ya usan los filtros
 de las sesiones, y además es la que no empuja el `<thead>` sticky de `.data-table`

@@ -223,4 +223,19 @@ describe('paginate', () => {
     expect(PAGE_SIZES).toContain(DEFAULT_PAGE_SIZE);
     expect(PAGE_SIZES.every((n) => n > 0)).toBe(true);
   });
+
+  it('el tamaño más chico es 5, para poder partir una tabla corta', () => {
+    // Con 7 filas y un mínimo de 10 no había nada que ajustar, y una "única
+    // página" de 10 filas ya desborda la pantalla en una laptop chica.
+    expect(Math.min(...PAGE_SIZES)).toBe(5);
+
+    const p = paginate(sourceOfRead(rows(7)), 25);
+    expect(p.pageCount()).toBe(1);
+
+    p.setPageSize(5);
+
+    expect(p.pageCount()).toBe(2);
+    expect(p.visible()).toHaveLength(5);
+    expect(p.rangeLabel()).toBe('1–5 de 7');
+  });
 });

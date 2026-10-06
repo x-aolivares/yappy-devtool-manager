@@ -115,11 +115,14 @@ describe('SessionsPage filtro + paginación', () => {
     expect(filas(el)).toBe(25);
   });
 
-  it('con pocas sesiones no aparece la barra', async () => {
+  it('con pocas sesiones la barra no navega pero el tamaño sigue editable', async () => {
     const { el } = await setup(MUCHAS.slice(0, 3));
 
     expect(filas(el)).toBe(3);
-    expect(el.querySelector('.table-pagination')).toBeNull();
+    // Con 3 sesiones no hay nada que recorrer, pero el selector queda: una sola
+    // "página" puede seguir desbordando la pantalla.
+    expect(el.querySelector('.table-pagination__size select')).not.toBeNull();
+    expect(el.querySelectorAll('.table-pagination button').length).toBe(0);
   });
 
   it('avanzar trae las sesiones siguientes, no las mismas', async () => {
