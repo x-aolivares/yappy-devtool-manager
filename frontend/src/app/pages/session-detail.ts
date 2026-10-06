@@ -5,6 +5,8 @@ import { SessionService } from '../core/services/session.service';
 import { toApiError } from '../core/services/api-error';
 import { fmtDate } from '../core/format';
 import { PageHeaderComponent } from '../shared/page-header';
+import { PaginationBarComponent } from '../shared/pagination-bar';
+import { paginate } from '../shared/paginate';
 import { StatusBadge } from '../shared/status-badge';
 
 const STATUS_META: Record<string, [string, string]> = {
@@ -16,7 +18,7 @@ const STATUS_META: Record<string, [string, string]> = {
 
 @Component({
   selector: 'app-session-detail-page',
-  imports: [RouterLink, StatusBadge, PageHeaderComponent],
+  imports: [RouterLink, StatusBadge, PageHeaderComponent, PaginationBarComponent],
   templateUrl: './session-detail.html',
 })
 export class SessionDetailPage {
@@ -35,6 +37,13 @@ export class SessionDetailPage {
     effect(() => {
       const id = this.sessionId();
       if (id) void this.load(id);
+    });
+
+    // Filtrar devuelve a la primera página: con la grilla en la página 4, un
+    // filtro que deja 3 filas mostraría una tabla vacía sin explicación.
+    effect(() => {
+      this.filterText();
+      this.page.reset();
     });
   }
 
@@ -91,6 +100,17 @@ export class SessionDetailPage {
     if (!q) return session.items;
     return session.items.filter((item) => item.name.toLowerCase().includes(q));
   }
+
+  /**
+   * Los ítems de la sesión, filtrados y paginados.
+   *
+   * El filtro va antes de paginar, por el mismo motivo que en la lista de
+   * sesiones: filtrar sólo las filas de la página actual daría un resultado que
+   * depende de dónde estés parado. Y el `position` de cada ítem es su número real
+   * en la sesión, así que paginar no renumera nada — la columna `#` sigue diciendo
+   * "el ítem 47 de 300" y no "el ítem 22 de 25".
+   */
+  readonly page = paginate(() => this.filteredItems());
 
   addItem() {
     const id = this.sessionId();

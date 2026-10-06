@@ -5,6 +5,8 @@ import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
 import { EnvControlsComponent } from '../shared/env-controls';
 import { NoticeModalComponent } from '../shared/notice-modal';
+import { PaginationBarComponent } from '../shared/pagination-bar';
+import { paginate } from '../shared/paginate';
 import { StatusBadge } from '../shared/status-badge';
 
 /**
@@ -24,7 +26,7 @@ import { StatusBadge } from '../shared/status-badge';
  */
 @Component({
   selector: 'app-sql-page',
-  imports: [EnvControlsComponent, StatusBadge, NoticeModalComponent],
+  imports: [EnvControlsComponent, StatusBadge, NoticeModalComponent, PaginationBarComponent],
   template: `
     <h1>Ejecutar SQL</h1>
     <p class="muted">
@@ -103,7 +105,7 @@ import { StatusBadge } from '../shared/status-badge';
                 </tr>
               </thead>
               <tbody>
-                @for (row of rows(); track $index) {
+                @for (row of page.visible(); track $index) {
                   <tr>
                     @for (c of result()!.columns; track c) {
                       <td>{{ cell(row[c]) }}</td>
@@ -113,6 +115,8 @@ import { StatusBadge } from '../shared/status-badge';
               </tbody>
             </table>
           </div>
+
+          <app-pagination-bar [p]="page" />
         </div>
       } @else {
         <div class="panel"><pre class="empty">La consulta no devolvió filas.</pre></div>
@@ -300,6 +304,16 @@ export class SqlPage {
 
   /** `rows` is optional in the contract; normalize it once for the template. */
   readonly rows = computed(() => this.result()?.rows ?? []);
+
+  /**
+   * La grilla del resultado.
+   *
+   * El backend trae hasta 500 filas de una vez y las pagina la vista. `rows()`
+   * sigue siendo el total —`showMigrate` y el aviso de "truncado" dependen de
+   * cuántas hay, no de cuántas se ven—, así que partir la grilla en 25 no puede
+   * hacer que "Migrar info" desaparezca después de la primera página.
+   */
+  readonly page = paginate(() => this.rows());
   /** El ambiente elegido: el array es la fuente de verdad, el string se deriva. */
   readonly env = computed(() => (this.envs().length === 1 ? this.envs()[0] : ''));
   readonly destEnv = computed(() => (this.destEnvs().length === 1 ? this.destEnvs()[0] : ''));
@@ -371,6 +385,10 @@ export class SqlPage {
         (d) => {
           this.busy.set(false);
           this.result.set(d);
+          // Cada consulta arranca en la primera página: la anterior describía otro
+          // resultado y dejar la grilla en su página 4 mostraría filas que ya no
+          // están.
+          this.page.reset();
         },
         (err) => {
           this.busy.set(false);

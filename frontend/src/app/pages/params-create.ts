@@ -7,10 +7,12 @@ import { awsEnvironments } from '../core/format';
 import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
 import { EnvControlsComponent, ServiceOption } from '../shared/env-controls';
+import { PaginationBarComponent } from '../shared/pagination-bar';
+import { paginate } from '../shared/paginate';
 
 @Component({
   selector: 'app-params-create-page',
-  imports: [StatusBadge, CopyButton, EnvControlsComponent],
+  imports: [StatusBadge, CopyButton, EnvControlsComponent, PaginationBarComponent],
   template: `
     <h1>Crear / Actualizar en múltiples regiones</h1>
     <p class="muted">
@@ -157,7 +159,7 @@ import { EnvControlsComponent, ServiceOption } from '../shared/env-controls';
             <tr><th>Región</th><th>Estado</th><th>{{ dryRun() ? 'Comando' : 'Detalle' }}</th></tr>
           </thead>
           <tbody>
-            @for (r of result()!.results; track r.env) {
+            @for (r of page.visible(); track r.env) {
               <tr>
                 <td><strong>{{ r.env }}</strong></td>
                 <td>
@@ -187,6 +189,8 @@ import { EnvControlsComponent, ServiceOption } from '../shared/env-controls';
             }
           </tbody>
         </table>
+
+        <app-pagination-bar [p]="page" />
       </div>
     }
   `,
@@ -228,6 +232,15 @@ export class ParamsCreatePage {
   readonly result = signal<ParamsMultiResponse | null>(null);
 
   readonly withSecret = computed(() => this.createSecret() || (this.serviceMode() || 'ssm') === 'ssm+secret');
+
+  /**
+   * Una fila por región, paginada.
+   *
+   * Con dos o tres regiones la barra nunca aparece —el control se oculta solo— y
+   * con una pantalla completa de regiones es lo que evita que haya que scrollear
+   * para leer un error del último `AWS_REGION` que se mandó.
+   */
+  readonly page = paginate(() => this.result()?.results ?? []);
 
   constructor() {
     this.envService.list().then(

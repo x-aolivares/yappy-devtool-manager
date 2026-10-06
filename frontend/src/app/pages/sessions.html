@@ -45,7 +45,7 @@
         </tr>
       </thead>
       <tbody>
-        @for (s of filteredSessions(); track s.id) {
+        @for (s of page.visible(); track s.id) {
           <tr>
             <td>
               <div class="session-table-title">{{ s.title }}</div>
@@ -92,6 +92,8 @@
         }
       </tbody>
     </table>
+
+    <app-pagination-bar [p]="page" />
   </div>
 } @else {
   @if (sessions() !== null) {

@@ -31,6 +31,15 @@ const QUERY_OK: Record<string, any> = {
   ms: 12,
 };
 
+/** Un SELECT con `n` filas, para probar la paginación de la grilla. */
+function queryWithRows(n: number): Record<string, any> {
+  return {
+    ...QUERY_OK,
+    rows: Array.from({ length: n }, (_, i) => ({ pedido_id: i + 1, total: `${i}.50` })),
+    total: n,
+  };
+}
+
 const MIGRATION_OK: Record<string, any> = {
   env_b: 'dev',
   env_a: 'local',
@@ -205,6 +214,79 @@ describe('SqlPage', () => {
 
     expect(comp.destEnv()).toBe('');
     expect(comp.canMigrate()).toBe(false);
+  });
+
+  // --- la grilla se pagina ---------------------------------------------------
+  //
+  // El backend trae hasta 500 filas de una vez. Antes de la paginación el
+  // `@for` era sobre `rows()` y la tabla volcaba las 500: tres pantallas de
+  // scroll para llegar a la última fila.
+
+  async function consultarCon(query: Record<string, any>) {
+    mockQuery = () => Promise.resolve(query);
+    const fixture = TestBed.createComponent(SqlPage);
+    const comp = fixture.componentInstance as any;
+    comp.envs.set(['dev']);
+    comp.sql.set('SELECT * FROM `yappy`.`pedidos`');
+    comp.runQuery();
+    await settle(fixture);
+    return { comp, fixture, el: fixture.nativeElement as HTMLElement };
+  }
+
+  it('muestra sólo una página de filas y el resto queda en la barra', async () => {
+    const { el } = await consultarCon(queryWithRows(60));
+
+    expect(el.querySelectorAll('table.data-table tbody tr').length).toBe(25);
+    expect(el.querySelector('.table-pagination')?.textContent).toContain('1–25 de 60');
+  });
+
+  it('avanzar muestra la segunda página de verdad', async () => {
+    const { comp, fixture } = await consultarCon(queryWithRows(60));
+
+    const botones = (fixture.nativeElement as HTMLElement).querySelectorAll(
+      '.table-pagination button',
+    );
+    (botones[1] as HTMLButtonElement).click();
+    await settle(fixture);
+
+    expect(comp.page.current()).toBe(2);
+    expect(comp.page.visible()[0]).toEqual({ pedido_id: 26, total: '25.50' });
+    const primeraFila = (fixture.nativeElement as HTMLElement).querySelector(
+      'table.data-table tbody tr td',
+    );
+    expect(primeraFila?.textContent?.trim()).toBe('26');
+  });
+
+  it('con menos de una página no aparece la barra', async () => {
+    const { el } = await consultarCon(queryWithRows(3));
+
+    expect(el.querySelectorAll('table.data-table tbody tr').length).toBe(3);
+    expect(el.querySelector('.table-pagination')).toBeNull();
+  });
+
+  it('poblar no depende de cuántas filas se ven: "Migrar info" sigue ahí', async () => {
+    const { comp, el } = await consultarCon(queryWithRows(60));
+
+    // El bug de fondo: si `showMigrate` leyera la grilla paginada, con 500 filas
+    // el botón desaparecería después de la primera página.
+    expect(comp.rows().length).toBe(60);
+    expect(comp.showMigrate()).toBe(true);
+    expect(comp.page.total()).toBe(60);
+    expect(el.textContent).toContain('Migrar info');
+  });
+
+  it('una consulta nueva arranca en la primera página', async () => {
+    const { comp, fixture } = await consultarCon(queryWithRows(60));
+
+    comp.page.next();
+    await settle(fixture);
+    expect(comp.page.current()).toBe(2);
+
+    // La página 2 describía el resultado anterior.
+    comp.runQuery();
+    await settle(fixture);
+
+    expect(comp.page.current()).toBe(1);
   });
 
   // --- stored procedures --------------------------------------------------

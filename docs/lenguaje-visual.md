@@ -211,6 +211,45 @@ escribe en los campos del modo nuevo (a *rango*, los dos límites; a *día*, el
 inferior; a *mes*, el mes de ese inferior). Perder el mes que el usuario acababa
 de elegir porque quiso ver uno de sus días sería un retroceso sin motivo.
 
+## Paginación de tablas
+
+Es el único patrón de esta guía **que sí introduce estado**, y la excepción está
+justificada: paginar sin estado no es posible. Todo lo demás sale del DOM; esto sale
+de `shared/paginate.ts`.
+
+**Dos piezas, una de estado y otra de dibujo.**
+
+- `paginate(source)` devuelve el estado: `visible()`, `visibleIndices()`, `current()`,
+  `canPrev()`, `canNext()` y los controles `next/prev/goTo/setPageSize/reset`.
+- `app-pagination-bar [p]` dibuja los controles y **se oculta solo** si hay una
+  sola página. Con "Página 1 de 1" y dos botones apagados la barra informa que no
+  tiene nada que informar, y en una tabla de tres filas sería ruido.
+
+**La barra va debajo de la tabla, no arriba.** Es la posición que ya usan los filtros
+de las sesiones, y además es la que no empuja el `<thead>` sticky de `.data-table`
+hacia abajo: con la barra arriba, scrollear una tabla larga dejaba el encabezado
+pegado al borde de arriba y la barra flotando en el medio de la primera pantalla.
+
+### El filtro va ANTES de paginar
+
+La regla que más se rompe y más caro sale, porque **no hay error**: sólo una lista
+que no es la que se buscó. Si el filtro corriera sobre las 25 filas de la página
+actual, buscar algo que está en la fila 60 daría cero resultados en la página 1 y
+encontraría la fila en la página 3. Las dos páginas filtran la lista entera, y
+`page.total()` cuenta lo filtrado.
+
+Y filtrar **devuelve a la primera página**: si no, el filtro deja 3 filas y la
+grilla queda en la página 3 de 1, con la barra diciendo "Página 3 de 1" y el cuerpo
+vacío.
+
+### `visibleIndices()` para los `@for` que indexan
+
+La tabla de diff de JSON marca filas por posición y por texto editado, con el
+índice del `@for`. Con paginación, ese `$index` es de la página: marcar la segunda
+fila de la página 3 desmarcaría la segunda de la página 1. Por eso el `@for` itera
+sobre `visibleIndices()` y usa `@let row = rows()[i]` — el índice que sale es
+absoluto.
+
 ## Título de panel con acciones a la derecha
 
 `.section-title` es `display:flex` con `space-between`, así que admite controles a

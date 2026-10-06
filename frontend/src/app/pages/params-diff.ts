@@ -12,6 +12,8 @@ import { ParamsDiffResponse, UpdateSessionItemRequest } from '../api-gen/models'
 import { RegionControlsComponent } from '../shared/region-controls';
 import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
+import { PaginationBarComponent } from '../shared/pagination-bar';
+import { paginate } from '../shared/paginate';
 
 interface DiffChange {
   path?: string;
@@ -45,7 +47,7 @@ type PairKey = 'param' | 'secret';
 
 @Component({
   selector: 'app-params-diff-page',
-  imports: [RouterLink, RegionControlsComponent, StatusBadge, CopyButton],
+  imports: [RouterLink, RegionControlsComponent, StatusBadge, CopyButton, PaginationBarComponent],
   template: `
     <h1>Diff de Parámetros / Secretos</h1>
     <p class="muted">
@@ -147,7 +149,7 @@ type PairKey = 'param' | 'secret';
                   </tr>
                 </thead>
                 <tbody>
-                  @for (row of pairRows(); track row.key) {
+                  @for (row of pairPage.visible(); track row.key) {
                     <tr>
                       <td>
                         <input
@@ -173,6 +175,8 @@ type PairKey = 'param' | 'secret';
                   }
                 </tbody>
               </table>
+
+              <app-pagination-bar [p]="pairPage" />
             </div>
             <div class="columns" style="align-items:start; margin-top:0.875rem;">
               <div class="panel">
@@ -221,7 +225,8 @@ type PairKey = 'param' | 'secret';
                 </tr>
               </thead>
               <tbody>
-                @for (row of rows(); track $index; let i = $index) {
+                @for (i of jsonPage.visibleIndices(); track i) {
+                  @let row = rows()[i];
                   <tr>
                     <td>
                       <input
@@ -256,6 +261,8 @@ type PairKey = 'param' | 'secret';
                 }
               </tbody>
             </table>
+
+            <app-pagination-bar [p]="jsonPage" />
           </div>
           <div class="columns" style="align-items:start; margin-top:0.875rem;">
             <div class="panel">
@@ -470,6 +477,22 @@ export class ParamsDiffPage {
     const isJSON = this.mode() === 'json';
     return serializeMerged(this.rows(), isJSON, this.data()?.value_a ?? '');
   });
+
+  /**
+   * Paginación de las dos tablas de cambios.
+   *
+   * `pairPage` es la tabla del caso "secreto + parámetro", que tiene a lo sumo dos
+   * filas: la barra no se dibuja nunca, pero el estado existe y no cuesta nada. La
+   * que importa es `jsonPage`, porque un JSON de configuración puede tener cientos
+   * de claves y revisarlas todas en una sola tabla es lo que hacía la pantalla
+   * inusable.
+   *
+   * Se pagina `rows()` —la lista completa— y no lo que se ve: el `@for` de esa
+   * tabla marca por **posición absoluta**, y usar el índice de la página haría que
+   * marcar la segunda fila de la página 3 desmarcara la segunda de la página 1.
+   */
+  readonly pairPage = paginate(() => this.pairRows());
+  readonly jsonPage = paginate(() => this.rows());
 
   readonly createRegion = computed(() => {
     const d = this.data();

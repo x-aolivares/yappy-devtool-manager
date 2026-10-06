@@ -1492,6 +1492,47 @@ td .diff-link {
 }
 
 // ============================================================
+// Paginación de tablas
+// ============================================================
+//
+// Va **debajo** de la tabla y no arriba. Es la posición que ya usan los filtros de
+// las sesiones, y además es la que no empuja el `<thead>` sticky hacia abajo: con
+// la barra arriba, scrollear una tabla larga dejaba el encabezado pegado al borde
+// de arriba y la barra flotando en el medio de la primera pantalla.
+.table-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.625rem;
+}
+
+.table-pagination__count {
+  font-size: 0.75rem;
+}
+
+.table-pagination__controls {
+  gap: 0.5rem;
+  align-items: center;
+}
+
+/* El `<select>` pelado del tamaño de página, con su etiqueta al lado como el resto
+   de los selects de la app. Sin `display:flex` el label y el select se separan
+   con el space del inline. */
+.table-pagination__size {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+
+  select {
+    padding: 0.25rem 0.375rem;
+    font-size: var(--text-xs);
+  }
+}
+
+// ============================================================
 // Grilla de resultados (página "Ejecutar SQL")
 // ============================================================
 .table-scroll {

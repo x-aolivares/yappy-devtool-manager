@@ -41,7 +41,7 @@
         </tr>
       </thead>
       <tbody>
-        @for (item of filteredItems(); track item.name) {
+        @for (item of page.visible(); track item.name) {
         <tr>
           <td class="muted">{{ item.position + 1 }}</td>
           <td><code>{{ item.name }}</code></td>
@@ -81,6 +81,8 @@
         }
       </tbody>
     </table>
+
+    <app-pagination-bar [p]="page" />
   </div>
   <div class="panel session-progress-panel">
     <div class="session-progress-row">
