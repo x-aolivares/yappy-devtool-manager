@@ -37,6 +37,9 @@ let objectCalls: Array<{ env: string; schema: string; type: string }> = [];
 let originTables: string[] = ['lines', 'orders'];
 let originProcedures: string[] = ['sp_calc'];
 let destinationTables: string[] = ['orders'];
+let destinationProcedures: string[] = ['sp_sync'];
+/** Falla sólo la lectura del destino, para probar que la lista igual sirve. */
+let destinationFails = false;
 
 function mockProviders() {
   return [
@@ -50,19 +53,25 @@ function mockProviders() {
         listSchemas: () => Promise.resolve({ schemas: ['yappy'] }),
         listObjects: (env: string, schema: string, objectType: string) => {
           objectCalls.push({ env, schema, type: objectType });
+          const esDestino = env !== 'dev';
           // Un esquema distinto tiene objetos distintos: es lo que hace que la
           // recarga se note en la selección y no sólo en el log de llamadas.
           const esOtro = schema === 'otro';
+          if (esDestino && destinationFails) {
+            return Promise.reject(new Error('El destino no responde.'));
+          }
           const objects =
             objectType === 'table'
-              ? env === 'dev'
-                ? esOtro
+              ? esDestino
+                ? destinationTables
+                : esOtro
                   ? ['otra']
                   : originTables
-                : destinationTables
-              : esOtro
-                ? []
-                : originProcedures;
+              : esDestino
+                ? destinationProcedures
+                : esOtro
+                  ? []
+                  : originProcedures;
           return Promise.resolve({
             env,
             schema_name: schema,
@@ -106,6 +115,8 @@ async function setup(): Promise<void> {
   originTables = ['lines', 'orders'];
   originProcedures = ['sp_calc'];
   destinationTables = ['orders'];
+  destinationProcedures = ['sp_sync'];
+  destinationFails = false;
   await TestBed.configureTestingModule({
     imports: [SchemaSyncPage],
     providers: [provideRouter([]), ...mockProviders()],
@@ -429,13 +440,84 @@ describe('SchemaSyncPage la tabla de objetos', () => {
     expect(comp.selected()).toEqual({ tables: ['lines', 'orders'], procedures: ['sp_calc'] });
   });
 
-  it('pregunta tablas y procedures del origen, y las tablas del destino', async () => {
+  it('pregunta tablas y procedures del origen, y las dos clases del destino', async () => {
     await ready();
 
     const delOrigen = objectCalls.filter((c) => c.env === 'dev');
     expect(delOrigen.map((c) => c.type).sort()).toEqual(['procedure', 'table']);
-    // La tercera es la del destino, y sólo de tablas: la que responde "ya está".
-    expect(objectCalls.some((c) => c.env === 'local' && c.type === 'table')).toBe(true);
+
+    // **Las dos del destino.** Preguntar sólo por tablas dejaba a todo procedure
+    // marcado "No, se crea" para siempre, aunque ya estuviera compilado: el bug
+    // que hacía que un procedure bien compilado pareciera recién a crearse.
+    const delDestino = objectCalls.filter((c) => c.env === 'local');
+    expect(delDestino.map((c) => c.type).sort()).toEqual(['procedure', 'table']);
+  });
+
+  it('un procedure que ya está en el destino no dice que se crea', async () => {
+    originProcedures = ['sp_calc', 'sp_sync'];
+    const { fixture, comp, el } = await ready();
+
+    const fila = [...el.querySelectorAll('table.filter-table tbody tr')].find(
+      (f) => f.querySelector('#sync-obj-sp_sync') !== null,
+    );
+    expect(fila?.textContent).toContain('Sí');
+
+    // Y el que sí falta, sigue faltando. La columna distingue las dos cosas.
+    const otro = [...el.querySelectorAll('table.filter-table tbody tr')].find(
+      (f) => f.querySelector('#sync-obj-sp_calc') !== null,
+    );
+    expect(otro?.textContent).toContain('No, se crea');
+  });
+
+  it('una tabla y un procedure del mismo nombre no se confunden', async () => {
+    // El destino indexa por clase, no en un set plano: sin eso, un procedure que
+    // existe se reportaría como tabla porque el nombre coincidiera.
+    originTables = ['sp_sync'];
+    originProcedures = ['sp_sync'];
+    destinationTables = [];
+    destinationProcedures = ['sp_sync'];
+
+    const { fixture, comp } = await ready();
+
+    // Dos filas, no una: la tabla `sp_sync` no está en el destino y el procedure
+    // del mismo nombre sí. Un set plano de nombres habría reportado "Sí" para las
+    // dos, o "No" para las dos.
+    const filas = comp.objectRows().filter((r: { name: string }) => r.name === 'sp_sync');
+    expect(filas.length).toBe(2);
+
+    const tabla = filas.find((r: { kind: string }) => r.kind === 'table');
+    const procedure = filas.find((r: { kind: string }) => r.kind === 'procedure');
+    expect(tabla.inDestination).toBe(false);
+    expect(procedure.inDestination).toBe(true);
+  });
+
+  it('con el mismo nombre, desmarcar una fila no toca la otra', async () => {
+    originTables = ['sp_sync'];
+    originProcedures = ['sp_sync'];
+    destinationTables = [];
+    destinationProcedures = ['sp_sync'];
+
+    const { fixture, comp } = await ready();
+    comp.toggle('sp_sync', false, 'procedure');
+    await settle(fixture);
+
+    // Buscar por nombre solamente habría marcado la tabla —la primera fila— y
+    // dejado el procedure sin poder sacarse del alcance.
+    expect(comp.objectRows().find((r: { kind: string }) => r.kind === 'procedure').selected).toBe(
+      false,
+    );
+    expect(comp.objectRows().find((r: { kind: string }) => r.kind === 'table').selected).toBe(true);
+    expect(comp.selected()).toEqual({ tables: ['sp_sync'], procedures: [] });
+  });
+
+  it('si el destino no responde, la lista igual sirve y lo avisa', async () => {
+    destinationFails = true;
+    const { fixture, comp, el } = await ready();
+
+    // Perder la columna es un problema; perder la lista sería overkill.
+    expect(comp.objectRows().length).toBe(3);
+    expect(comp.destinationError()).toContain('El destino no responde');
+    expect(el.textContent).toContain('La columna "Existe en" no se sabe');
   });
 
   it('cambiar de esquema recarga la lista y limpia la selección', async () => {
@@ -482,6 +564,38 @@ describe('SchemaSyncPage sincronizar', () => {
   });
 
   afterEach(() => vi.restoreAllMocks());
+
+  it('vuelve a preguntar al destino si ya tiene lo que se acaba de correr', async () => {
+    const { fixture, comp } = await generate();
+    // Nada del script está en el destino todavía: `sp_calc` no está en la lista
+    // que el mock usa para el destino.
+    expect(comp.objectRows().find((r: { name: string }) => r.name === 'sp_calc').inDestination).toBe(
+      false,
+    );
+    const antes = objectCalls.filter((c) => c.env === 'local').length;
+
+    comp.run();
+    await settle(fixture);
+
+    // El script corrió, así que se vuelve a preguntar. La columna era un snapshot
+    // de cuando cargó la página y seguía diciendo "No, se crea" para lo que el
+    // script acababa de crear.
+    expect(objectCalls.filter((c) => c.env === 'local').length).toBeGreaterThan(antes);
+  });
+
+  it('el refresh posterior no toca la selección', async () => {
+    const { fixture, comp } = await generate();
+    comp.toggle('orders', false);
+    await settle(fixture);
+
+    comp.run();
+    await settle(fixture);
+
+    // Correr no puede volver a marcar lo que el usuario sacó: la selección es
+    // suya, y pisarla haría que el próximo script incluyera una tabla que se
+    // había sacado a propósito.
+    expect(comp.selected().tables).toEqual(['lines']);
+  });
 
   it('ejecuta con el esquema vacío y como script, aunque el destino no lo tenga', async () => {
     const { fixture, comp } = await generate({ create_schema: true, script: CREATE_SCRIPT });

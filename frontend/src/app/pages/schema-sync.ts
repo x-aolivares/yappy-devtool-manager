@@ -19,6 +19,16 @@ interface SyncObject {
 }
 
 /**
+ * What the destination has, per kind.
+ *
+ * Indexado por clase y no como un set plano porque son dos consultas distintas:
+ * un procedure y una tabla nunca se confunden, y `SHOW PROCEDURE STATUS` /
+ * `information_schema.ROUTINES` no devuelven las tablas. Mezclarlas en un solo
+ * set haría que un procedure que existe en el destino se reportara como tabla.
+ */
+type DestinationIndex = Record<SyncObject['kind'], Set<string>>;
+
+/**
  * Sincronizar schema: un solo script para todo un esquema, del ambiente de origen
  * al de destino.
  *
@@ -50,6 +60,12 @@ interface SyncObject {
  * a la vista no hay forma de contestarla —ni de saber qué filas se van a perder.
  * Ahora cada objeto es una fila con su casilla y con la columna de si el destino ya
  * lo tiene, y la selección viaja explícita al backend.
+ *
+ * La columna "Existe en" se relee **después** de correr el script, porque un
+ * objeto recién creado sigue diciendo "No, se crea" si nadie vuelve a preguntarle
+ * al destino. Y lo pregunta por clase: una tabla y un procedure pueden llamarse
+ * igual en MySQL, así que preguntar sólo por las tablas hacía que *todo* procedure
+ * pareciera recién a crearse.
  */
 @Component({
   selector: 'app-schema-sync-page',
@@ -137,7 +153,7 @@ interface SyncObject {
                 </tr>
               </thead>
               <tbody>
-                @for (row of objectRows(); track row.name) {
+                @for (row of objectRows(); track row.kind + '.' + row.name) {
                   <tr [class.is-off]="!row.selected">
                     <td>
                       <label class="checkbox-row" style="margin:0;" [for]="'sync-obj-' + row.name">
@@ -145,7 +161,7 @@ interface SyncObject {
                           type="checkbox"
                           [id]="'sync-obj-' + row.name"
                           [checked]="row.selected"
-                          (change)="toggle(row.name, $any($event.target).checked)"
+                          (change)="toggle(row.name, $any($event.target).checked, row.kind)"
                         />
                         <span>{{ row.name }}</span>
                       </label>
@@ -167,6 +183,13 @@ interface SyncObject {
                 }
               </tbody>
             </table>
+
+            @if (destinationError(); as err) {
+              <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
+                No se pudo leer {{ envA() || 'el destino' }}: {{ err }}. La columna "Existe en"
+                no se sabe y se muestra "No, se crea" aunque el objeto pueda estar.
+              </p>
+            }
           </div>
         </div>
       }
@@ -324,6 +347,15 @@ export class SchemaSyncPage {
   readonly objects = signal<SyncObject[] | null>(null);
   readonly objectsLoading = signal(false);
   readonly objectsError = signal<string | null>(null);
+  /**
+   * The destination read failed, but the origin's list did not.
+   *
+   * Separate from `objectsError` because the two mean opposite things: that one
+   * says "there is no list, pick nothing", this one says "the list is fine but the
+   * 'existe en' column is a guess". Confusing them would make a recoverable
+   * problem look like the page is broken.
+   */
+  readonly destinationError = signal<string | null>(null);
   /** Marked objects, as `name` per kind — the shape `/api/compile/schema` takes. */
   readonly selected = signal<{ tables: string[]; procedures: string[] }>({
     tables: [],
@@ -425,6 +457,7 @@ export class SchemaSyncPage {
       this.objectsSeq++;
       this.objects.set(null);
       this.objectsError.set(null);
+      this.destinationError.set(null);
       this.selected.set({ tables: [], procedures: [] });
       // Registrada como tarea pendiente: la página está leyendo y su tabla de
       // objetos todavía no es la que va a quedar. Sin esto, un `whenStable()`
@@ -475,11 +508,11 @@ export class SchemaSyncPage {
       return;
     }
 
-    // Las tres lecturas en un `Promise.all` y no encadenadas: la última depende
-    // de las otras dos, y encadenarla dejaría su resolución fuera de lo que
+    // Las lecturas del destino y las del origen en un `Promise.all` y no
+    // encadenadas: encadenar la última dejaría su resolución fuera de lo que
     // espera un `whenStable()`, así que la tabla aparecería a destiempo.
     this.objectsLoading.set(true);
-    const destino = env === this.envA() ? Promise.resolve([]) : this.readDestination(schema);
+    const destino = env === this.envA() ? Promise.resolve(null) : this.readDestination(schema);
     Promise.all([
       this.dbService.listObjects(env, schema, 'table'),
       this.dbService.listObjects(env, schema, 'procedure'),
@@ -492,15 +525,14 @@ export class SchemaSyncPage {
           ...(tablas.objects ?? []).map((name) => ({ name, kind: 'table' as const })),
           ...(procedures.objects ?? []).map((name) => ({ name, kind: 'procedure' as const })),
         ];
-        const yaEsta = new Set(delDestino ?? []);
 
         this.objects.set(
           origen.map((o) => ({
             ...o,
             selected: true,
             // `delDestino === null` es "no se pudo leer", no "no tiene nada": se
-            // muestra "Se crea" porque no se sabe, y el aviso lo dice.
-            inDestination: yaEsta.has(o.name),
+            // muestra "No, se crea" porque no se sabe, y el aviso lo dice al lado.
+            inDestination: delDestino ? delDestino[o.kind].has(o.name) : false,
           })),
         );
         this.markAll(origen);
@@ -516,24 +548,63 @@ export class SchemaSyncPage {
   }
 
   /**
-   * The destination's tables, or `null` when that read failed.
+   * What the destination has, per kind, or `null` when that read failed.
+   *
+   * **Las dos clases, siempre.** Preguntar sólo por tablas y dejar los procedures
+   * como "no existe" los hacía mentir: un procedure ya compilado en el destino
+   * salía "No, se crea" para siempre, y el `DROP PROCEDURE IF EXISTS` del
+   * siguiente script lo reemplazaba sin que nadie lo supiera.
    *
    * A failure here must not sink the whole list: which objects exist in the origin
    * is the part the user needs to choose, and it arrives on its own. So the error
-   * is reported next to the table and the "ya está" column falls back to not
+   * is reported next to the table and the "existe en" column falls back to not
    * knowing, rather than leaving the page empty.
    */
-  private readDestination(schema: string): Promise<string[] | null> {
+  private readDestination(schema: string): Promise<DestinationIndex | null> {
     const envA = this.envA();
     if (!envA) return Promise.resolve(null);
-    return this.dbService.listObjects(envA, schema, 'table').then(
-      (r) => r.objects ?? [],
+    return Promise.all([
+      this.dbService.listObjects(envA, schema, 'table'),
+      this.dbService.listObjects(envA, schema, 'procedure'),
+    ]).then(
+      ([tablas, procedures]) => ({
+        table: new Set(tablas.objects ?? []),
+        procedure: new Set(procedures.objects ?? []),
+      }),
       (err) => {
-        this.objectsError.set(toApiError(err).message);
+        this.destinationError.set(toApiError(err).message);
         return null;
       },
     );
   }
+
+  /**
+   * Re-ask the destination what it has, leaving the selection alone.
+   *
+   * The column was a snapshot de cuando cargó la página, así que después de
+   * correr el script seguía diciendo "No, se crea" para lo que el script acaba de
+   * crear. Preguntar de nuevo es la única forma de que la columna diga la verdad:
+   * suponer que el `CREATE` funcionó es exactamente lo que hace que uno crea
+   * que compiló algo que no compiló.
+   */
+  private refreshDestination(): void {
+    const schema = this.schema();
+    if (!schema || !this.envA() || !this.objectRows().length) return;
+
+    const seq = this.destinationSeq;
+    this.destinationSeq++;
+    this.readDestination(schema).then((delDestino) => {
+      if (delDestino === null || seq !== this.destinationSeq) return;
+      this.objects.set(
+        this.objectRows().map((row) => ({
+          ...row,
+          inDestination: delDestino[row.kind].has(row.name),
+        })),
+      );
+    });
+  }
+
+  private destinationSeq = 0;
 
   /** Everything starts marked: sincronizar el esquema means the schema. */
   private markAll(origen: Array<{ name: string; kind: SyncObject['kind'] }>): void {
@@ -543,8 +614,8 @@ export class SchemaSyncPage {
     });
   }
 
-  toggle(name: string, checked: boolean): void {
-    this.patchObject(name, checked);
+  toggle(name: string, checked: boolean, kind?: SyncObject['kind']): void {
+    this.patchObject(name, checked, kind);
   }
 
   toggleAll(checked: boolean): void {
@@ -556,16 +627,25 @@ export class SchemaSyncPage {
     });
   }
 
-  private patchObject(name: string, selected: boolean): void {
+  /**
+   * Mark or unmark one object.
+   *
+   * Buscado por **clase y nombre**, no sólo por nombre: MySQL deja que una tabla
+   * y un routine se llamen igual —viven en namespaces distintos— y buscar por
+   * nombre solamente marcaría la fila que apareciera primero y dejaría la otra
+   * como si no se pudiera tocar.
+   */
+  private patchObject(name: string, selected: boolean, kind?: SyncObject['kind']): void {
     const rows = this.objectRows();
-    const row = rows.find((r) => r.name === name);
+    const row = rows.find((r) => r.name === name && (!kind || r.kind === kind));
     if (!row || row.selected === selected) return;
-    this.objects.set(rows.map((r) => (r.name === name ? { ...r, selected } : r)));
+    const matches = (r: SyncObject) => r.name === row.name && r.kind === row.kind;
+    this.objects.set(rows.map((r) => (matches(r) ? { ...r, selected } : r)));
 
     const bucket = row.kind === 'table' ? 'tables' : 'procedures';
     const names = new Set(this.selected()[bucket]);
-    if (selected) names.add(name);
-    else names.delete(name);
+    if (selected) names.add(row.name);
+    else names.delete(row.name);
     this.selected.set({ ...this.selected(), [bucket]: [...names] });
   }
 
@@ -684,6 +764,11 @@ export class SchemaSyncPage {
         (d) => {
           this.busy.set(false);
           this.executed.set(d);
+          // El script corrió: lo que estaba "No, se crea" puede existir ahora. Se
+          // vuelve a preguntar al destino en vez de asumir que el `CREATE` funcionó
+          // —la respuesta del `execute` es por sentencia, y una que falló deja el
+          // objeto sin crear igual.
+          this.refreshDestination();
         },
         (err) => {
           this.busy.set(false);
