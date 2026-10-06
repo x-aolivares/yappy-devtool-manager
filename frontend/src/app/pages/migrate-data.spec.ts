@@ -104,7 +104,10 @@ async function setup(): Promise<void> {
       env,
       schema_name: schema,
       table_name: table,
-      ...DATE_COLUMNS[table],
+      // Las tablas que un test genera al vuelo (`tabla_0`, `tabla_1`, ...) no
+      // están en DATE_COLUMNS; les damos una columna de fecha para que el
+      // componente tenga algo real con qué trabajar.
+      ...(DATE_COLUMNS[table] ?? { columns: [{ name: 'created_at', type: 'datetime' }] }),
     });
   migrateResponse = BASE;
   sent = [];
@@ -408,6 +411,101 @@ describe('MigrateDataPage tablas y columnas de fecha', () => {
     comp.toggle('lines', true);
     await settle(fixture);
     expect(comp.noticeOpen()).toBe(true);
+  });
+});
+
+describe('MigrateDataPage la tabla se pagina', () => {
+  beforeEach(setup);
+
+  async function muchasTablas(n: number) {
+    tables = Array.from({ length: n }, (_, i) => `tabla_${i}`);
+    return ready();
+  }
+
+  it('con muchas tablas muestra una sola página', async () => {
+    const { el } = await muchasTablas(60);
+
+    expect(el.querySelectorAll('table.filter-table tbody tr').length).toBe(25);
+    expect(el.querySelector('.table-pagination')?.textContent).toContain('1–25 de 60');
+  });
+
+  it('el contador de marcadas habla del total, no de la página', async () => {
+    const { fixture, comp, el } = await muchasTablas(60);
+
+    comp.toggleAll(true);
+    await settle(fixture);
+    comp.page.next();
+    await settle(fixture);
+
+    // La fila desmarcada está en la página 2. Si el contador dijera "24 de 25" el
+    // usuario no sabría que hay 35 marcadas fuera de la pantalla.
+    comp.toggle('tabla_30', false);
+    await settle(fixture);
+
+    expect(el.textContent).toContain('59 de 60 marcadas');
+  });
+
+  it('la migración manda todas las marcadas aunque no estén a la vista', async () => {
+    // Lo que no puede pasar nunca: `selection` no está paginado, así que marcar
+    // 60 tablas y ver 25 tiene que migrar las 60.
+    const { fixture, comp } = await muchasTablas(60);
+
+    comp.toggleAll(true);
+    await settle(fixture);
+    comp.page.next();
+    await settle(fixture);
+    comp.toggle('tabla_30', false);
+    await settle(fixture);
+    comp.dateMode.set('month');
+    comp.month.set('2026-03');
+    await settle(fixture);
+
+    comp.simulate();
+    await settle(fixture);
+
+    expect(sent[0].tables).toHaveLength(59);
+    expect(sent[0].tables.map((t: { table: string }) => t.table)).not.toContain('tabla_30');
+  });
+
+  it('"Todas" marca la lista entera, no sólo la página visible', async () => {
+    const { fixture, comp } = await muchasTablas(60);
+
+    comp.page.next();
+    await settle(fixture);
+    comp.toggleAll(false);
+    await settle(fixture);
+    expect(comp.includedTables()).toEqual([]);
+
+    comp.toggleAll(true);
+    await settle(fixture);
+
+    // Marcar 60 desde la página 2: es lo que dice el botón "Todas" del título.
+    expect(comp.includedTables()).toHaveLength(60);
+    expect(comp.page.total()).toBe(60);
+  });
+
+  it('cambiar de esquema vuelve a la primera página', async () => {
+    const { fixture, comp } = await muchasTablas(60);
+
+    comp.page.goTo(3);
+    await settle(fixture);
+    expect(comp.page.current()).toBe(3);
+
+    // Las tablas del esquema nuevo son distintas: quedarse en la página 3 de
+    // otra lista mostraría una grilla vacía sin explicación.
+    tables = ['a', 'b'];
+    comp.schema.set('otro');
+    await settle(fixture);
+
+    expect(comp.page.current()).toBe(1);
+    expect(comp.page.total()).toBe(2);
+  });
+
+  it('con pocas tablas no aparece la barra', async () => {
+    const { el } = await ready();
+
+    expect(el.querySelectorAll('table.filter-table tbody tr').length).toBe(3);
+    expect(el.querySelector('.table-pagination')).toBeNull();
   });
 });
 

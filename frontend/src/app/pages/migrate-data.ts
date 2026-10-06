@@ -12,6 +12,8 @@ import { StatusBadge } from '../shared/status-badge';
 import { RegionControlsComponent } from '../shared/region-controls';
 import { SchemaSelectComponent } from '../shared/schema-select';
 import { NoticeModalComponent } from '../shared/notice-modal';
+import { PaginationBarComponent } from '../shared/pagination-bar';
+import { paginate } from '../shared/paginate';
 
 /**
  * El estado de una tabla marcada para migrar.
@@ -118,7 +120,13 @@ function lastDayOfMonth(month: string): string {
  */
 @Component({
   selector: 'app-migrate-data-page',
-  imports: [RegionControlsComponent, SchemaSelectComponent, StatusBadge, NoticeModalComponent],
+  imports: [
+    RegionControlsComponent,
+    SchemaSelectComponent,
+    StatusBadge,
+    NoticeModalComponent,
+    PaginationBarComponent,
+  ],
   template: `
     <h1>Migrar datos</h1>
     <p class="muted">
@@ -298,7 +306,7 @@ function lastDayOfMonth(month: string): string {
               </tr>
             </thead>
             <tbody>
-              @for (row of allRows(); track row.table) {
+              @for (row of page.visible(); track row.table) {
                 <tr [class.is-off]="!row.state?.included">
                   <td>
                     <label
@@ -355,6 +363,8 @@ function lastDayOfMonth(month: string): string {
               }
             </tbody>
           </table>
+
+          <app-pagination-bar [p]="page" />
         </div>
       </div>
     }
@@ -573,6 +583,21 @@ export class MigrateDataPage {
   readonly allRows = computed(() =>
     this.tableList().map((table) => ({ table, state: this.filters()[table] })),
   );
+
+  /**
+   * La tabla de tablas, paginada.
+   *
+   * Igual que en Sincronizar schema, y por la misma razón: un esquema real tiene
+   * cientos de tablas y la lista entera era lo que había que scrollear. El riesgo
+   * de paginar una tabla de casillas —una fila desmarcada en otra página no se
+   * ve— lo cubre el contador "N de M marcadas" del título, que siempre habla del
+   * total y nunca de la página.
+   *
+   * `toggleAll` y `allIncluded` siguen hablando de la lista **entera**, y
+   * `selection` sigue mandando todas las marcadas aunque no estén a la vista: la
+   * migración no se puede reducir a lo que hay en pantalla.
+   */
+  readonly page = paginate(() => this.allRows());
 
   readonly allIncluded = computed(
     () => !!this.tableList().length && this.includedTables().length === this.tableList().length,

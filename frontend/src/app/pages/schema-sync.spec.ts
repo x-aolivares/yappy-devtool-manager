@@ -535,6 +535,101 @@ describe('SchemaSyncPage la tabla de objetos', () => {
     expect(comp.selected().tables).not.toContain('orders');
   });
 
+  // --- la tabla de objetos se pagina --------------------------------------
+  //
+  // Un esquema real tiene cientos de objetos. Paginar una tabla de casillas tiene
+  // un riesgo propio que una grilla de datos no tiene: **una fila desmarcada en
+  // otra página no se ve**, y sin contador el usuario desmarca cuatro y no tiene
+  // forma de saber que le faltan cuatro.
+
+  it('con muchos objetos muestra una sola página', async () => {
+    originTables = Array.from({ length: 60 }, (_, i) => `tabla_${i}`);
+    originProcedures = [];
+    const { fixture, comp, el } = await ready();
+
+    expect(el.querySelectorAll('table.filter-table tbody tr').length).toBe(25);
+    expect(el.querySelector('.table-pagination')?.textContent).toContain('1–25 de 60');
+  });
+
+  it('el contador de marcados habla del total, no de la página', async () => {
+    originTables = Array.from({ length: 60 }, (_, i) => `tabla_${i}`);
+    originProcedures = [];
+    const { fixture, comp, el } = await ready();
+
+    comp.page.next();
+    await settle(fixture);
+
+    // La fila desmarcada está en la página 2 y el contador tiene que contarla:
+    // si dijera "25 de 25" el usuario no sabría que hay cuatro fuera de pantalla.
+    comp.toggle('tabla_30', false);
+    await settle(fixture);
+
+    expect(comp.page.current()).toBe(2);
+    expect(comp.selected().tables).toHaveLength(59);
+    expect(el.textContent).toContain('59 de 60 marcados');
+  });
+
+  it('"Todos" marca la lista entera, no sólo la página visible', async () => {
+    originTables = Array.from({ length: 60 }, (_, i) => `tabla_${i}`);
+    originProcedures = [];
+    const { fixture, comp } = await ready();
+
+    // Marcar la página 1 y volver a la 2: si "Todos" fuera sobre lo visible, la
+    // 2 quedaría con todas sus casillas apagadas y el botón en un estado que no
+    // corresponde a nada.
+    comp.page.next();
+    await settle(fixture);
+    comp.toggleAll(false);
+    await settle(fixture);
+    expect(comp.selected().tables).toEqual([]);
+
+    comp.toggleAll(true);
+    await settle(fixture);
+
+    expect(comp.selected().tables).toHaveLength(60);
+    expect(comp.allSelected()).toBe(true);
+    expect(comp.page.total()).toBe(60);
+  });
+
+  it('"Todos" a medias se mide sobre el total, no sobre la página', async () => {
+    originTables = Array.from({ length: 60 }, (_, i) => `tabla_${i}`);
+    originProcedures = [];
+    const { fixture, comp } = await ready();
+
+    comp.page.next();
+    await settle(fixture);
+    comp.toggle('tabla_30', false);
+    await settle(fixture);
+
+    // 59 de 60: sigue siendo "todos" a medias, no "todos en esta página".
+    expect(comp.allSelected()).toBe(false);
+    expect(comp.someSelected()).toBe(true);
+    expect(comp.selectedCount()).toBe(59);
+  });
+
+  it('el script se genera con todos los marcados, no con los de la página', async () => {
+    // El motivo de que esto no se rompa nunca: el request manda `selected()`,
+    // que no está paginado. Si se paginara, sincronizarías 25 objetos de los 60
+    // que marcaste — y como el script reemplaza, los otros 35 se quedarían como
+    // están sin que nada lo diga.
+    originTables = Array.from({ length: 60 }, (_, i) => `tabla_${i}`);
+    originProcedures = [];
+    const { fixture, comp } = await ready();
+
+    comp.page.next();
+    await settle(fixture);
+    comp.toggle('tabla_30', false);
+    await settle(fixture);
+
+    expect(comp.selected().tables).toHaveLength(59);
+
+    comp.generate();
+    await settle(fixture);
+
+    expect(compileRequests[0].tables).toHaveLength(59);
+    expect(compileRequests[0].tables).not.toContain('tabla_30');
+  });
+
   it('el aviso de filas perdidas cuenta tablas, no objetos', async () => {
     const { fixture, comp, el } = await ready();
     // Sólo un procedure marcado: no hay ninguna tabla que recrear, y decirlo evita

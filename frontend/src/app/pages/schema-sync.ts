@@ -8,6 +8,8 @@ import { CopyButton } from '../shared/copy-button';
 import { RegionControlsComponent } from '../shared/region-controls';
 import { SchemaSelectComponent } from '../shared/schema-select';
 import { AutoGrowDirective } from '../shared/auto-grow';
+import { PaginationBarComponent } from '../shared/pagination-bar';
+import { paginate } from '../shared/paginate';
 
 /** One object of the origin schema, as the picker table renders it. */
 interface SyncObject {
@@ -75,6 +77,7 @@ type DestinationIndex = Record<SyncObject['kind'], Set<string>>;
     StatusBadge,
     CopyButton,
     AutoGrowDirective,
+    PaginationBarComponent,
   ],
   template: `
     <h1>Sincronizar schema</h1>
@@ -153,7 +156,7 @@ type DestinationIndex = Record<SyncObject['kind'], Set<string>>;
                 </tr>
               </thead>
               <tbody>
-                @for (row of objectRows(); track row.kind + '.' + row.name) {
+                @for (row of page.visible(); track row.kind + '.' + row.name) {
                   <tr [class.is-off]="!row.selected">
                     <td>
                       <label class="checkbox-row" style="margin:0;" [for]="'sync-obj-' + row.name">
@@ -183,6 +186,8 @@ type DestinationIndex = Record<SyncObject['kind'], Set<string>>;
                 }
               </tbody>
             </table>
+
+            <app-pagination-bar [p]="page" />
 
             @if (destinationError(); as err) {
               <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
@@ -380,6 +385,21 @@ export class SchemaSyncPage {
 
   /** One row per object of the origin, tables first, alphabetical within each. */
   readonly objectRows = computed<SyncObject[]>(() => this.objects() ?? []);
+
+  /**
+   * La tabla de objetos, paginada.
+   *
+   * Un esquema real tiene cientos de objetos y la lista entera era lo que había
+   * que scrollear. Paginar una tabla de casillas tiene un riesgo propio —una fila
+   * desmarcada en otra página no se ve— y lo que lo cubre es que el contador
+   * "N de 119 marcados" queda arriba, siempre sobre el total y nunca sobre la
+   * página: si desmarcás cuatro y el contador dice 115 de 119, sabés que hay cuatro
+   * fuera de la pantalla.
+   *
+   * `toggleAll` y `allSelected` siguen hablando de la lista **entera**: "Todos"
+   * marca los 119, no los 25 que se ven.
+   */
+  readonly page = paginate(() => this.objectRows());
 
   /** Cuántos están marcados, en total. Es lo que se compara con la lista completa. */
   readonly selectedCount = computed(

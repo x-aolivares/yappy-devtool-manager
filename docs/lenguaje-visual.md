@@ -217,7 +217,20 @@ Es el único patrón de esta guía **que sí introduce estado**, y la excepción
 justificada: paginar sin estado no es posible. Todo lo demás sale del DOM; esto sale
 de `shared/paginate.ts`.
 
-**Dos piezas, una de estado y otra de dibujo.**
+**Las tablas de casillas se paginan, pero el contador no.**
+
+Sincronizar schema y Migrar datos tienen tablas de selección, y son las más largas
+de la app: un esquema real tiene cientos de objetos. Paginar una tabla de casillas
+tiene un riesgo que una grilla de datos no tiene — **una fila desmarcada en otra
+página no se ve** — y no hay error que lo delate.
+
+Lo que lo cubre es que el contador del título (`N de 60 marcadas`) siempre habla del
+**total**, nunca de la página, y que `toggleAll` y `selection` operan sobre la lista
+**entera**: "Todas" marca las 60 aunque se vean 25, y la migración manda las 60. Si
+alguno de los dos leyera la página, el script sincronizaría 25 objetos de los 60 que
+el usuario marcó y no habría forma de enterarse.
+
+### Dos piezas, una de estado y otra de dibujo.
 
 - `paginate(source)` devuelve el estado: `visible()`, `visibleIndices()`, `current()`,
   `canPrev()`, `canNext()` y los controles `next/prev/goTo/setPageSize/reset`.
