@@ -268,6 +268,21 @@ Y filtrar **devuelve a la primera página**: si no, el filtro deja 3 filas y la
 grilla queda en la página 3 de 1, con la barra diciendo "Página 3 de 1" y el cuerpo
 vacío.
 
+### Filtrar es mirar, no elegir
+
+El filtro de las tablas de casillas **no cambia lo que se manda**. `toggleAll`,
+`allSelected` y `selection`/`jsonPage` hablan de la lista **entera**: "Todas" marca
+los 119 aunque el filtro muestre dos, y la migración manda las 119.
+
+La razón es que un filtro es un espejo, no una selección: si "Todos" marcara sólo lo
+visible, filtrar por `payment` y tocar "Todos" desmarcaría cien objetos que el
+usuario nunca vio desaparecer. Y el contador del título habla siempre del total,
+también con el filtro puesto, por el mismo motivo.
+
+La grilla de SQL filtra en otro lugar: **por los valores de todas las columnas**, no
+por los nombres, que es lo único que sirve con quinientas filas y veinte columnas. Por
+eso el input lleva una aclaración al lado.
+
 ### `visibleIndices()` para los `@for` que indexan
 
 La tabla de diff de JSON marca filas por posición y por texto editado, con el

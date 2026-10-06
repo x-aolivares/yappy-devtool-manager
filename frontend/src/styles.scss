@@ -1492,6 +1492,33 @@ td .diff-link {
 }
 
 // ============================================================
+// Filtrado de tablas
+// ============================================================
+//
+// El label va arriba del input y no al lado, a diferencia del selector de filas
+// de la barra de paginación: acá el input es ancho y una etiqueta en línea lo
+// deja el placeholder sin aire. El `max-width` evita que el filtro,
+// que es un control auxiliar, ocupe media tabla.
+.table-search {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-width: 20rem;
+}
+
+.table-search__label {
+  font-size: var(--text-xxs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.table-search input {
+  width: 100%;
+}
+
+// ============================================================
 // Paginación de tablas
 // ============================================================
 //

@@ -278,6 +278,71 @@ describe('SqlPage', () => {
     expect(el.textContent).toContain('Migrar info');
   });
 
+  // --- el filtro de la grilla --------------------------------------------
+
+  it('busca en los valores, no en los nombres de las columnas', async () => {
+    // `total` es "0.50" en la fila 1 y "25.50" en la 2: un filtro que mirara los
+    // nombres de columna no encontraría ninguna.
+    const { comp, fixture } = await consultarCon(queryWithRows(60));
+
+    comp.gridSearch.query.set('25.50');
+    await settle(fixture);
+
+    expect(comp.page.total()).toBe(1);
+    expect(comp.page.visible()[0]).toEqual({ pedido_id: 26, total: '25.50' });
+  });
+
+  it('no matchea por el nombre de la clave', async () => {
+    const { comp, fixture } = await consultarCon(queryWithRows(60));
+
+    // Todas las filas tienen `pedido_id` y `total`. Con un `JSON.stringify` de la
+    // fila, buscar cualquiera de esas palabras traería las 60.
+    comp.gridSearch.query.set('pedido_id');
+    await settle(fixture);
+
+    expect(comp.page.total()).toBe(0);
+  });
+
+  it('filtrar la grilla no cambia el total del que habla el encabezado', async () => {
+    const { comp, fixture } = await consultarCon(queryWithRows(60));
+
+    comp.gridSearch.query.set('25.50');
+    await settle(fixture);
+
+    // El encabezado dice cuántas filas trae la consulta. Si leyera la grilla
+    // filtrada, "Migrar info" quedaría con una impresión equivocada.
+    expect(comp.page.total()).toBe(1);
+    expect(comp.rows().length).toBe(60);
+    expect(comp.showMigrate()).toBe(true);
+  });
+
+  it('una consulta nueva limpia el filtro', async () => {
+    const { comp, fixture } = await consultarCon(queryWithRows(60));
+
+    comp.gridSearch.query.set('25.50');
+    await settle(fixture);
+    expect(comp.page.total()).toBe(1);
+
+    comp.runQuery();
+    await settle(fixture);
+
+    // Dejar el texto de la consulta anterior sobre el resultado nuevo escondería
+    // filas sin avisar.
+    expect(comp.gridSearch.query()).toBe('');
+    expect(comp.page.total()).toBe(60);
+  });
+
+  it('filtrar devuelve a la primera página', async () => {
+    const { comp, fixture } = await consultarCon(queryWithRows(60));
+
+    comp.page.goTo(3);
+    await settle(fixture);
+    comp.gridSearch.query.set('25.50');
+    await settle(fixture);
+
+    expect(comp.page.current()).toBe(1);
+  });
+
   it('una consulta nueva arranca en la primera página', async () => {
     const { comp, fixture } = await consultarCon(queryWithRows(60));
 

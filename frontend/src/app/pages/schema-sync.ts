@@ -9,6 +9,7 @@ import { RegionControlsComponent } from '../shared/region-controls';
 import { SchemaSelectComponent } from '../shared/schema-select';
 import { AutoGrowDirective } from '../shared/auto-grow';
 import { PaginationBarComponent } from '../shared/pagination-bar';
+import { TableSearchComponent, searchable } from '../shared/table-search';
 import { paginate } from '../shared/paginate';
 
 /** One object of the origin schema, as the picker table renders it. */
@@ -78,6 +79,7 @@ type DestinationIndex = Record<SyncObject['kind'], Set<string>>;
     CopyButton,
     AutoGrowDirective,
     PaginationBarComponent,
+    TableSearchComponent,
   ],
   template: `
     <h1>Sincronizar schema</h1>
@@ -127,10 +129,20 @@ type DestinationIndex = Record<SyncObject['kind'], Set<string>>;
 
       @if (objectRows().length) {
         <div class="field">
+          <app-table-search
+            controlId="schema-sync-search"
+            [query]="search.query()"
+            label="Buscar objeto"
+            placeholder="payment, sp_sync, tabla…"
+            (changed)="search.query.set($event)"
+          />
+
           <div class="section-title section-title--plain">
             <strong>Qué se sincroniza</strong>
             <span class="actions">
               <span class="muted" style="font-size:0.75rem;">
+                <!-- El total, SIEMPRE. Es lo que avisa que hay filas marcadas
+                     fuera de lo que el filtro muestra. -->
                 {{ selectedCount() }} de {{ objectRows().length }} marcados
               </span>
               <label class="checkbox-row" style="margin:0;">
@@ -387,19 +399,30 @@ export class SchemaSyncPage {
   readonly objectRows = computed<SyncObject[]>(() => this.objects() ?? []);
 
   /**
-   * La tabla de objetos, paginada.
+   * Filtro por texto sobre el nombre y el tipo.
+   *
+   * Buscar `payment` tiene que encontrar `yappy_payment` **y** `sp_sync_payment`,
+   * que es lo que hace que un solo control sirva para las dos clases de objeto.
+   * El tipo entra como celda para que "buscar procedure" muestre sólo procedures.
+   */
+  readonly search = searchable(
+    () => this.objectRows(),
+    (row) => [row.name, row.kind === 'table' ? 'tabla' : 'procedure'],
+  );
+
+  /**
+   * La tabla de objetos, filtrada y paginada.
    *
    * Un esquema real tiene cientos de objetos y la lista entera era lo que había
-   * que scrollear. Paginar una tabla de casillas tiene un riesgo propio —una fila
-   * desmarcada en otra página no se ve— y lo que lo cubre es que el contador
-   * "N de 119 marcados" queda arriba, siempre sobre el total y nunca sobre la
-   * página: si desmarcás cuatro y el contador dice 115 de 119, sabés que hay cuatro
-   * fuera de la pantalla.
+   * que scrollear. **El filtro va antes que la paginación**: al revés, buscar algo
+   * que está en la fila 60 daría cero resultados en la página 1.
    *
-   * `toggleAll` y `allSelected` siguen hablando de la lista **entera**: "Todos"
-   * marca los 119, no los 25 que se ven.
+   * Y el filtro no cambia lo que se manda: `selected`, `toggleAll` y `allSelected`
+   * hablan de `objectRows()` — la lista **entera** —, no de la filtrada. Filtrar
+   * es mirar, no elegir: si "Todos" marcara sólo lo que se ve, con el filtro puesto
+   * desmarcaría 116 objetos que el usuario nunca tocó.
    */
-  readonly page = paginate(() => this.objectRows());
+  readonly page = paginate(() => this.search.filtered());
 
   /** Cuántos están marcados, en total. Es lo que se compara con la lista completa. */
   readonly selectedCount = computed(
@@ -474,6 +497,7 @@ export class SchemaSyncPage {
     effect(() => {
       const env = this.envB();
       const schema = this.schema();
+      this.search.query.set('');
       this.objectsSeq++;
       this.objects.set(null);
       this.objectsError.set(null);
@@ -483,6 +507,14 @@ export class SchemaSyncPage {
       // objetos todavía no es la que va a quedar. Sin esto, un `whenStable()`
       // puede cerrarse en el medio de la cadena y dejar la tabla sin pintar.
       this.pendingTasks.run(() => Promise.resolve(this.loadObjects(env, schema)));
+    });
+
+    // Filtrar devuelve a la primera página. Sin esto, filtrar hasta dejar 2 objetos
+    // con la grilla en la página 5 muestra la tabla vacía y la barra diciendo
+    // "Página 5 de 1".
+    effect(() => {
+      this.search.query();
+      this.page.reset();
     });
 
     // Un script generado describe un esquema, una selección y un destino concretos.
@@ -638,6 +670,13 @@ export class SchemaSyncPage {
     this.patchObject(name, checked, kind);
   }
 
+  /**
+ * Marcar o desmarcar la lista **entera**, no lo que se ve con el filtro puesto.
+ *
+ * Es la contraparte de que el contador hable del total: si "Todos" marcara sólo lo
+ * filtrado, filtrar por `payment` y tocar "Todos" desmarcaría los otros cien
+ * objetos, que el usuario no vio desaparecer nunca.
+ */
   toggleAll(checked: boolean): void {
     const rows = this.objectRows();
     this.objects.set(rows.map((r) => ({ ...r, selected: checked })));

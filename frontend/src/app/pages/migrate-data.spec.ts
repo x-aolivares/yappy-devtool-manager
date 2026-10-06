@@ -501,6 +501,79 @@ describe('MigrateDataPage la tabla se pagina', () => {
     expect(comp.page.total()).toBe(2);
   });
 
+  // --- filtrar la tabla de tablas ---------------------------------------
+
+  it('buscar deja sólo las tablas que matchean', async () => {
+    const { fixture, comp, el } = await muchasTablas(60);
+
+    // tabla_1, tabla_10..19, tabla_1x: el substring matchea, no el prefijo exacto.
+    comp.search.query.set('tabla_1');
+    await settle(fixture);
+
+    expect(comp.page.total()).toBe(11);
+    expect(comp.page.visible().length).toBe(11);
+  });
+
+  it('el contador de marcadas sigue hablando del total, con filtro puesto', async () => {
+    const { fixture, comp, el } = await muchasTablas(60);
+
+    comp.toggleAll(true);
+    await settle(fixture);
+    comp.search.query.set('tabla_1');
+    await settle(fixture);
+
+    // Si el contador hablara de lo filtrado, filtrar a 11 tablas haría creer que
+    // sólo hay 11 marcadas de 60.
+    expect(comp.page.total()).toBe(11);
+    expect(comp.includedTables()).toHaveLength(60);
+    expect(el.textContent).toContain('60 de 60 marcadas');
+  });
+
+  it('la migración sigue mandando todas las marcadas con filtro puesto', async () => {
+    // Filtrar es mirar, no elegir: si `selection` leyera lo filtrado, migrarías 11
+    // tablas de las 60 que marcaste.
+    const { fixture, comp } = await muchasTablas(60);
+
+    comp.toggleAll(true);
+    await settle(fixture);
+    comp.search.query.set('tabla_1');
+    await settle(fixture);
+    comp.dateMode.set('month');
+    comp.month.set('2026-03');
+    await settle(fixture);
+
+    comp.simulate();
+    await settle(fixture);
+
+    expect(sent[0].tables).toHaveLength(60);
+  });
+
+  it('"Todas" con filtro puesto sigue marcando la lista entera', async () => {
+    const { fixture, comp } = await muchasTablas(60);
+
+    comp.search.query.set('tabla_1');
+    await settle(fixture);
+    comp.toggleAll(true);
+    await settle(fixture);
+
+    // Si marcara sólo lo visible, marcar 11 de 60 y no verlas desaparecer sería la
+    // forma más fácil de migrar la tabla equivocada.
+    expect(comp.includedTables()).toHaveLength(60);
+  });
+
+  it('cambiar de esquema limpia el filtro', async () => {
+    const { fixture, comp } = await muchasTablas(60);
+
+    comp.search.query.set('tabla_1');
+    await settle(fixture);
+    tables = ['orders', 'lines'];
+    comp.schema.set('otro');
+    await settle(fixture);
+
+    expect(comp.search.query()).toBe('');
+    expect(comp.page.total()).toBe(2);
+  });
+
   it('con pocas tablas la barra no navega pero el tamaño sigue editable', async () => {
     const { el } = await ready();
 

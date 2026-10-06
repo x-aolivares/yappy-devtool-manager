@@ -6,6 +6,7 @@ import { toApiError } from '../core/services/api-error';
 import { EnvControlsComponent } from '../shared/env-controls';
 import { NoticeModalComponent } from '../shared/notice-modal';
 import { PaginationBarComponent } from '../shared/pagination-bar';
+import { TableSearchComponent, searchable } from '../shared/table-search';
 import { paginate } from '../shared/paginate';
 import { StatusBadge } from '../shared/status-badge';
 
@@ -26,7 +27,13 @@ import { StatusBadge } from '../shared/status-badge';
  */
 @Component({
   selector: 'app-sql-page',
-  imports: [EnvControlsComponent, StatusBadge, NoticeModalComponent, PaginationBarComponent],
+  imports: [
+    EnvControlsComponent,
+    StatusBadge,
+    NoticeModalComponent,
+    PaginationBarComponent,
+    TableSearchComponent,
+  ],
   template: `
     <h1>Ejecutar SQL</h1>
     <p class="muted">
@@ -91,6 +98,20 @@ import { StatusBadge } from '../shared/status-badge';
             • El resultado es más largo de lo que se muestra. Agregá más filtros para ver todo.
           </div>
         }
+
+        <div class="sql-grid-search">
+          <app-table-search
+            controlId="sql-grid-search"
+            [query]="gridSearch.query()"
+            label="Filtrar filas"
+            placeholder="valor a buscar…"
+            (changed)="gridSearch.query.set($event)"
+          />
+          <p class="muted sql-grid-search__hint">
+            Busca en <strong>todas</strong> las columnas del SELECT, no en los nombres. Con
+            {{ rows().length }} fila(s) es la única forma de encontrar una sin scrollear.
+          </p>
+        </div>
       </div>
 
       @if (rows().length) {
@@ -224,6 +245,16 @@ import { StatusBadge } from '../shared/status-badge';
     </app-notice-modal>
   `,
   styles: `
+    /* El filtro y su aclaración van juntos: separados, el hint parece otro bloque
+       y el input queda huérfano. */
+    .sql-grid-search {
+      margin-top: 0.75rem;
+    }
+    .sql-grid-search__hint {
+      margin-top: 0.375rem;
+      font-size: 0.75rem;
+    }
+
     /* The inline marker: short on purpose, it only says there is a detail to
        read and reopens the modal. The long text lives in the modal. */
     .error-marker {
@@ -306,14 +337,27 @@ export class SqlPage {
   readonly rows = computed(() => this.result()?.rows ?? []);
 
   /**
-   * La grilla del resultado.
+   * Filtro de la grilla: busca en **todas** las columnas, no en los nombres.
    *
-   * El backend trae hasta 500 filas de una vez y las pagina la vista. `rows()`
-   * sigue siendo el total —`showMigrate` y el aviso de "truncado" dependen de
-   * cuántas hay, no de cuántas se ven—, así que partir la grilla en 25 no puede
-   * hacer que "Migrar info" desaparezca después de la primera página.
+   * Es lo que lo hace útil. Con un SELECT de 500 filas y veinte columnas, scrollear
+   * no encuentra una; buscar el valor sí. Por eso `toCells` proyecta la fila con
+   * las columnas que el backend devolvió, en vez de sus claves: `JSON.stringify`
+   * haría que buscar `id` encontrara cualquier fila, porque todas tienen esa
+   * clave.
    */
-  readonly page = paginate(() => this.rows());
+  readonly gridSearch = searchable(
+    () => this.rows(),
+    (row) => (this.result()?.columns ?? []).map((c) => this.cell(row[c])),
+  );
+
+  /**
+   * La grilla del resultado, filtrada y paginada.
+   *
+   * `rows()` sigue siendo el **total** —`showMigrate` y el aviso de "truncado"
+   * dependen de cuántas hay, no de cuántas se ven—, así que filtrar o paginar no
+   * puede hacer que "Migrar info" desaparezca.
+   */
+  readonly page = paginate(() => this.gridSearch.filtered());
   /** El ambiente elegido: el array es la fuente de verdad, el string se deriva. */
   readonly env = computed(() => (this.envs().length === 1 ? this.envs()[0] : ''));
   readonly destEnv = computed(() => (this.destEnvs().length === 1 ? this.destEnvs()[0] : ''));
@@ -385,10 +429,11 @@ export class SqlPage {
         (d) => {
           this.busy.set(false);
           this.result.set(d);
-          // Cada consulta arranca en la primera página: la anterior describía otro
-          // resultado y dejar la grilla en su página 4 mostraría filas que ya no
-          // están.
+          // Cada consulta arranca limpia: la página y el filtro anteriores
+          // describían otro resultado, y dejar el texto de búsqueda sobre una
+          // consulta nueva esconde filas sin avisar.
           this.page.reset();
+          this.gridSearch.query.set('');
         },
         (err) => {
           this.busy.set(false);

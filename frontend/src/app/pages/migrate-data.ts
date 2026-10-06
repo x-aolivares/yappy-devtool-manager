@@ -13,6 +13,7 @@ import { RegionControlsComponent } from '../shared/region-controls';
 import { SchemaSelectComponent } from '../shared/schema-select';
 import { NoticeModalComponent } from '../shared/notice-modal';
 import { PaginationBarComponent } from '../shared/pagination-bar';
+import { TableSearchComponent, searchable } from '../shared/table-search';
 import { paginate } from '../shared/paginate';
 
 /**
@@ -126,6 +127,7 @@ function lastDayOfMonth(month: string): string {
     StatusBadge,
     NoticeModalComponent,
     PaginationBarComponent,
+    TableSearchComponent,
   ],
   template: `
     <h1>Migrar datos</h1>
@@ -279,10 +281,20 @@ function lastDayOfMonth(month: string): string {
 
     @if (tableList().length) {
       <div class="panel">
+        <app-table-search
+          controlId="migrate-data-search"
+          [query]="search.query()"
+          label="Buscar tabla"
+          placeholder="payment, order, log…"
+          (changed)="search.query.set($event)"
+        />
+
         <div class="section-title section-title--plain">
           <strong>Tablas a migrar</strong>
           <span class="actions">
             <span class="muted" style="font-size:0.75rem;">
+              <!-- El total, SIEMPRE: es lo que avisa que hay tablas marcadas
+                   fuera de lo que el filtro muestra. -->
               {{ includedTables().length }} de {{ tableList().length }} marcadas
             </span>
             <label class="checkbox-row" style="margin:0;">
@@ -585,19 +597,30 @@ export class MigrateDataPage {
   );
 
   /**
-   * La tabla de tablas, paginada.
+   * Filtro por texto sobre el nombre de la tabla.
+   *
+   * Solo el nombre porque es lo único que la tabla tiene: la columna de fecha se
+   * pide recién cuando la tabla se marca, así que no hay nada más que buscar
+   * sin disparar una lectura por tabla.
+   */
+  readonly search = searchable(
+    () => this.allRows(),
+    (row) => [row.table],
+  );
+
+  /**
+   * La tabla de tablas, filtrada y paginada.
    *
    * Igual que en Sincronizar schema, y por la misma razón: un esquema real tiene
-   * cientos de tablas y la lista entera era lo que había que scrollear. El riesgo
-   * de paginar una tabla de casillas —una fila desmarcada en otra página no se
-   * ve— lo cubre el contador "N de M marcadas" del título, que siempre habla del
-   * total y nunca de la página.
+   * cientos de tablas y la lista entera era lo que había que scrollear. **El
+   * filtro va antes que la paginación**, por el mismo motivo.
    *
-   * `toggleAll` y `allIncluded` siguen hablando de la lista **entera**, y
-   * `selection` sigue mandando todas las marcadas aunque no estén a la vista: la
-   * migración no se puede reducir a lo que hay en pantalla.
+   * Y el filtro no cambia lo que se manda: `toggleAll`, `allIncluded` y `selection`
+   * hablan de la lista **entera**. Filtrar es mirar, no elegir — si "Todas"
+   * marcara sólo lo visible, filtrar por `payment` y tocar "Todas" desmarcaría las
+   * otras cien tablas sin que el usuario las viera desaparecer.
    */
-  readonly page = paginate(() => this.allRows());
+  readonly page = paginate(() => this.search.filtered());
 
   readonly allIncluded = computed(
     () => !!this.tableList().length && this.includedTables().length === this.tableList().length,
@@ -746,7 +769,15 @@ export class MigrateDataPage {
       this.tables.set(null);
       this.tablesError.set(null);
       this.filters.set({});
+      this.search.query.set('');
       this.loadTables(env, schema);
+    });
+
+    // Filtrar devuelve a la primera página: con la grilla en la página 5 y un
+    // filtro que deja 2 tablas, la tabla queda vacía y la barra mintiendo.
+    effect(() => {
+      this.search.query();
+      this.page.reset();
     });
 
     // A result describes one origin, one destination, one schema and one exact

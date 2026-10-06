@@ -630,6 +630,119 @@ describe('SchemaSyncPage la tabla de objetos', () => {
     expect(compileRequests[0].tables).not.toContain('tabla_30');
   });
 
+  // --- filtrar la tabla de objetos ---------------------------------------
+
+  it('buscar encuentra por nombre, sin importar el tipo', async () => {
+    originTables = ['yappy_payment'];
+    originProcedures = ['sp_sync_payment'];
+    const { fixture, comp, el } = await ready();
+
+    // "payment" está en dos objetos de clases distintas: un solo control tiene que
+    // encontrar los dos, que es lo que lo hace útil en un esquema real.
+    comp.search.query.set('payment');
+    await settle(fixture);
+
+    // Tablas primero, procedures después: es el orden de `objectRows`, que no es
+    // alfabético sino por clase.
+    expect(comp.page.visible().map((r: { name: string }) => r.name)).toEqual([
+      'yappy_payment',
+      'sp_sync_payment',
+    ]);
+  });
+
+  it('el filtro busca también por tipo', async () => {
+    originTables = ['yappy_payment'];
+    originProcedures = ['sp_sync_payment'];
+    const { fixture, comp, el } = await ready();
+
+    comp.search.query.set('procedure');
+    await settle(fixture);
+    expect(comp.page.visible().map((r: { name: string }) => r.name)).toEqual(['sp_sync_payment']);
+  });
+
+  it('el contador de marcados sigue hablando del total, con filtro puesto', async () => {
+    originTables = ['yappy_payment', 'audit_log', 'orders'];
+    originProcedures = ['sp_sync_payment'];
+    const { fixture, comp, el } = await ready();
+
+    // Es la garantía que hace que el filtro no pueda mentir: si el contador
+    // hablara de lo filtrado, filtrar a 1 objeto haría creer que sólo hay una
+    // tabla marcada de cuatro.
+    comp.search.query.set('yappy');
+    await settle(fixture);
+
+    expect(comp.page.visible()).toHaveLength(1);
+    expect(comp.selectedCount()).toBe(4);
+    expect(el.textContent).toContain('4 de 4 marcados');
+  });
+
+  it('"Todos" con filtro puesto sigue marcando la lista entera', async () => {
+    originTables = ['yappy_payment', 'audit_log', 'orders'];
+    originProcedures = ['sp_sync_payment'];
+    const { fixture, comp } = await ready();
+
+    // Filtrar es mirar, no elegir. Si "Todos" marcara sólo lo visible, filtrar por
+    // `yappy` y tocar "Todos" desmarcaría tres objetos que el usuario nunca vio
+    // desaparecer.
+    comp.search.query.set('yappy');
+    await settle(fixture);
+    comp.toggleAll(false);
+    await settle(fixture);
+    expect(comp.selected()).toEqual({ tables: [], procedures: [] });
+
+    comp.toggleAll(true);
+    await settle(fixture);
+
+    expect(comp.selected().tables).toHaveLength(3);
+    expect(comp.selected().procedures).toHaveLength(1);
+  });
+
+  it('el script lleva todos los marcados aunque el filtro muestre uno', async () => {
+    originTables = ['yappy_payment', 'audit_log', 'orders'];
+    originProcedures = ['sp_sync_payment'];
+    const { fixture, comp } = await ready();
+
+    comp.search.query.set('yappy');
+    await settle(fixture);
+    comp.generate();
+    await settle(fixture);
+
+    expect(compileRequests[0].tables).toHaveLength(3);
+    expect(compileRequests[0].procedures).toHaveLength(1);
+  });
+
+  it('filtrar devuelve a la primera página', async () => {
+    originTables = Array.from({ length: 60 }, (_, i) => `tabla_${i}`);
+    originProcedures = [];
+    const { fixture, comp } = await ready();
+
+    comp.page.goTo(3);
+    await settle(fixture);
+    comp.search.query.set('tabla_1');
+    await settle(fixture);
+
+    // Sin el reset, la barra quedaría diciendo "Página 3 de 1" con la tabla vacía.
+    expect(comp.page.current()).toBe(1);
+    expect(comp.page.total()).toBeGreaterThan(0);
+  });
+
+  it('cambiar de esquema limpia el filtro', async () => {
+    originTables = ['yappy_payment', 'audit_log', 'orders'];
+    originProcedures = [];
+    const { fixture, comp } = await ready();
+
+    comp.search.query.set('yappy');
+    await settle(fixture);
+    expect(comp.page.total()).toBe(1);
+
+    // El texto de búsqueda era de otro esquema: dejarlo puesto deja la tabla
+    // vacía sin explicación de por qué.
+    comp.schema.set('otro');
+    await settle(fixture);
+
+    expect(comp.search.query()).toBe('');
+  });
+
   it('el aviso de filas perdidas cuenta tablas, no objetos', async () => {
     const { fixture, comp, el } = await ready();
     // Sólo un procedure marcado: no hay ninguna tabla que recrear, y decirlo evita
