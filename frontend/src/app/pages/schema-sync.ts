@@ -131,10 +131,9 @@ interface SyncObject {
             <table class="filter-table filter-table--narrow">
               <thead>
                 <tr>
-                  <th></th>
-                  <th>Tipo</th>
                   <th>Objeto</th>
-                  <th>En {{ envA() || 'el destino' }}</th>
+                  <th>Tipo</th>
+                  <th>Existe en {{ envA() || 'el destino' }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -148,7 +147,7 @@ interface SyncObject {
                           [checked]="row.selected"
                           (change)="toggle(row.name, $any($event.target).checked)"
                         />
-                        <span class="muted">{{ row.name }}</span>
+                        <span>{{ row.name }}</span>
                       </label>
                     </td>
                     <td>
@@ -157,12 +156,11 @@ interface SyncObject {
                         [label]="row.kind === 'table' ? 'tabla' : 'procedure'"
                       />
                     </td>
-                    <td class="mono">{{ row.name }}</td>
                     <td>
                       @if (row.inDestination) {
-                        <app-badge status="equal" label="Ya está" />
+                        <app-badge status="equal" label="Sí" />
                       } @else {
-                        <span class="muted" style="font-size:0.75rem;">Se crea</span>
+                        <span class="muted" style="font-size:0.75rem;">No, se crea</span>
                       }
                     </td>
                   </tr>

@@ -350,8 +350,32 @@ describe('SchemaSyncPage la tabla de objetos', () => {
     expect(el.querySelector('#sync-obj-orders')).not.toBeNull();
     expect(el.querySelector('#sync-obj-lines')).not.toBeNull();
     expect(el.querySelector('#sync-obj-sp_calc')).not.toBeNull();
+    // Tres columnas y ninguna más: `Objeto`, `Tipo` y `Existe en <destino>`. La
+    // primera columna sin nombre que había antes duplicaba el nombre del objeto
+    // en dos celdas.
+    const headers = [...el.querySelectorAll('table.filter-table thead th')].map((th) =>
+      th.textContent?.trim(),
+    );
+    expect(headers).toEqual(['Objeto', 'Tipo', 'Existe en local']);
     expect(el.textContent).toContain('tabla');
     expect(el.textContent).toContain('procedure');
+  });
+
+  it('el nombre del objeto aparece una sola vez por fila', async () => {
+    const { el } = await ready();
+
+    // Una fila por objeto, con el nombre en la celda de la casilla. Repetirlo en
+    // dos columnas hacía que un nombre largo se leyera dos veces y que el ancho
+    // de la tabla fuera el doble de lo necesario.
+    for (const nombre of ['orders', 'lines', 'sp_calc']) {
+      const fila = [...el.querySelectorAll('table.filter-table tbody tr')].find(
+        (f) => f.querySelector('#sync-obj-' + nombre) !== null,
+      );
+      const celdas = fila ? [...fila.querySelectorAll('td')] : [];
+      expect(celdas.length).toBe(3);
+      const apariciones = (celdas[0].textContent ?? '').split(nombre).length - 1;
+      expect(apariciones).toBe(1);
+    }
   });
 
   it('todo arranca marcado y el conteo lo dice', async () => {
@@ -369,16 +393,15 @@ describe('SchemaSyncPage la tabla de objetos', () => {
 
     // `orders` está en el destino y `lines` no: esa diferencia es la que dice
     // qué filas se van a perder, y por eso la tabla la muestra.
-    const fila = [...el.querySelectorAll('table.filter-table tbody tr')].find((f) =>
-      f.textContent?.includes('orders'),
+    const fila = [...el.querySelectorAll('table.filter-table tbody tr')].find(
+      (f) => f.querySelector('#sync-obj-orders') !== null,
     );
-    expect(fila?.textContent).toContain('Ya está');
-    expect(fila?.textContent).toContain('orders');
+    expect(fila?.textContent).toContain('Sí');
 
-    const nueva = [...el.querySelectorAll('table.filter-table tbody tr')].find((f) =>
-      f.textContent?.includes('lines'),
+    const nueva = [...el.querySelectorAll('table.filter-table tbody tr')].find(
+      (f) => f.querySelector('#sync-obj-lines') !== null,
     );
-    expect(nueva?.textContent).toContain('Se crea');
+    expect(nueva?.textContent).toContain('No, se crea');
   });
 
   it('desmarcar en la tabla cambia la selección y el botón de todos', async () => {
