@@ -24,14 +24,16 @@ import { Component, input } from '@angular/core';
 
     h1 {
       margin: 0;
-      font-size: clamp(1.6rem, 2vw, 2.2rem);
-      line-height: 1.2;
+      font-size: clamp(1.75rem, 2.4vw, 2.375rem);
+      line-height: 1.15;
+      letter-spacing: -0.02em;
     }
 
     .page-header__description {
       margin: 0;
-      font-size: 0.98rem;
-      line-height: 1.6;
+      max-width: 44rem;
+      font-size: var(--text-base);
+      line-height: 1.55;
     }
   `,
 })

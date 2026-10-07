@@ -252,7 +252,7 @@ import { StatusBadge } from '../shared/status-badge';
     }
     .sql-grid-search__hint {
       margin-top: 0.375rem;
-      font-size: 0.75rem;
+      font-size: var(--text-xs);
     }
 
     /* The inline marker: short on purpose, it only says there is a detail to
@@ -267,7 +267,7 @@ import { StatusBadge } from '../shared/status-badge';
       background: color-mix(in srgb, var(--err) 10%, transparent);
       color: var(--err);
       font: inherit;
-      font-size: 0.8125rem;
+      font-size: var(--text-sm);
       cursor: pointer;
     }
     .error-marker:hover {

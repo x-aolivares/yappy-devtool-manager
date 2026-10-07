@@ -127,13 +127,13 @@ interface EnvPanel {
           >Actualizar</button>
         </div>
         @if (writingEnv() === panel.env) {
-          <p class="muted" style="margin-top: 0.375rem; font-size: 0.75rem;">
+          <p class="muted" style="margin-top: 0.375rem; font-size: var(--text-xs);">
             <span class="spinner"></span> Escribiendo en {{ panel.env }}…
           </p>
         } @else if (writeStatus()[panel.env]) {
           <p
             class="muted"
-            style="margin-top: 0.375rem; font-size: 0.75rem;"
+            style="margin-top: 0.375rem; font-size: var(--text-xs);"
             [style.color]="writeStatus()[panel.env]!.ok ? 'var(--ok)' : 'var(--err)'"
           >{{ writeStatus()[panel.env]!.message }}</p>
         }

@@ -1,5 +1,6 @@
 // ============================================================
-// Yappy DevTool — sistema visual claro/oscuro inspirado en BBit
+// Yappy DevTool — sistema visual claro/oscuro sobre los colores,
+// radios y elevación de sistema de Apple
 // ============================================================
 @use '@angular/material' as mat;
 
@@ -13,19 +14,28 @@ html {
         tertiary: mat.$orange-palette,
       ),
       typography: (
+        // SF Pro entra primero por `-apple-system`, que es como el navegador la
+        // resuelve en macOS e iOS. En Windows no existe y la cadena cae en
+        // Segoe UI: la tipografía del sistema operativo del usuario, que es el
+        // mismo criterio que usa el HIG — nunca una fuente incrustada.
         plain-family: (
-          'Segoe UI',
-          system-ui,
-          sans-serif,
-        ),
+            -apple-system,
+            BlinkMacSystemFont,
+            'SF Pro Text',
+            'Segoe UI',
+            system-ui,
+            sans-serif
+          ),
         brand-family: (
           'ValdemaMedium',
+          -apple-system,
+          BlinkMacSystemFont,
           'Segoe UI',
           system-ui,
-          sans-serif,
+          sans-serif
         ),
       ),
-      density: 0,
+      density: -1,
     )
   );
 }
@@ -44,91 +54,122 @@ html {
 :root {
   color-scheme: light;
 
-  /* Escala tipográfica compacta para una interfaz de operaciones */
-  --text-xxs: 0.7rem;
+  /* Escala tipográfica. El cuerpo pasó de 13px a 14px: el contraste entre el
+     texto de lectura y las etiquetas de las secciones es lo que da la
+     jerarquía, y a 13px los dos tamaños quedaban demasiado juntos para
+     distinguir qué manda. */
+  --text-xxs: 0.6875rem;
   --text-xs: 0.75rem;
-  --text-sm: 0.8125rem;
-  --text-md: 0.9rem;
-  --text-base: 1rem;
-  --text-lg: 1.15rem;
+  --text-sm: 0.875rem;
+  --text-md: 0.9375rem;
+  --text-base: 1.0625rem;
+  --text-lg: 1.3125rem;
 
-  /* Paleta clara del frontend de referencia BBit.
-     `'Charlie Display'` no está en el repo —ni `@font-face`, ni archivo— y era
-     un no-op silencioso que caía a la stack del sistema. Se saca para que la
-     primera fuente de la lista sea una que exista de verdad. */
-  --bb-sans:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-  --bb-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  --bb-blue: #0052cc;
-  --bb-blue-hover: #0747a6;
-  --bb-blue-on: #ffffff;
-  --bb-bg: #ffffff;
-  --bb-surface: #f4f5f7;
-  --bb-border: #dfe1e6;
-  --bb-text: #172b4d;
-  --bb-text-secondary: #5e6c84;
-  --bb-success: #36b37e;
-  --bb-success-text: #216e4e;
-  --bb-success-bg: #e3fcef;
-  --bb-success-border: #b3f5d0;
-  --bb-warning: #ff991f;
-  --bb-warning-text: #974f0c;
-  --bb-warning-bg: #fff3cd;
-  --bb-warning-border: #ffc107;
-  --bb-danger: #d93025;
-  --bb-danger-text: #ae2e24;
-  --bb-danger-bg: #f8d7da;
-  --bb-danger-border: #ffbdad;
-  --bb-code-bg: #f4f5f7;
-  --bb-hover-bg: #fafbfc;
-  --bb-selected-bg: #e9f2ff;
-  --bb-elevated: #ffffff;
-  --bb-border-radius: 3px;
-  --bb-radius-md: 6px;
-  --bb-radius-pill: 999px;
-  --bb-control-h: 34px;
-  --bb-control-pad-x: 14px;
+  /* Paleta clara: los colores de sistema de Apple.
+     https://developer.apple.com/design/human-interface-guidelines/design-principles */
+  --sys-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  --sys-mono:
+    ui-monospace, 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  --sys-blue: #0071e3;
+  --sys-blue-hover: #0077ed;
+  --sys-blue-on: #ffffff;
+  --sys-bg: #ffffff;
+  --sys-surface: #f5f5f7;
+  --sys-border: #d2d2d7;
+  --sys-text: #1d1d1f;
+  --sys-text-secondary: #6e6e73;
+  --sys-success: #34c759;
+  --sys-success-text: #248a3d;
+  --sys-success-bg: #e8f8ed;
+  --sys-success-border: #b3e5c4;
+  --sys-warning: #ff9500;
+  --sys-warning-text: #a25400;
+  --sys-warning-bg: #fff4e5;
+  --sys-warning-border: #ffd8a8;
+  --sys-danger: #ff3b30;
+  --sys-danger-text: #b3261e;
+  --sys-danger-bg: #fdecea;
+  --sys-danger-border: #ffb4ab;
+  --sys-code-bg: #f5f5f7;
+  --sys-hover-bg: #fafafa;
+  --sys-selected-bg: #e8f1fd;
+  --sys-elevated: #ffffff;
+
+  /* Radios. El de 6px que tenía la interfaz era de la paleta BBit, que dibuja
+     esquinas casi rectas porque es una herramienta de densidad. Los tres de acá
+     son la escala de esquinas redondeadas de Apple: 6 / 10 / 14px. */
+  --sys-radius-sm: 0.375rem;
+  --sys-radius-md: 0.625rem;
+  --sys-radius-lg: 0.875rem;
+  --sys-radius-pill: 999px;
+
+  /* 34px -> 40px. No se llega a los 44px del área táctil táctil de iOS porque
+     esto corre en puntero y con muchos controles por pantalla: 44px duplicaba
+     la altura de cada barra de filtros. 40px conserva el aire de Apple sin
+     regalar espacio de trabajo. */
+  --sys-control-h: 2.5rem;
+  --sys-control-pad-x: 1.125rem;
+
+  /* Elevación. Antes no existía una escala: todo era un borde de 1px y sólo el
+     modal tenía sombra, así que los paneles no se separaban del fondo más que
+     por el color. Estos tres niveles son los que usa la UI de Apple para
+     separar un elemento del plano del que está. */
+  --sys-shadow-sm: 0 0.0625rem 0.125rem rgb(0 0 0 / 0.06), 0 0.0625rem 0.0625rem rgb(0 0 0 / 0.04);
+  --sys-shadow-md: 0 0.25rem 0.75rem rgb(0 0 0 / 0.08);
+  --sys-shadow-lg: 0 0.75rem 2rem rgb(0 0 0 / 0.12);
+
+  /* Movimiento. La curva y las duraciones salen de las transiciones estándar de
+     Apple: 0.25s para cambios de estado, 0.15s para el hover de un control.
+     Lo que había eran 0.12s con `ease` plano, que se leía como un corte. */
+  --sys-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --sys-dur-fast: 0.15s;
+  --sys-dur: 0.25s;
+
+  /* Halo del anillo de foco. Va como token y no como `rgb()` en la regla porque
+     el azul de acento no es el mismo en claro (`#0071e3`) que en oscuro
+     (`#0a84ff`): un literal se veía bien en un tema y cortado en el otro. */
+  --sys-focus-ring: rgb(0 113 227 / 0.28);
 
   /* Alias semánticos para que las plantillas de Yappy no dependan del tema */
-  --bg: var(--bb-surface);
-  --panel: var(--bb-bg);
-  --border: var(--bb-border);
-  --text: var(--bb-text);
-  --muted: var(--bb-text-secondary);
-  --accent: var(--bb-blue);
-  --accent-hover: var(--bb-blue-hover);
-  --accent-on: var(--bb-blue-on);
-  --accent-2: var(--bb-warning);
-  --ok: var(--bb-success-text);
-  --ok-bg: var(--bb-success-bg);
-  --warn: var(--bb-warning-text);
-  --warn-bg: var(--bb-warning-bg);
-  --err: var(--bb-danger-text);
-  --err-bg: var(--bb-danger-bg);
-  --code-bg: var(--bb-code-bg);
+  --bg: var(--sys-surface);
+  --panel: var(--sys-bg);
+  --border: var(--sys-border);
+  --text: var(--sys-text);
+  --muted: var(--sys-text-secondary);
+  --accent: var(--sys-blue);
+  --accent-hover: var(--sys-blue-hover);
+  --accent-on: var(--sys-blue-on);
+  --accent-2: var(--sys-warning);
+  --ok: var(--sys-success-text);
+  --ok-bg: var(--sys-success-bg);
+  --warn: var(--sys-warning-text);
+  --warn-bg: var(--sys-warning-bg);
+  --err: var(--sys-danger-text);
+  --err-bg: var(--sys-danger-bg);
+  --code-bg: var(--sys-code-bg);
 
   /* Angular Material también sigue el color-scheme seleccionado. */
-  --mat-sys-primary: var(--bb-blue);
-  --mat-sys-on-primary: var(--bb-blue-on);
-  --mat-sys-primary-container: var(--bb-selected-bg);
-  --mat-sys-on-primary-container: var(--bb-text);
-  --mat-sys-tertiary: var(--bb-warning);
-  --mat-sys-on-tertiary: var(--bb-warning-text);
-  --mat-sys-error: var(--bb-danger);
+  --mat-sys-primary: var(--sys-blue);
+  --mat-sys-on-primary: var(--sys-blue-on);
+  --mat-sys-primary-container: var(--sys-selected-bg);
+  --mat-sys-on-primary-container: var(--sys-text);
+  --mat-sys-tertiary: var(--sys-warning);
+  --mat-sys-on-tertiary: var(--sys-warning-text);
+  --mat-sys-error: var(--sys-danger);
   --mat-sys-on-error: #ffffff;
-  --mat-sys-background: var(--bb-surface);
-  --mat-sys-on-background: var(--bb-text);
-  --mat-sys-surface: var(--bb-bg);
-  --mat-sys-surface-container-low: var(--bb-hover-bg);
-  --mat-sys-surface-container: var(--bb-surface);
+  --mat-sys-background: var(--sys-surface);
+  --mat-sys-on-background: var(--sys-text);
+  --mat-sys-surface: var(--sys-bg);
+  --mat-sys-surface-container-low: var(--sys-hover-bg);
+  --mat-sys-surface-container: var(--sys-surface);
   --mat-sys-surface-container-high: #ebecf0;
-  --mat-sys-surface-container-highest: var(--bb-border);
-  --mat-sys-on-surface: var(--bb-text);
-  --mat-sys-on-surface-variant: var(--bb-text-secondary);
-  --mat-sys-outline: #a5adba;
-  --mat-sys-outline-variant: var(--bb-border);
-  --mat-sys-on-primary-fixed: var(--bb-blue);
-  --mat-sys-on-tertiary-fixed: var(--bb-warning-text);
+  --mat-sys-surface-container-highest: var(--sys-border);
+  --mat-sys-on-surface: var(--sys-text);
+  --mat-sys-on-surface-variant: var(--sys-text-secondary);
+  --mat-sys-outline: #a1a1a6;
+  --mat-sys-outline-variant: var(--sys-border);
+  --mat-sys-on-primary-fixed: var(--sys-blue);
+  --mat-sys-on-tertiary-fixed: var(--sys-warning-text);
 }
 
 html[data-theme='light'] {
@@ -138,40 +179,55 @@ html[data-theme='light'] {
 html[data-theme='dark'] {
   color-scheme: dark;
 
-  --bb-blue: #579dff;
-  --bb-blue-hover: #85b8ff;
-  --bb-blue-on: #102a43;
-  --bb-bg: #22272b;
-  --bb-surface: #1d2125;
-  --bb-border: #454f59;
-  --bb-text: #dee4ea;
-  --bb-text-secondary: #9fadbc;
-  --bb-success: #4bce97;
-  --bb-success-text: #4bce97;
-  --bb-success-bg: #164b35;
-  --bb-success-border: #216e4e;
-  --bb-warning: #f5cd47;
-  --bb-warning-text: #f5cd47;
-  --bb-warning-bg: #332e1b;
-  --bb-warning-border: #7f5f01;
-  --bb-danger: #f87168;
-  --bb-danger-text: #f87168;
-  --bb-danger-bg: #42221f;
-  --bb-danger-border: #ae2e24;
-  --bb-code-bg: #161a1d;
-  --bb-hover-bg: #252b31;
-  --bb-selected-bg: #1c2a3a;
-  --bb-elevated: #2c333a;
+  --sys-blue: #0a84ff;
+  --sys-blue-hover: #409cff;
+  --sys-blue-on: #ffffff;
+  /* Negro de sistema para el fondo y gris elevado para las superficies: es la
+     inversión de roles del modo oscuro de Apple. El panel claro sobre fondo
+     oscuro también invierte — `--panel` pasa a ser el gris elevado, no el
+     blanco. */
+  --sys-bg: #1c1c1e;
+  --sys-surface: #000000;
+  --sys-border: #38383a;
+  --sys-text: #f5f5f7;
+  --sys-text-secondary: #a1a1a6;
+  --sys-success: #30d158;
+  --sys-success-text: #30d158;
+  --sys-success-bg: #12351f;
+  --sys-success-border: #1d6b34;
+  --sys-warning: #ff9f0a;
+  --sys-warning-text: #ff9f0a;
+  --sys-warning-bg: #3a2c0d;
+  --sys-warning-border: #7a5a10;
+  --sys-danger: #ff453a;
+  --sys-danger-text: #ff6961;
+  --sys-danger-bg: #3d1614;
+  --sys-danger-border: #8c2820;
+  --sys-code-bg: #1c1c1e;
+  --sys-hover-bg: #2c2c2e;
+  --sys-selected-bg: #102a43;
+  --sys-elevated: #2c2c2e;
 
-  --mat-sys-primary-container: #0c66e4;
+  /* Sobre negro, una sombra negra no separa nada: se come el borde y el panel
+     se pega al fondo. Por eso el modo oscuro de Apple separa por luminosidad de
+     superficie, no por sombra, y la sombra queda como un refuerzo flojo. */
+  --sys-shadow-sm: 0 0.0625rem 0.125rem rgb(0 0 0 / 0.4);
+  --sys-shadow-md: 0 0.25rem 0.75rem rgb(0 0 0 / 0.5);
+  --sys-shadow-lg: 0 0.75rem 2rem rgb(0 0 0 / 0.6);
+
+  /* El halo del foco necesita más opacidad sobre negro: a 0.28 el azul se
+     confundía con el borde y el anillo desaparecía. */
+  --sys-focus-ring: rgb(10 132 255 / 0.45);
+
+  --mat-sys-primary-container: #0a84ff;
   --mat-sys-on-primary-container: #ffffff;
-  --mat-sys-on-tertiary: #1d2125;
-  --mat-sys-on-error: #1d2125;
-  --mat-sys-surface-container-high: #2c333a;
-  --mat-sys-surface-container-highest: #38414a;
-  --mat-sys-outline: #454f59;
-  --mat-sys-on-primary-fixed: #579dff;
-  --mat-sys-on-tertiary-fixed: #f5cd47;
+  --mat-sys-on-tertiary: #000000;
+  --mat-sys-on-error: #000000;
+  --mat-sys-surface-container-high: #2c2c2e;
+  --mat-sys-surface-container-highest: #3a3a3c;
+  --mat-sys-outline: #48484a;
+  --mat-sys-on-primary-fixed: #0a84ff;
+  --mat-sys-on-tertiary-fixed: #ff9f0a;
 }
 
 * {
@@ -185,14 +241,16 @@ body {
 
 body {
   margin: 0;
-  font-family: var(--bb-sans);
+  font-family: var(--sys-sans);
   background: var(--bg);
   color: var(--text);
   font-size: var(--text-sm);
-  line-height: 1.45;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   transition:
-    background-color 0.16s ease,
-    color 0.16s ease;
+    background-color var(--sys-dur) var(--sys-ease),
+    color var(--sys-dur) var(--sys-ease);
 }
 
 // ============================================================
@@ -217,31 +275,51 @@ button.primary {
   background: var(--accent);
   border: 0.0625rem solid var(--accent);
   color: var(--accent-on);
-  border-radius: var(--bb-radius-md);
-  min-height: var(--bb-control-h);
-  padding: 0 var(--bb-control-pad-x);
-  font-weight: 700;
+  border-radius: var(--sys-radius-md);
+  min-height: var(--sys-control-h);
+  padding: 0 var(--sys-control-pad-x);
+  /* 600 y no 700: el peso de un botón de Apple es semibold. A 700 la etiqueta
+     grita y compite con el título del panel que está arriba. */
+  font-weight: 600;
   font-size: var(--text-sm);
   line-height: 1.2;
   text-decoration: none;
+  box-shadow: var(--sys-shadow-sm);
   transition:
-    background-color 0.12s ease,
-    border-color 0.12s ease;
+    background-color var(--sys-dur-fast) var(--sys-ease),
+    border-color var(--sys-dur-fast) var(--sys-ease),
+    box-shadow var(--sys-dur-fast) var(--sys-ease),
+    transform var(--sys-dur-fast) var(--sys-ease);
 
   &:hover {
     text-decoration: none;
     background: var(--accent-hover);
     border-color: var(--accent-hover);
+    box-shadow: var(--sys-shadow-md);
+  }
+
+  /* El feedback táctil de Apple no es un cambio de color sino una compresión
+     breve. Sin esto, apretar un botón no produce ninguna señal hasta que la
+     acción completa, que en una migración puede tardar segundos. */
+  &:active:not(:disabled) {
+    transform: scale(0.98);
+    box-shadow: none;
   }
 }
 
+/* Los títulos de Apple son grandes y con tracking apretado: la jerarquía se
+   construye con el tamaño del título, no con el color del texto. */
 h1 {
-  font-size: 1.25rem;
+  font-size: 1.75rem;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
   margin-bottom: 0.25rem;
 }
 
 h2 {
-  font-size: 1rem;
+  font-size: 1.125rem;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
   margin-bottom: 0.75rem;
 }
 
@@ -261,7 +339,7 @@ h2 {
    nadie escribiera un `.muted` más abajo y los errores volvían a gris. */
 .muted.hint-error {
   color: var(--err);
-  border-left: 0.1875rem solid var(--bb-danger-border);
+  border-left: 0.1875rem solid var(--sys-danger-border);
   padding-left: 0.5rem;
 }
 
@@ -305,7 +383,11 @@ h2 {
   position: fixed;
   inset: 0;
   z-index: 90;
-  background: rgb(0 0 0 / 0.5);
+  background: rgb(0 0 0 / 0.32);
+  /* El desenfoque del fondo es lo que hace que un modal se lea como una capa
+     por encima de la app en lugar de como una caja flotando sobre ella. */
+  backdrop-filter: blur(0.5rem) saturate(180%);
+  animation: sys-fade-in var(--sys-dur) var(--sys-ease);
 }
 
 .notice-modal {
@@ -320,9 +402,35 @@ h2 {
   flex-direction: column;
   background: var(--panel);
   border: 0.0625rem solid var(--border);
-  border-radius: var(--bb-radius-md);
-  box-shadow: 0 1.5rem 3rem rgb(0 0 0 / 0.35);
+  border-radius: var(--sys-radius-lg);
+  box-shadow: var(--sys-shadow-lg);
   overflow: hidden;
+  animation: sys-modal-in var(--sys-dur) var(--sys-ease);
+}
+
+/* El modal entra desde una escala un poco menor y opacity 0. Es el gesto de
+   "presentación" que usan las hojas de iOS y macOS: el contenido aparece como
+   algo que se acerca, no como algo que aparece de golpe. */
+@keyframes sys-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes sys-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .notice-modal__head {
@@ -476,12 +584,17 @@ h2 {
   margin: 0 0 0.75rem;
 }
 
+/* El panel es la superficie elevada base de la app: radio grande, aire
+   adentro y una sombra de nivel bajo. Antes era un borde de 1px sobre el mismo
+   tono casi neutro, y con dos paneles juntos el límite entre ellos y el fondo
+   se perdía. */
 .panel {
   background: var(--panel);
   border: 0.0625rem solid var(--border);
-  border-radius: var(--bb-border-radius);
-  padding: 1.125rem;
-  margin-top: 1rem;
+  border-radius: var(--sys-radius-lg);
+  padding: 1.5rem;
+  margin-top: 1.25rem;
+  box-shadow: var(--sys-shadow-sm);
 }
 
 .form-grid {
@@ -541,20 +654,20 @@ h2 {
 
   > .env-item:first-child,
   > .chip:first-child {
-    border-top-left-radius: var(--bb-border-radius);
-    border-bottom-left-radius: var(--bb-border-radius);
+    border-top-left-radius: var(--sys-radius-sm);
+    border-bottom-left-radius: var(--sys-radius-sm);
   }
 
   > .env-item:last-child,
   > .chip:last-child {
-    border-top-right-radius: var(--bb-border-radius);
-    border-bottom-right-radius: var(--bb-border-radius);
+    border-top-right-radius: var(--sys-radius-sm);
+    border-bottom-right-radius: var(--sys-radius-sm);
   }
 }
 
 .env-list .env-item {
   width: auto;
-  min-height: var(--bb-control-h);
+  min-height: var(--sys-control-h);
   padding: 0 0.875rem;
   border-radius: 0;
   align-items: center;
@@ -589,9 +702,9 @@ h2 {
 }
 
 .env-list .env-item.selected {
-  background: var(--bb-blue);
-  border-color: var(--bb-blue);
-  color: var(--bb-blue-on);
+  background: var(--sys-blue);
+  border-color: var(--sys-blue);
+  color: var(--sys-blue-on);
 }
 
 /* El grupo de servicios usa las mismas píldoras que los ambientes, y por lo
@@ -600,7 +713,7 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: 0.3125rem;
-  min-height: var(--bb-control-h);
+  min-height: var(--sys-control-h);
   padding: 0 0.875rem;
   color: var(--text);
   background: var(--panel);
@@ -610,14 +723,14 @@ h2 {
   font-weight: 600;
 
   &:hover:not(:disabled) {
-    border-color: var(--bb-blue-hover);
-    background: var(--bb-hover-bg);
+    border-color: var(--sys-blue-hover);
+    background: var(--sys-hover-bg);
   }
 
   &.selected {
-    background: var(--bb-blue);
-    border-color: var(--bb-blue);
-    color: var(--bb-blue-on);
+    background: var(--sys-blue);
+    border-color: var(--sys-blue);
+    color: var(--sys-blue-on);
   }
 }
 
@@ -666,7 +779,7 @@ h2 {
   flex: 1;
   min-height: 2.4rem;
   margin-bottom: 0;
-  font-family: var(--bb-mono);
+  font-family: var(--sys-mono);
   font-size: var(--text-sm);
   resize: vertical;
 }
@@ -691,17 +804,17 @@ h2 {
   color: var(--text);
   background: var(--panel);
   border: 0.0625rem solid var(--border);
-  border-radius: var(--bb-radius-md);
+  border-radius: var(--sys-radius-md);
 
   &:hover:not(:disabled) {
-    background: var(--bb-hover-bg);
-    border-color: var(--bb-blue-hover);
+    background: var(--sys-hover-bg);
+    border-color: var(--sys-blue-hover);
   }
 
   &.selected {
-    color: var(--bb-blue);
-    background: var(--bb-selected-bg);
-    border-color: var(--bb-blue);
+    color: var(--sys-blue);
+    background: var(--sys-selected-bg);
+    border-color: var(--sys-blue);
   }
 
   /* Al llegar al límite los no seleccionados se apagan, pero los que ya están
@@ -719,16 +832,16 @@ h2 {
   width: 1.25rem;
   height: 1.25rem;
   border: 0.0625rem solid var(--border);
-  border-radius: var(--bb-border-radius);
-  background: var(--bb-elevated);
-  color: var(--bb-blue);
+  border-radius: var(--sys-radius-sm);
+  background: var(--sys-elevated);
+  color: var(--sys-blue);
   font-size: 0.8125rem;
   font-weight: 700;
   line-height: 1;
 }
 
 .env-item.selected .env-check {
-  border-color: var(--bb-blue);
+  border-color: var(--sys-blue);
 }
 
 .env-text {
@@ -750,7 +863,7 @@ h2 {
 }
 
 .env-item.selected .env-meta {
-  color: var(--bb-blue-hover);
+  color: var(--sys-blue-hover);
 }
 
 .env-error {
@@ -761,9 +874,9 @@ h2 {
 .env-role {
   flex: none;
   padding: 0.0625rem 0.4375rem;
-  border: 0.0625rem solid var(--bb-blue);
-  border-radius: var(--bb-radius-pill);
-  color: var(--bb-blue);
+  border: 0.0625rem solid var(--sys-blue);
+  border-radius: var(--sys-radius-pill);
+  color: var(--sys-blue);
   font-size: var(--text-xxs);
   font-weight: 700;
   text-transform: uppercase;
@@ -800,7 +913,7 @@ h2 {
     align-items: center;
     justify-content: center;
     position: relative;
-    min-height: var(--bb-control-h);
+    min-height: var(--sys-control-h);
     margin-bottom: 0;
     padding: 0 1rem;
     font-size: var(--text-sm);
@@ -818,23 +931,34 @@ h2 {
   }
 
   label:first-of-type {
-    border-top-left-radius: var(--bb-border-radius);
-    border-bottom-left-radius: var(--bb-border-radius);
+    border-top-left-radius: var(--sys-radius-sm);
+    border-bottom-left-radius: var(--sys-radius-sm);
   }
 
   label:last-of-type {
-    border-top-right-radius: var(--bb-border-radius);
-    border-bottom-right-radius: var(--bb-border-radius);
+    border-top-right-radius: var(--sys-radius-sm);
+    border-bottom-right-radius: var(--sys-radius-sm);
+  }
+
+  label {
+    transition:
+      background-color var(--sys-dur-fast) var(--sys-ease),
+      border-color var(--sys-dur-fast) var(--sys-ease),
+      color var(--sys-dur-fast) var(--sys-ease);
   }
 
   label:hover:has(input:checked:not(:disabled)) {
-    border-color: var(--bb-blue-hover);
+    border-color: var(--sys-blue-hover);
   }
 
+  /* El segmento activo de Apple no es sólo un relleno de color: además gana
+     peso tipográfico. En 600 y 600 no se distingue cuál está elegido, y en
+     estas barras el activo es la única señal de qué modo corre una migración. */
   label:has(input:checked) {
-    background: var(--bb-blue);
-    border-color: var(--bb-blue);
-    color: var(--bb-blue-on);
+    background: var(--sys-blue);
+    border-color: var(--sys-blue);
+    color: var(--sys-blue-on);
+    font-weight: 700;
   }
 
   /* Fallback para las páginas que deshabilitan un radio sin poner opacidad
@@ -847,7 +971,7 @@ h2 {
   }
 
   label:has(input:focus-visible) {
-    outline: 0.125rem solid var(--bb-blue);
+    outline: 0.125rem solid var(--sys-blue);
     outline-offset: 0.125rem;
     z-index: 1;
   }
@@ -885,17 +1009,21 @@ label.chk {
   border: 0.0625rem solid var(--accent);
 }
 
+/* El bloque de código usa `--sys-mono` y no una lista propia. La lista anterior
+   arrancaba en `'Cascadia Code'`, que sólo está en Windows: en una Mac caía
+   directo a Consolas y el bloque se veía con otra tipografía según el SO.
+   `ui-monospace` resuelve a la monoespaciada del sistema en ambos. */
 pre {
   background: var(--code-bg);
   border: 0.0625rem solid var(--border);
-  border-radius: 0.5rem;
-  padding: 0.875rem;
-  font-size: 0.75rem;
-  line-height: 1.5;
+  border-radius: var(--sys-radius-md);
+  padding: 1rem;
+  font-size: var(--text-xs);
+  line-height: 1.6;
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: 'Cascadia Code', Consolas, monospace;
+  font-family: var(--sys-mono);
 
   &.empty {
     color: var(--muted);
@@ -907,7 +1035,7 @@ pre {
   border: 0.0625rem solid var(--err);
   color: var(--err);
   background: var(--err-bg);
-  border-radius: var(--bb-border-radius);
+  border-radius: var(--sys-radius-sm);
   padding: 0.75rem 0.875rem;
   margin-top: 0.875rem;
   font-size: 0.8125rem;
@@ -918,7 +1046,7 @@ pre {
   border: 0.0625rem solid var(--ok);
   color: var(--ok);
   background: var(--ok-bg);
-  border-radius: var(--bb-border-radius);
+  border-radius: var(--sys-radius-sm);
   padding: 0.75rem 0.875rem;
   margin-top: 0.875rem;
   font-size: 0.8125rem;
@@ -927,17 +1055,24 @@ pre {
 .card {
   background: var(--panel);
   border: 0.0625rem solid var(--border);
-  border-radius: var(--bb-radius-md);
-  padding: 1.125rem;
+  border-radius: var(--sys-radius-lg);
+  padding: 1.5rem;
   display: block;
   color: var(--text);
+  box-shadow: var(--sys-shadow-sm);
   transition:
-    border-color 0.12s ease,
-    background-color 0.12s ease;
+    border-color var(--sys-dur-fast) var(--sys-ease),
+    background-color var(--sys-dur-fast) var(--sys-ease),
+    box-shadow var(--sys-dur-fast) var(--sys-ease),
+    transform var(--sys-dur-fast) var(--sys-ease);
 
+  /* La tarjeta se levanta al pasar por encima, no sólo cambia de color: es la
+     señal de que es un destino y de que el click va a pasar algo. */
   &:hover {
     border-color: var(--accent);
-    background: var(--bb-hover-bg);
+    background: var(--sys-hover-bg);
+    box-shadow: var(--sys-shadow-md);
+    transform: translateY(-0.0625rem);
     text-decoration: none;
   }
 
@@ -947,7 +1082,7 @@ pre {
 
   p {
     color: var(--muted);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     margin-top: 0.375rem;
     line-height: 1.5;
   }
@@ -1000,17 +1135,20 @@ input[type='text'],
 input:not([type]),
 textarea {
   width: 100%;
-  background: var(--bb-elevated);
+  background: var(--sys-elevated);
   color: var(--text);
   border: 0.0625rem solid var(--border);
-  border-radius: var(--bb-radius-md);
-  padding: 0.5rem 0.625rem;
-  font-size: 0.875rem;
+  border-radius: var(--sys-radius-md);
+  padding: 0.625rem 0.75rem;
+  font-size: var(--text-md);
+  transition:
+    border-color var(--sys-dur-fast) var(--sys-ease),
+    box-shadow var(--sys-dur-fast) var(--sys-ease);
 }
 
 textarea {
-  font-family: 'Cascadia Code', Consolas, monospace;
-  font-size: 0.8125rem;
+  font-family: var(--sys-mono);
+  font-size: var(--text-sm);
   min-height: 13.75rem;
   resize: vertical;
   line-height: 1.5;
@@ -1031,8 +1169,8 @@ textarea[appAutoGrow] {
   width: 100%;
   min-height: 2.125rem;
   max-height: 13.75rem;
-  font-family: 'Cascadia Code', Consolas, monospace;
-  font-size: 0.75rem;
+  font-family: var(--sys-mono);
+  font-size: var(--text-xs);
   line-height: 1.4;
   white-space: pre;
   overflow: auto;
@@ -1040,13 +1178,18 @@ textarea[appAutoGrow] {
   resize: vertical;
 }
 
+/* El foco de Apple no es un `outline` genérico de 2px alrededor del control: es
+   un anillo del color de acento con un halo del mismo color muy tenue, para que
+   se lea tanto sobre fondo claro como oscuro. El offset se mantiene en 2px
+   porque los controles van pegados entre sí y sin aire para el anillo. */
 select:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 button:focus-visible,
 a:focus-visible {
-  outline: 0.125rem solid var(--accent);
-  outline-offset: 0.125rem;
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 0.1875rem var(--sys-focus-ring);
 }
 
 .checkbox-row {
@@ -1065,31 +1208,37 @@ a:focus-visible {
 button {
   background: var(--accent);
   color: var(--accent-on);
-  font-weight: 700;
+  font-weight: 600;
   border: 0.0625rem solid var(--accent);
-  border-radius: var(--bb-radius-md);
-  min-height: var(--bb-control-h);
-  padding: 0 var(--bb-control-pad-x);
+  border-radius: var(--sys-radius-md);
+  min-height: var(--sys-control-h);
+  padding: 0 var(--sys-control-pad-x);
   font-size: var(--text-sm);
   line-height: 1.2;
   cursor: pointer;
   transition:
-    background-color 0.12s ease,
-    border-color 0.12s ease;
+    background-color var(--sys-dur-fast) var(--sys-ease),
+    border-color var(--sys-dur-fast) var(--sys-ease),
+    box-shadow var(--sys-dur-fast) var(--sys-ease),
+    transform var(--sys-dur-fast) var(--sys-ease);
 
   &:hover:not(:disabled) {
     background: var(--accent-hover);
     border-color: var(--accent-hover);
   }
 
+  &:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
   &.secondary {
-    background: var(--bb-elevated);
+    background: var(--sys-elevated);
     color: var(--accent);
     border: 0.0625rem solid var(--accent);
     box-shadow: none;
 
     &:hover:not(:disabled) {
-      background: var(--bb-selected-bg);
+      background: var(--sys-selected-bg);
     }
   }
 
@@ -1104,14 +1253,24 @@ button {
    diferenciar la acción principal de las dos que la acompañan. Sale después, así
    que le gana al `button` base en orden de cascada. */
 .secondary {
-  background: var(--bb-elevated);
+  background: var(--sys-elevated);
   color: var(--accent);
   border: 0.0625rem solid var(--accent);
   box-shadow: none;
 
   &:hover:not(:disabled) {
-    background: var(--bb-selected-bg);
+    background: var(--sys-selected-bg);
     border-color: var(--accent);
+  }
+
+  /* El secundario tiene borde de acento, así que el anillo de acento se
+     fundiría con el del foco y no se distinguiría dónde está el control. El
+     `outline` vuelve para estos: acá el borde ya marca el límite y el anillo
+     sólo tiene que marcar el foco. */
+  &:focus-visible {
+    outline: 0.125rem solid var(--accent);
+    outline-offset: 0.125rem;
+    box-shadow: none;
   }
 }
 
@@ -1121,7 +1280,7 @@ button {
 .badge {
   display: inline-block;
   padding: 0.125rem 0.5rem;
-  border-radius: var(--bb-border-radius);
+  border-radius: var(--sys-radius-sm);
   font-size: 0.75rem;
   font-weight: 700;
   border: 0.0625rem solid;
@@ -1129,34 +1288,34 @@ button {
   &.equal,
   &.none {
     color: var(--ok);
-    background: var(--bb-success-bg);
-    border-color: var(--bb-success-border);
+    background: var(--sys-success-bg);
+    border-color: var(--sys-success-border);
   }
 
   &.different,
   &.error {
     color: var(--err);
     background: var(--err-bg);
-    border-color: var(--bb-danger-border);
+    border-color: var(--sys-danger-border);
   }
 
   &.missing_in_a,
   &.secret {
     color: var(--warn);
     background: var(--warn-bg);
-    border-color: var(--bb-warning-border);
+    border-color: var(--sys-warning-border);
   }
 
   &.missing_in_b {
     color: var(--muted);
-    background: var(--bb-surface);
+    background: var(--sys-surface);
     border-color: var(--border);
   }
 
   &.ok {
     color: var(--ok);
-    background: var(--bb-success-bg);
-    border-color: var(--bb-success-border);
+    background: var(--sys-success-bg);
+    border-color: var(--sys-success-border);
   }
 }
 
@@ -1180,7 +1339,7 @@ td {
 }
 
 th {
-  background: var(--bb-surface);
+  background: var(--sys-surface);
   color: var(--muted);
   font-weight: 700;
   font-size: 0.6875rem;
@@ -1189,7 +1348,7 @@ th {
 }
 
 tbody tr:hover {
-  background: var(--bb-hover-bg);
+  background: var(--sys-hover-bg);
 }
 
 td .diff-link {
@@ -1304,8 +1463,8 @@ td .diff-link {
   display: inline-flex;
   align-items: center;
   padding: 0.3rem 0.65rem;
-  border-radius: var(--bb-radius-pill);
-  background: var(--bb-selected-bg);
+  border-radius: var(--sys-radius-pill);
+  background: var(--sys-selected-bg);
   border: 0.0625rem solid var(--border);
   color: var(--text);
   font-weight: 600;
@@ -1445,11 +1604,15 @@ td .diff-link {
   flex-wrap: wrap;
 }
 
+/* Los botones de acción de una sesión son más chicos que el resto —viven en
+   una barra con cuatro— así que bajan a 2rem en vez de seguir el alto de control
+   general. El radio sí sigue la escala: un botón chico con radio grande de
+   píldora se ve deformado. */
 .session-actions > a,
 .session-actions > button {
   font-size: var(--text-xs);
   padding: 0.45rem 0.7rem;
-  border-radius: 0.4375rem;
+  border-radius: var(--sys-radius-sm);
   min-height: 2rem;
 }
 
@@ -1477,10 +1640,10 @@ td .diff-link {
 .stmt-preview {
   margin: 0;
   padding: 0.5rem 0.625rem;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   background: var(--code-bg);
   border: 0.0625rem solid var(--border);
-  border-radius: 0.375rem;
+  border-radius: var(--sys-radius-sm);
   overflow-x: auto;
 }
 
@@ -1566,7 +1729,7 @@ td .diff-link {
   overflow: auto;
   max-height: 32rem;
   border: 0.0625rem solid var(--border);
-  border-radius: 0.375rem;
+  border-radius: var(--sys-radius-md);
 }
 
 .data-table {
@@ -1613,12 +1776,34 @@ details {
   }
 }
 
+/* Las animaciones nuevas —el modal que escala, el fade del backdrop, la
+   compresión de los botones y el levantamiento de las tarjetas— tienen que caer
+   acá también, no sólo las transiciones. Una animación de entrada es la que más
+   molesta con `prefers-reduced-motion`, porque no se puede saltar con el scroll
+   ni esquivar mirándola: aparece sin que se pueda evitar. */
 @media (prefers-reduced-motion: reduce) {
   body,
   button,
   .primary,
-  .card {
+  .card,
+  .secondary,
+  select,
+  input,
+  textarea,
+  .radio-row label,
+  .chip {
     transition-duration: 0.01ms;
+  }
+
+  .notice-modal,
+  .notice-modal__backdrop {
+    animation: none;
+  }
+
+  .card:hover,
+  button:active:not(:disabled),
+  .primary:active:not(:disabled) {
+    transform: none;
   }
 
   .spinner {

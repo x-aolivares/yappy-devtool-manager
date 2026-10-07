@@ -66,7 +66,7 @@ export const PARAM_SERVICES: readonly ServiceOption[] = [
     </div>
 
     @if (hint(); as text) {
-      <p class="muted" style="margin-top: 0.25rem; font-size: 0.75rem;">{{ text }}</p>
+      <p class="muted" style="margin-top: 0.25rem; font-size: var(--text-xs);">{{ text }}</p>
     }
   `,
 })

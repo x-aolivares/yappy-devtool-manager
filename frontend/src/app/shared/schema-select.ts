@@ -23,15 +23,15 @@ import { toApiError } from '../core/services/api-error';
       }
     </select>
     @if (loading()) {
-      <p class="muted" style="margin-top: 0.25rem; font-size: 0.75rem;">
+      <p class="muted" style="margin-top: 0.25rem; font-size: var(--text-xs);">
         <span class="spinner"></span> Cargando esquemas de {{ env() }}...
       </p>
     } @else if (error()) {
-      <p class="muted hint-error" style="margin-top: 0.25rem; font-size: 0.75rem;">
+      <p class="muted hint-error" style="margin-top: 0.25rem; font-size: var(--text-xs);">
         No se pudieron leer los esquemas de {{ env() }}: {{ error() }}
       </p>
     } @else if (!env()) {
-      <p class="muted" style="margin-top: 0.25rem; font-size: 0.75rem;">
+      <p class="muted" style="margin-top: 0.25rem; font-size: var(--text-xs);">
         Elegí un ambiente para ver sus esquemas.
       </p>
     }

@@ -30,7 +30,7 @@ import { RouterLink } from '@angular/router';
     }
 
     .empty-state-card__message {
-      font-size: 0.96rem;
+      font-size: var(--text-md);
     }
 
     .empty-state-card__action {

@@ -5,7 +5,7 @@
 
 .shell {
   display: grid;
-  grid-template-columns: 15rem minmax(0, 1fr);
+  grid-template-columns: 16rem minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -15,28 +15,38 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  padding: 1rem 0.75rem;
-  background: var(--bb-bg);
+  padding: 1.25rem 0.75rem;
+  background: var(--sys-bg);
   border-right: 0.0625rem solid var(--border);
   position: sticky;
   top: 0;
   height: 100vh;
   overflow-y: auto;
+  transition: background-color var(--sys-dur) var(--sys-ease);
 }
 
+/* El wordmark conserva Valdema: es la única fuente de marca que trae la app y
+   la única pieza que no es "de sistema". Sacarla no sumanada al look Apple y
+   deja el producto sin nombre propio en pantalla. */
 .sidebar .brand {
-  font-family: 'ValdemaMedium', 'Segoe UI', system-ui, sans-serif;
+  font-family:
+    'ValdemaMedium',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    system-ui,
+    sans-serif;
   font-weight: 400;
-  font-size: 1.125rem;
-  color: var(--bb-blue);
+  font-size: 1.25rem;
+  color: var(--sys-blue);
   letter-spacing: 0.015625rem;
   padding: 0 0.5rem;
 }
 
 .sidebar .brand span {
-  color: var(--bb-text-secondary);
-  font-family: var(--bb-sans);
-  font-size: 0.8125rem;
+  color: var(--sys-text-secondary);
+  font-family: var(--sys-sans);
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
@@ -52,20 +62,22 @@
 .nav .home {
   display: block;
   padding: 0.4375rem 0.5rem;
-  border-radius: var(--bb-radius-md);
+  border-radius: var(--sys-radius-sm);
   border-bottom: 0.0625rem solid var(--border);
-  border-radius: 0;
-  color: var(--bb-text);
+  color: var(--sys-text);
   font-size: var(--text-sm);
   font-weight: 600;
+  transition:
+    background-color var(--sys-dur-fast) var(--sys-ease),
+    color var(--sys-dur-fast) var(--sys-ease);
 
   &:hover {
-    background: var(--bb-surface);
+    background: var(--sys-surface);
     text-decoration: none;
   }
 
   &.active {
-    color: var(--bb-blue);
+    color: var(--sys-blue);
   }
 }
 
@@ -76,7 +88,7 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--bb-text-secondary);
+  color: var(--sys-text-secondary);
 }
 
 .section ul {
@@ -88,24 +100,30 @@
   gap: 0.0625rem;
 }
 
+/* Los ítems del menú llevan el mismo tratamiento que el resto de la app:
+   transición de color de fondo, radio grande del lado derecho y el activo
+   marcado con el relleno tenue más el filo de acento a la izquierda. */
 .section a {
   display: block;
   padding: 0.375rem 0.5rem 0.375rem 0.6875rem;
   border-left: 0.125rem solid transparent;
-  border-radius: 0 var(--bb-radius-md) var(--bb-radius-md) 0;
-  color: var(--bb-text);
+  border-radius: 0 var(--sys-radius-sm) var(--sys-radius-sm) 0;
+  color: var(--sys-text);
   font-size: var(--text-sm);
   text-decoration: none;
+  transition:
+    background-color var(--sys-dur-fast) var(--sys-ease),
+    border-color var(--sys-dur-fast) var(--sys-ease);
 
   &:hover {
-    background: var(--bb-surface);
+    background: var(--sys-surface);
   }
 
   &.active {
-    color: var(--bb-blue);
+    color: var(--sys-blue);
     font-weight: 600;
-    background: var(--bb-selected-bg);
-    border-left-color: var(--bb-blue);
+    background: var(--sys-selected-bg);
+    border-left-color: var(--sys-blue);
   }
 }
 
@@ -119,28 +137,36 @@
 
 .theme-toggle {
   flex: none;
-  background: var(--bb-elevated);
-  color: var(--bb-blue);
-  border: 0.0625rem solid var(--bb-blue);
-  border-radius: var(--bb-radius-md);
-  min-height: var(--bb-control-h);
+  background: var(--sys-elevated);
+  color: var(--sys-blue);
+  border: 0.0625rem solid var(--sys-blue);
+  border-radius: var(--sys-radius-md);
+  min-height: var(--sys-control-h);
   padding: 0 0.75rem;
   font-size: var(--text-sm);
   font-weight: 600;
 
   &:hover:not(:disabled) {
-    background: var(--bb-selected-bg);
-    border-color: var(--bb-blue-hover);
+    background: var(--sys-selected-bg);
+    border-color: var(--sys-blue-hover);
+  }
+
+  /* Es un botón con borde de acento, así que aplica la misma regla que
+     `.secondary`: el anillo de foco no puede ser del color del borde o no se
+     distingue del control. */
+  &:focus-visible {
+    outline: 0.125rem solid var(--accent);
+    outline-offset: 0.125rem;
   }
 }
 
 /* ------------------------------------------------------------------ main */
 
 main {
-  max-width: 1080px;
+  max-width: 1120px;
   width: 100%;
   margin: 0 auto;
-  padding: 1.5rem 1rem;
+  padding: 2rem 1.25rem;
 }
 
 @media (max-width: 48rem) {
