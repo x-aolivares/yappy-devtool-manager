@@ -173,7 +173,14 @@ yappy py-purge                       # Limpiar cache pip
 ```bash
 yappy web --build                    # Compilar el frontend Angular + abrir la web
 yappy web --no-browser               # Servir sin abrir el navegador
+yappy web --port 9000                # Servir en otro puerto
 ```
+
+Por defecto sirve en `http://127.0.0.1:8765`. No es 8000 a propósito: ese puerto
+es el default de vLLM, y el plugin de auto-descubrimiento de OpenCode sondea
+`http://127.0.0.1:8000/health` y `/v1/models` cada 30 segundos. Con la web en el
+8000, esos GET caían en el catch-all de la SPA, respondían 200 con el
+`index.html` y ensuciaban el access log con dos líneas cada medio minuto.
 
 La web (diff de DB, compilación entre ambientes, consultas SQL y migraciones de
 datos, diff de parámetros/secretos) se sirve desde `frontend/` (Angular). El

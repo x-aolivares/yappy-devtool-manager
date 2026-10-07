@@ -37,8 +37,13 @@ def log_config() -> dict:
     return config
 
 
-def run(host: str = "127.0.0.1", port: int = 8000, open_browser: bool = True) -> None:
-    """Start the Region Sync web UI (blocking)."""
+def run(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) -> None:
+    """Start the Region Sync web UI (blocking).
+
+    El default es 8765, no 8000: el 8000 lo reservan vLLM y los servidores
+    OpenAI-compatible, y el auto-discovery de OpenCode sondea ese puerto cada
+    30s. Ver el comentario en :func:`yappy_cli.cli.web`.
+    """
     import uvicorn
 
     from .app import app

@@ -121,7 +121,12 @@ def home():
 
 @app.command()
 def web(
-    port: int = typer.Option(8000, "--port", "-p", help="Puerto de la web"),
+    # 8765 y no 8000 a propósito: el 8000 es el default de vLLM, y OpenCode
+    # trae un plugin que sondea http://127.0.0.1:8000/health y /v1/models cada
+    # 30 segundos para auto-descubrir modelos locales. Con la web en el 8000 esos
+    # GET caían en el catch-all de la SPA, contestaban 200 con el index.html y
+    # ensuciaban el access log con dos líneas cada medio minuto.
+    port: int = typer.Option(8765, "--port", "-p", help="Puerto de la web"),
     no_browser: bool = typer.Option(
         False, "--no-browser", help="No abrir el navegador automáticamente"
     ),
