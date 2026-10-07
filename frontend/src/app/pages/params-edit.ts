@@ -4,11 +4,12 @@ import { EnvironmentService } from '../core/services/environment.service';
 import { ParamsService } from '../core/services/params.service';
 import { toApiError } from '../core/services/api-error';
 import { awsEnvironments } from '../core/format';
+import { BusyModalComponent } from '../shared/busy-modal';
 import { EnvControlsComponent } from '../shared/env-controls';
 
 @Component({
   selector: 'app-params-edit-page',
-  imports: [EnvControlsComponent],
+  imports: [BusyModalComponent, EnvControlsComponent],
   template: `
     <h1>Editar / actualizar un parámetro</h1>
     <p class="muted">
@@ -125,9 +126,7 @@ import { EnvControlsComponent } from '../shared/env-controls';
       </div>
     }
 
-    @if (busy() && loaded()) {
-      <div class="panel"><span class="spinner"></span>Guardando…</div>
-    }
+    <app-busy-modal [open]="busy() && loaded()" message="Guardando…" />
   `,
 })
 export class ParamsEditPage {

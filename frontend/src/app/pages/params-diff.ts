@@ -9,6 +9,7 @@ import { awsEnvironments, formatValue } from '../core/format';
 import { serializeMerged } from '../core/params-merge';
 import type { ChangeRow } from '../core/params-merge';
 import { ParamsDiffResponse, UpdateSessionItemRequest } from '../api-gen/models';
+import { BusyModalComponent } from '../shared/busy-modal';
 import { RegionControlsComponent } from '../shared/region-controls';
 import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
@@ -47,7 +48,14 @@ type PairKey = 'param' | 'secret';
 
 @Component({
   selector: 'app-params-diff-page',
-  imports: [RouterLink, RegionControlsComponent, StatusBadge, CopyButton, PaginationBarComponent],
+  imports: [
+    RouterLink,
+    RegionControlsComponent,
+    StatusBadge,
+    BusyModalComponent,
+    CopyButton,
+    PaginationBarComponent,
+  ],
   template: `
     <h1>Diff de Parámetros / Secretos</h1>
     <p class="muted">
@@ -393,9 +401,7 @@ type PairKey = 'param' | 'secret';
       }
     }
 
-    @if (busy() && !data()) {
-      <div class="panel"><span class="spinner"></span>{{ busyText() }}</div>
-    }
+    <app-busy-modal [open]="busy() && !data()" [message]="busyText()" />
   `,
 })
 export class ParamsDiffPage {

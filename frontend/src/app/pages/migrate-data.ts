@@ -11,6 +11,7 @@ import { toApiError } from '../core/services/api-error';
 import { StatusBadge } from '../shared/status-badge';
 import { RegionControlsComponent } from '../shared/region-controls';
 import { SchemaSelectComponent } from '../shared/schema-select';
+import { BusyModalComponent } from '../shared/busy-modal';
 import { NoticeModalComponent } from '../shared/notice-modal';
 import { PaginationBarComponent } from '../shared/pagination-bar';
 import { TableSearchComponent, searchable } from '../shared/table-search';
@@ -125,6 +126,7 @@ function lastDayOfMonth(month: string): string {
     RegionControlsComponent,
     SchemaSelectComponent,
     StatusBadge,
+    BusyModalComponent,
     NoticeModalComponent,
     PaginationBarComponent,
     TableSearchComponent,
@@ -413,9 +415,7 @@ function lastDayOfMonth(month: string): string {
       <div class="error-box">{{ error() }}</div>
     }
 
-    @if (busy()) {
-      <div class="panel"><span class="spinner"></span>{{ busyText() }}</div>
-    }
+    <app-busy-modal [open]="busy()" [message]="busyText()" />
 
     @if (result(); as r) {
       <div class="panel">

@@ -171,4 +171,52 @@ describe('ParamsReadPage', () => {
     expect(sentSessions[0].env_b).toBe('dev');
     expect(sentSessions[0].env_a).toBe('qa');
   });
+
+  it('la espera es un modal de fondo y no un panel en la página', () => {
+    // El `busy` arranca en false: si algo lo encendiera al construir, el modal
+    // taparía la pantalla entera al abrir la página.
+    const fixture = TestBed.createComponent(ParamsReadPage);
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect((fixture.componentInstance as any).busy()).toBe(false);
+    expect(el.querySelector('.busy-modal')).toBeNull();
+  });
+
+  it('abre el modal de espera mientras busca y lo cierra al terminar', async () => {
+    // El read se resuelve por promise, así que el modal está abierto entre el
+    // click y el `whenStable`: hay que mirarlo en ese medio, no sólo al final.
+    const fixture = TestBed.createComponent(ParamsReadPage);
+    const comp = fixture.componentInstance as any;
+    comp.envs.set(['dev', 'qa']);
+    comp.name.set('/prod/db/url');
+
+    comp.search();
+    fixture.detectChanges();
+    expect(comp.busy()).toBe(true);
+    expect((fixture.nativeElement as HTMLElement).querySelector('.busy-modal')).not.toBeNull();
+
+    await settle(fixture);
+    expect(comp.busy()).toBe(false);
+    expect((fixture.nativeElement as HTMLElement).querySelector('.busy-modal')).toBeNull();
+  });
+
+  it('el modal de espera no ofrece salida mientras corre', async () => {
+    const fixture = TestBed.createComponent(ParamsReadPage);
+    const comp = fixture.componentInstance as any;
+    comp.envs.set(['dev', 'qa']);
+    comp.name.set('/prod/db/url');
+    comp.search();
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    // La petición ya está hecha y el backend no la cancela: un backdrop que
+    // cerrara el modal mentiría sobre lo que está pasando.
+    expect(el.querySelector('.busy-modal button')).toBeNull();
+    expect(el.querySelector('.busy-modal__x')).toBeNull();
+    // Y el texto se anuncia por aria-live en vez de mover el foco.
+    expect(el.querySelector('.busy-modal')?.getAttribute('role')).toBe('status');
+
+    await settle(fixture);
+  });
 });

@@ -902,3 +902,48 @@ describe('SchemaSyncPage sincronizar', () => {
     expect(executeRequests).toHaveLength(0);
   });
 });
+
+
+
+describe('SchemaSyncPage — espera como modal', () => {
+  let fixture: ComponentFixture<SchemaSyncPage>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [SchemaSyncPage] }).compileComponents();
+    fixture = TestBed.createComponent(SchemaSyncPage);
+  });
+
+  const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
+
+  it('no abre el modal de espera en reposo', () => {
+    fixture.detectChanges();
+    expect(host().querySelector('.busy-modal')).toBeNull();
+  });
+
+  it('abre el modal de espera mientras la página está busy', async () => {
+    (fixture.componentInstance as unknown as { busy: { set(v: boolean): void } }).busy.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(host().querySelector('.busy-modal')).not.toBeNull();
+    expect(host().querySelector('.busy-modal__backdrop')).not.toBeNull();
+  });
+
+  it('cierra el modal de espera cuando deja de estar busy', async () => {
+    const c = fixture.componentInstance as unknown as {
+      busy: { set(v: boolean): void };
+    };
+    c.busy.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(host().querySelector('.busy-modal')).not.toBeNull();
+
+    c.busy.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(host().querySelector('.busy-modal')).toBeNull();
+  });
+});

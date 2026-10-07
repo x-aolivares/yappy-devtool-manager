@@ -4,6 +4,7 @@ import { EnvironmentService } from '../core/services/environment.service';
 import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
 import { objectLabel } from '../core/format';
+import { BusyModalComponent } from '../shared/busy-modal';
 import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
 import { EnvControlsComponent } from '../shared/env-controls';
@@ -43,6 +44,7 @@ import { AutoGrowDirective } from '../shared/auto-grow';
     RegionControlsComponent,
     SchemaSelectComponent,
     StatusBadge,
+    BusyModalComponent,
     CopyButton,
     AutoGrowDirective,
   ],
@@ -261,9 +263,7 @@ import { AutoGrowDirective } from '../shared/auto-grow';
       <div class="error-box">{{ error() }}</div>
     }
 
-    @if (busy()) {
-      <div class="panel"><span class="spinner"></span>{{ busyText() }}</div>
-    }
+    <app-busy-modal [open]="busy()" [message]="busyText()" />
 
     @if (result()) {
       <div class="panel">

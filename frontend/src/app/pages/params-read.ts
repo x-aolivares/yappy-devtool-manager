@@ -13,6 +13,7 @@ import { toApiError } from '../core/services/api-error';
 import { awsEnvironments, formatValue } from '../core/format';
 import { EnvControlsComponent, PARAM_SERVICES } from '../shared/env-controls';
 import { StatusBadge } from '../shared/status-badge';
+import { BusyModalComponent } from '../shared/busy-modal';
 
 interface EnvPanel {
   env: string;
@@ -36,7 +37,7 @@ interface EnvPanel {
  */
 @Component({
   selector: 'app-params-read-page',
-  imports: [EnvControlsComponent, StatusBadge, RouterLink],
+  imports: [EnvControlsComponent, StatusBadge, BusyModalComponent, RouterLink],
   template: `
     <h1>Leer Parámetros / Secretos</h1>
     <p class="muted">
@@ -88,16 +89,16 @@ interface EnvPanel {
       <div class="error-box">{{ error() }}</div>
     }
 
-    @if (busy()) {
-      <div class="panel"><span class="spinner"></span>Buscando…</div>
-    }
-
     @if (sessionCreated()) {
       <div class="ok-box">
         Sesión de trabajo <strong>{{ sessionCreated()!.title }}</strong> lista ·
         <a [routerLink]="['/sessions', sessionCreated()!.id]">Abrir en Sesiones →</a>
       </div>
     }
+
+    <app-busy-modal
+    [open]="busy()"
+    message="Buscando…" />
 
     @for (panel of panels(); track panel.env) {
       <div class="panel env-value-panel">

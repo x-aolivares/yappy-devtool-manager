@@ -4,6 +4,7 @@ import { EnvironmentService } from '../core/services/environment.service';
 import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
 import { EnvControlsComponent } from '../shared/env-controls';
+import { BusyModalComponent } from '../shared/busy-modal';
 import { NoticeModalComponent } from '../shared/notice-modal';
 import { PaginationBarComponent } from '../shared/pagination-bar';
 import { TableSearchComponent, searchable } from '../shared/table-search';
@@ -30,6 +31,7 @@ import { StatusBadge } from '../shared/status-badge';
   imports: [
     EnvControlsComponent,
     StatusBadge,
+    BusyModalComponent,
     NoticeModalComponent,
     PaginationBarComponent,
     TableSearchComponent,
@@ -76,9 +78,7 @@ import { StatusBadge } from '../shared/status-badge';
       </button>
     }
 
-    @if (busy()) {
-      <div class="panel"><span class="spinner"></span>{{ busyText() }}</div>
-    }
+    <app-busy-modal [open]="busy()" [message]="busyText()" />
 
     @if (result()) {
       <div class="panel">

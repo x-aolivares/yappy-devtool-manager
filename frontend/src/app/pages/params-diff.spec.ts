@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ParamsDiffPage } from './params-diff';
 import { ParamsService } from '../core/services/params.service';
@@ -111,5 +111,50 @@ describe('ParamsDiffPage pair mode', () => {
     expect(comp.mode()).toBe('pair');
     expect(el.querySelectorAll('.pair-input').length).toBe(0);
     expect(el.textContent).not.toContain('Secreto (Secrets Manager)');
+  });
+});
+
+
+
+describe('ParamsDiffPage — espera como modal', () => {
+  let fixture: ComponentFixture<ParamsDiffPage>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [ParamsDiffPage] }).compileComponents();
+    fixture = TestBed.createComponent(ParamsDiffPage);
+  });
+
+  const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
+
+  it('no abre el modal de espera en reposo', () => {
+    fixture.detectChanges();
+    expect(host().querySelector('.busy-modal')).toBeNull();
+  });
+
+  it('abre el modal de espera mientras la página está busy', async () => {
+    (fixture.componentInstance as unknown as { busy: { set(v: boolean): void } }).busy.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(host().querySelector('.busy-modal')).not.toBeNull();
+    expect(host().querySelector('.busy-modal__backdrop')).not.toBeNull();
+  });
+
+  it('cierra el modal de espera cuando deja de estar busy', async () => {
+    const c = fixture.componentInstance as unknown as {
+      busy: { set(v: boolean): void };
+    };
+    c.busy.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(host().querySelector('.busy-modal')).not.toBeNull();
+
+    c.busy.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(host().querySelector('.busy-modal')).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import { EnvironmentInfo, ExecuteSqlResponse, SchemaCompileResponse } from '../a
 import { EnvironmentService } from '../core/services/environment.service';
 import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
+import { BusyModalComponent } from '../shared/busy-modal';
 import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
 import { RegionControlsComponent } from '../shared/region-controls';
@@ -76,6 +77,7 @@ type DestinationIndex = Record<SyncObject['kind'], Set<string>>;
     RegionControlsComponent,
     SchemaSelectComponent,
     StatusBadge,
+    BusyModalComponent,
     CopyButton,
     AutoGrowDirective,
     PaginationBarComponent,
@@ -272,9 +274,7 @@ type DestinationIndex = Record<SyncObject['kind'], Set<string>>;
       <div class="error-box">{{ error() }}</div>
     }
 
-    @if (busy()) {
-      <div class="panel"><span class="spinner"></span>{{ busyText() }}</div>
-    }
+    <app-busy-modal [open]="busy()" [message]="busyText()" />
 
     @if (executed(); as ex) {
       <div class="panel">

@@ -4,6 +4,7 @@ import { EnvironmentService } from '../core/services/environment.service';
 import { ParamsService } from '../core/services/params.service';
 import { toApiError } from '../core/services/api-error';
 import { awsEnvironments } from '../core/format';
+import { BusyModalComponent } from '../shared/busy-modal';
 import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
 import { EnvControlsComponent, ServiceOption } from '../shared/env-controls';
@@ -12,7 +13,13 @@ import { paginate } from '../shared/paginate';
 
 @Component({
   selector: 'app-params-create-page',
-  imports: [StatusBadge, CopyButton, EnvControlsComponent, PaginationBarComponent],
+  imports: [
+    StatusBadge,
+    BusyModalComponent,
+    CopyButton,
+    EnvControlsComponent,
+    PaginationBarComponent,
+  ],
   template: `
     <h1>Crear / Actualizar en múltiples regiones</h1>
     <p class="muted">
@@ -131,9 +138,7 @@ import { paginate } from '../shared/paginate';
       <div class="error-box">{{ error() }}</div>
     }
 
-    @if (busy()) {
-      <div class="panel"><span class="spinner"></span>{{ dryRun() ? 'Generando comandos…' : 'Ejecutando…' }}</div>
-    }
+    <app-busy-modal [open]="busy()" [message]="dryRun() ? 'Generando comandos…' : 'Ejecutando…'" />
 
     @if (result()) {
       @if (result()!.err_count === 0) {
