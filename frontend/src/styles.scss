@@ -511,53 +511,20 @@ h2 {
   z-index: 93;
   margin: auto;
   height: fit-content;
+  /* Mitad del ancho, con tope y piso. El `inset: 0` + `margin: auto` de arriba
+     centra la caja; sin un ancho explícito el flex crece hasta los bordes y el
+     modal queda pegado a los dos lados de la pantalla, que se lee como una
+     barra de estado y no como una capa flotante.
+
+     El `max-width` evita que en una pantalla angosta el 50% quede más chico que
+     el texto; el `min-width` deja de—forzar— que sea media pantalla en un
+     teléfono. */
+  width: 50%;
+  max-width: 24rem;
+  min-width: 15rem;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 1.25rem 1.5rem;
-  background: var(--panel);
-  border: 0.0625rem solid var(--border);
-  border-radius: var(--sys-radius-lg);
-  box-shadow: var(--sys-shadow-lg);
-  animation: sys-modal-in var(--sys-dur) var(--sys-ease);
-}
-
-.busy-modal__text {
-  font-size: var(--text-md);
-  font-weight: 600;
-}
-
-/* El spinner del modal de espera se separa del texto con el `gap` del flex, así
-   que saca el `margin-right` que trae como `.spinner` suelto. */
-.busy-modal .spinner {
-  margin-right: 0;
-  width: 1.125rem;
-  height: 1.125rem;
-  border-width: 0.125rem;
-}
-
-/* Modal de espera (`shared/busy-modal.ts`).
-   El backdrop es más opaco que el del modal de aviso a propósito: en el aviso
-   se lee algo mientras el fondo sigue ahí de fondo, y acá el fondo está
-   inactivo. Difuminar y oscurecer juntos hacen que se lea "no toques" sin
-   necesitar un cartel que lo diga. */
-.busy-modal__backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 92;
-  background: rgb(0 0 0 / 0.4);
-  backdrop-filter: blur(0.375rem);
-  animation: sys-fade-in var(--sys-dur) var(--sys-ease);
-}
-
-.busy-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 93;
-  margin: auto;
-  height: fit-content;
-  display: flex;
-  align-items: center;
+  justify-content: center;
   gap: 0.75rem;
   padding: 1.25rem 1.5rem;
   background: var(--panel);
