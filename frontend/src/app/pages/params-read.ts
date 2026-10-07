@@ -1,5 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import {
   CreateMultiParamsRequest,
   EnvironmentInfo,
@@ -10,7 +9,7 @@ import { EnvironmentService } from '../core/services/environment.service';
 import { ParamsService } from '../core/services/params.service';
 import { SessionService } from '../core/services/session.service';
 import { toApiError } from '../core/services/api-error';
-import { awsEnvironments, formatValue } from '../core/format';
+import { awsEnvironments, formatValue, isJsonDocument } from '../core/format';
 import { EnvControlsComponent, PARAM_SERVICES } from '../shared/env-controls';
 import { StatusBadge } from '../shared/status-badge';
 import { BusyModalComponent } from '../shared/busy-modal';
@@ -22,6 +21,8 @@ interface EnvPanel {
   /** Contenido tal como está el cuadro de edición. */
   value: string;
   valueType: string;
+  /** El valor crudo es un documento JSON: va en `textarea`, no en `input`. */
+  isJson: boolean;
   ok: boolean;
   error: string | null;
   differs: boolean;
@@ -37,7 +38,7 @@ interface EnvPanel {
  */
 @Component({
   selector: 'app-params-read-page',
-  imports: [EnvControlsComponent, StatusBadge, BusyModalComponent, RouterLink],
+  imports: [EnvControlsComponent, StatusBadge, BusyModalComponent],
   template: `
     <h1>Leer Parámetros / Secretos</h1>
     <p class="muted">
@@ -70,16 +71,16 @@ interface EnvPanel {
 
       <div class="field">
         <label class="field-label" for="param-name">Parámetro o secreto</label>
-        <input
-          id="param-name"
-          type="text"
-          [value]="name()"
-          (input)="name.set($any($event.target).value)"
-          (keydown.enter)="search()"
-          placeholder="/prod/ecommerce/db/master_url"
-          spellcheck="false"
-        />
-        <div class="actions" style="margin-top:0.75rem; justify-content:flex-end;">
+        <div class="field-row">
+          <input
+            id="param-name"
+            type="text"
+            [value]="name()"
+            (input)="name.set($any($event.target).value)"
+            (keydown.enter)="search()"
+            placeholder="/prod/ecommerce/db/master_url"
+            spellcheck="false"
+          />
           <button type="button" [disabled]="busy()" (click)="search()">Buscar</button>
         </div>
       </div>
@@ -89,43 +90,49 @@ interface EnvPanel {
       <div class="error-box">{{ error() }}</div>
     }
 
-    @if (sessionCreated()) {
-      <div class="ok-box">
-        Sesión de trabajo <strong>{{ sessionCreated()!.title }}</strong> lista ·
-        <a [routerLink]="['/sessions', sessionCreated()!.id]">Abrir en Sesiones →</a>
-      </div>
-    }
-
-    <app-busy-modal
-    [open]="busy()"
-    message="Buscando…" />
+    <app-busy-modal [open]="busy()" message="Buscando…" />
 
     @for (panel of panels(); track panel.env) {
       <div class="panel env-value-panel">
         <div class="section-title section-title--plain">
-          <strong>{{ panel.env }}</strong>
-          @if (panel.region || panel.profile) {
-            <span class="muted">{{ panel.region || '—' }} · {{ panel.profile || '—' }}</span>
+          <strong>{{ panel.env.toUpperCase() }}</strong>
+          @if (panel.isJson) {
+            <textarea
+              class="value-box"
+              [rows]="rowsFor(panel.value)"
+              [value]="panel.value"
+              spellcheck="false"
+            ></textarea>
+          } @else {
+            <input [value]="panel.value" type="text" />
           }
           @if (panel.differs) {
             <app-badge status="different" label="Valores distintos" />
           }
-        </div>
-        <div class="value-row">
-          <textarea
-            class="value-box"
-            [class.value-error]="!panel.ok"
-            [rows]="rowsFor(panel.value)"
-            [value]="panel.value"
-            (input)="onEdit(panel, $any($event.target).value)"
-            spellcheck="false"
-          ></textarea>
+
           <button
             type="button"
-            class="update-btn"
-            [disabled]="writingEnv() !== null"
-            (click)="update(panel)"
-          >Actualizar</button>
+            class="secondary"
+            [disabled]="!panel.value"
+            (click)="copyParameter(panel)"
+            [attr.aria-label]="'Copiar el valor de ' + panel.env.toUpperCase()"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+              style="display: inline-block; vertical-align: -0.125rem; margin-right: 0.3125rem"
+            >
+              <rect x="5.5" y="5.5" width="9" height="9" rx="2" fill="none" stroke="currentColor" />
+              <path
+                d="M10.5 3.5v-1a1 1 0 0 0-1-1h-7a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h1"
+                fill="none"
+                stroke="currentColor"
+              />
+            </svg>
+            {{ copiedEnv() === panel.env ? 'Copiado' : 'Copiar' }}
+          </button>
         </div>
         @if (writingEnv() === panel.env) {
           <p class="muted" style="margin-top: 0.375rem; font-size: var(--text-xs);">
@@ -136,7 +143,9 @@ interface EnvPanel {
             class="muted"
             style="margin-top: 0.375rem; font-size: var(--text-xs);"
             [style.color]="writeStatus()[panel.env]!.ok ? 'var(--ok)' : 'var(--err)'"
-          >{{ writeStatus()[panel.env]!.message }}</p>
+          >
+            {{ writeStatus()[panel.env]!.message }}
+          </p>
         }
       </div>
     }
@@ -162,25 +171,66 @@ export class ParamsReadPage {
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
   readonly panels = signal<EnvPanel[]>([]);
-  readonly sessionCreated = signal<{ title: string; id: string } | null>(null);
   readonly writingEnv = signal<string | null>(null);
   readonly writeStatus = signal<Record<string, { ok: boolean; message: string }>>({});
+  /** Ambiente cuyo valor se acaba de copiar, para el "Copiado" del botón. */
+  readonly copiedEnv = signal<string | null>(null);
 
   readonly services = PARAM_SERVICES;
+
+  private copyTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     const q = new URLSearchParams(location.search);
     const sessionAlias = q.get('alias') ?? q.get('session_alias') ?? '';
-    const fromSession = q.get('from_session') === '1' || q.get('session_id') !== null || q.get('session') !== null;
+    const fromSession =
+      q.get('from_session') === '1' || q.get('session_id') !== null || q.get('session') !== null;
     this.requireAlias.set(fromSession);
     if (sessionAlias) {
       this.sessionAlias.set(sessionAlias);
     }
 
+    // El aviso de "Copiado" se desarma solo; si se navega antes, el timer queda
+    // pendiente y termina escribiendo en una signal de un componente destruido.
+    inject(DestroyRef).onDestroy(() => {
+      if (this.copyTimer) clearTimeout(this.copyTimer);
+    });
+
     this.envService.list().then(
       (envs) => this.environments.set(envs.environments),
       (err) => this.error.set('No se pudieron cargar los ambientes: ' + toApiError(err).message),
     );
+  }
+
+  /**
+   * Copia el valor del panel al portapapeles.
+   *
+   * Se copia `panel.value`, que es lo que muestra la caja: con JSON es el texto
+   * indentado, no el crudo que llegó del backend. Copiar el crudo sorprendería
+   * a quien pega en una terminal.
+   *
+   * El navigator.clipboard no existe fuera de un contexto seguro —abrir la web por
+   * IP de la red, por ejemplo— y ahí `writeText` ni siquiera está. Por eso el caso
+   * "no hay portapapeles" se separa del "el navegador lo negó": son dos fallos
+   * distintos y el usuario necesita un mensaje, no un botón que finge.
+   */
+  async copyParameter(panel: EnvPanel): Promise<void> {
+    const clipboard = navigator.clipboard;
+    if (!clipboard) {
+      this.error.set(
+        'El navegador no expone el portapapeles acá. Abrí la web en localhost o en https.',
+      );
+      return;
+    }
+    try {
+      await clipboard.writeText(panel.value);
+    } catch {
+      this.error.set('El navegador no dejó copiar al portapapeles.');
+      return;
+    }
+    this.copiedEnv.set(panel.env);
+    if (this.copyTimer) clearTimeout(this.copyTimer);
+    this.copyTimer = setTimeout(() => this.copiedEnv.set(null), 2000);
   }
 
   search() {
@@ -197,7 +247,6 @@ export class ParamsReadPage {
 
     this.busy.set(true);
     this.error.set(null);
-    this.sessionCreated.set(null);
 
     this.paramsService.read(envs, [name]).then(
       (d) => {
@@ -231,7 +280,7 @@ export class ParamsReadPage {
         .filter((env) => byEnv.has(env))
         .map((env) => {
           const r = byEnv.get(env)![0];
-          const rawValue = r.ok ? formatValue(r.value) : (r.error || 'No existe el parámetro.');
+          const rawValue = r.ok ? formatValue(r.value) : r.error || 'No existe el parámetro.';
           const meta = (this.environments() ?? []).find((e) => e.env === env);
           return {
             env,
@@ -239,10 +288,10 @@ export class ParamsReadPage {
             profile: meta?.profile,
             value: rawValue,
             valueType: r.value_type ?? 'String',
+            isJson: r.ok && isJsonDocument(r.value),
             ok: r.ok,
             error: r.error ?? null,
-            differs:
-              r.ok && (referenceValues.get(r.key) ?? null) !== (r.value ?? '').trim(),
+            differs: r.ok && (referenceValues.get(r.key) ?? null) !== (r.value ?? '').trim(),
           };
         }),
     );
@@ -265,7 +314,10 @@ export class ParamsReadPage {
     if (!value.trim()) {
       this.writeStatus.update((s) => ({
         ...s,
-        [panel.env]: { ok: false, message: 'No podés guardar un valor vacío; borrá el parámetro desde Crear.' },
+        [panel.env]: {
+          ok: false,
+          message: 'No podés guardar un valor vacío; borrá el parámetro desde Crear.',
+        },
       }));
       return;
     }
@@ -274,50 +326,51 @@ export class ParamsReadPage {
       return;
     }
 
-    const multi: CreateMultiParamsRequest = panel.valueType === 'SecureString'
-      ? {
-          name,
-          value: name,
-          value_type: 'SecureString',
-          service: 'secretsmanager',
-          secret_name: name,
-          secret_value: value,
-          create_secret: true,
-          envs: [panel.env],
-          dry_run: false,
-          confirm: true,
-        }
-      : {
-          name,
-          value,
-          value_type: panel.valueType || 'String',
-          service: 'ssm',
-          envs: [panel.env],
-          dry_run: false,
-          confirm: true,
-        };
+    const multi: CreateMultiParamsRequest =
+      panel.valueType === 'SecureString'
+        ? {
+            name,
+            value: name,
+            value_type: 'SecureString',
+            service: 'secretsmanager',
+            secret_name: name,
+            secret_value: value,
+            create_secret: true,
+            envs: [panel.env],
+            dry_run: false,
+            confirm: true,
+          }
+        : {
+            name,
+            value,
+            value_type: panel.valueType || 'String',
+            service: 'ssm',
+            envs: [panel.env],
+            dry_run: false,
+            confirm: true,
+          };
 
     this.writingEnv.set(panel.env);
     this.writeStatus.update((s) => ({ ...s, [panel.env]: undefined! }));
     this.paramsService.multi(multi).then(
-        (res) => {
-          this.writingEnv.set(null);
-          const outcome = res.results.find((r) => r.env === panel.env);
-          this.writeStatus.update((s) => ({
-            ...s,
-            [panel.env]: outcome?.ok
-              ? { ok: true, message: outcome.message || 'Actualizado.' }
-              : { ok: false, message: outcome?.error || 'Falló la escritura.' },
-          }));
-        },
-        (err) => {
-          this.writingEnv.set(null);
-          this.writeStatus.update((s) => ({
-            ...s,
-            [panel.env]: { ok: false, message: toApiError(err).message },
-          }));
-        },
-      );
+      (res) => {
+        this.writingEnv.set(null);
+        const outcome = res.results.find((r) => r.env === panel.env);
+        this.writeStatus.update((s) => ({
+          ...s,
+          [panel.env]: outcome?.ok
+            ? { ok: true, message: outcome.message || 'Actualizado.' }
+            : { ok: false, message: outcome?.error || 'Falló la escritura.' },
+        }));
+      },
+      (err) => {
+        this.writingEnv.set(null);
+        this.writeStatus.update((s) => ({
+          ...s,
+          [panel.env]: { ok: false, message: toApiError(err).message },
+        }));
+      },
+    );
   }
 
   private ensureSession(name: string) {
@@ -333,16 +386,11 @@ export class ParamsReadPage {
       title: alias,
       reuse: true,
     };
-    this.sessionService
-      .create(payload)
-      .then(
-        (body) => {
-          // No se navega: la vista de valores es el resultado de esta pantalla.
-          // El link "Abrir en Sesiones" queda en el ok-box de arriba.
-          this.sessionCreated.set({ title: body.title, id: body.id });
-        },
-        () => null,
-      );
+    // La sesión se crea aunque esta pantalla no la muestre: queda en el historial
+    // de Sesiones y `reuse: true` evita duplicarla si se busca dos veces. Acá el
+    // resultado es la tabla de valores, no un link. Si el alta falla no se avisa:
+    // leer los valores no depende de eso.
+    this.sessionService.create(payload).catch(() => null);
   }
 
   protected readonly formatValue = formatValue;

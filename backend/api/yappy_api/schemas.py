@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DbDiffRequest(BaseModel):
@@ -497,3 +497,60 @@ class SessionsListResponse(BaseModel):
 
 class DeleteResponse(BaseModel):
     ok: bool
+
+
+class DeploymentsBranchesRequest(BaseModel):
+    repo: str = Field(
+        ...,
+        min_length=1,
+        description="Nombre del repo en Bitbucket, sin el workspace. "
+        "Ej: yappy-trnxd-backend-payment-aggregator",
+    )
+    envs: list[str] | None = Field(
+        None,
+        description="Ambientes a consultar. Vacío o ausente = todos los que estén "
+        "en la configuración. Es lo que hace que mirar una región no cueste el "
+        "viaje a las otras.",
+    )
+
+
+class DeploymentEnvInfo(BaseModel):
+    """One environment. Every field is optional because the chain can stop at any step."""
+
+    env: str
+    region: str | None = None
+    status: str = Field(
+        ...,
+        description="ok | not_applicable | no_task_definition | no_container | "
+        "no_pipeline_id | circleci_unavailable | bitbucket_unavailable | error",
+    )
+    task_definition_family: str | None = None
+    task_definition_revision: int | None = None
+    image: str | None = None
+    pipeline_id: int | None = None
+    branch: str | None = None
+    """Rama desde la que se compiló.
+
+    Para QA/DEV viene directo del pipeline. Para UAT/STG/PROD el pipeline lo
+    dispara un tag y no trae rama: se resuelve desde el pipeline que originó el
+    tag (`uat-210` → 210) y, si no, cruzando por `revision`."""
+    commit: str | None = None
+    """SHA del commit. En CircleCI el SHA está en `vcs.revision`; `vcs.commit` es el
+    mensaje, no el hash."""
+    commit_subject: str | None = None
+    tag: str | None = None
+    """Tag de despliegue que levantó este pipeline, si lo hubo (`uat-210`)."""
+    source_pipeline_id: int | None = None
+    """Pipeline de donde sale la rama cuando vino por tag o por revisión."""
+    branch_from_pipeline: int | None = None
+    pipeline_url: str | None = None
+    message: str | None = None
+
+
+class DeploymentsBranchesResponse(BaseModel):
+    repo: str
+    group_name: str
+    service_name: str
+    cluster: str | None = None
+    task_definition_type: str | None = None
+    environments: list[DeploymentEnvInfo]

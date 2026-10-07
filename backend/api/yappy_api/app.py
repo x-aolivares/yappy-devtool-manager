@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 
 from yappy_library.paths import project_root
 
-from .routes import db, envs, params, sessions
+from .routes import db, deployments, envs, params, sessions
 
 FRONTEND_DIST = project_root() / "frontend" / "dist" / "browser"
 
@@ -55,6 +55,7 @@ def _create_app() -> FastAPI:
     app.include_router(db.router)
     app.include_router(params.router)
     app.include_router(sessions.router)
+    app.include_router(deployments.router)
     if FRONTEND_DIST.is_dir():
         _serve_spa(app)
     else:

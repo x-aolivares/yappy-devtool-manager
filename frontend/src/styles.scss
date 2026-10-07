@@ -362,6 +362,22 @@ h2 {
   margin-bottom: 1.25rem;
 }
 
+/* Input y su acción en una misma fila. Es `.value-row` para los casos en que no
+   hay textarea: el campo crece con el panel y la acción no se estira. */
+.field-row {
+  display: flex;
+  gap: 0.625rem;
+  align-items: center;
+}
+
+.field-row input {
+  flex: 1;
+}
+
+.field-row button {
+  flex: none;
+}
+
 /* Los últimos de una fila ya no necesitan el margen: la grilla los separa. */
 .field:last-child {
   margin-bottom: 0;
@@ -634,8 +650,15 @@ h2 {
 
 /* Título de panel sin la regla, para cuando los controles van en la misma línea
    a la derecha. `.section-title` conserva su `display:flex` con
-   `space-between`, que es lo que permite alojar los botones ahí. */
-.section-title--plain {
+   `space-between`, que es lo que permite alojar los botones ahí.
+
+   El selector lleva las dos clases a propósito: la variante está declarada
+   mucho antes que `.section-title` en este archivo, y con una sola clase cada
+   una ganaba por orden, así que la base le pisaba las tres declaraciones y la
+   variante quedaba inerte: el título salía con la línea horizontal que
+   justamente quería sacar. Con las dos clases gana por especificidad y no
+   depende de que nadie mueva la regla de más abajo. */
+.section-title.section-title--plain {
   border-bottom: none;
   padding-bottom: 0;
   margin: 0 0 0.75rem;
@@ -1412,6 +1435,130 @@ td .diff-link {
   white-space: nowrap;
   font-size: 0.88rem;
   font-weight: 600;
+}
+
+/* Etiqueta de campo con una acción a la derecha (el "Todos"/"Ninguno" de los
+   ambientes). El `.field-label` suelto es un bloque; esto lo pone en fila. */
+.field-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 0 0.4375rem;
+}
+
+.field-label-row .field-label {
+  margin: 0;
+}
+
+/* Texto de ayuda bajo un campo: cuenta lo que va a pasar, no decora. */
+.field .hint {
+  margin: 0.4375rem 0 0;
+  font-size: var(--text-xs);
+}
+
+/* Botón que se lee como texto dentro de un aviso: abre el modal con el arreglo.
+   Es un control, no un link de navegación, así que no lleva el subrayado de `a`. */
+.linkish {
+  display: inline;
+  padding: 0;
+  min-height: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.linkish:hover:not(:disabled) {
+  background: none;
+  border: none;
+}
+
+/* Pasos del aviso: el orden importa porque el arreglo es una secuencia. */
+.notice-steps {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.notice-steps li {
+  margin-bottom: 0.375rem;
+}
+
+/* Enlaces del aviso, uno por servicio. Van como lista y no en el paso numerado
+   porque no son un paso: son adónde ir. El `target` abre en pestaña nueva, así
+   que el `rel` va con `noopener`. */
+.notice-links-label {
+  margin: 0.75rem 0 0.375rem;
+  font-weight: 600;
+}
+
+.notice-links {
+  margin: 0 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+.notice-links a {
+  color: var(--accent);
+}
+
+/* El bloque a copiar: monoespaciado y con fondo, para que se lea como algo que
+   se pega en un archivo de config y no como prosa. */
+.notice-snippet {
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  background: var(--sys-code-bg);
+  border: 0.0625rem solid var(--sys-border);
+  border-radius: var(--sys-radius-md);
+  font-family: var(--sys-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+/* Rama desplegada: monoespaciada y sin cortar, porque se compara de a una con
+   la de al lado y un nombre de rama partido en dos líneas no se lee. */
+td .branch {
+  font-family: var(--sys-mono);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+td .mono {
+  font-family: var(--sys-mono);
+}
+
+td .note {
+  margin-top: 0.1875rem;
+  max-width: 26rem;
+}
+
+/* Tag de despliegue (`uat-210`): dice CÓMO llegó ese ambiente a ese commit,
+   que es lo que un pipeline de UAT no trae y hay que ir a buscar a otro lado. */
+.tag-chip {
+  display: inline-block;
+  padding: 0.0625rem 0.375rem;
+  border: 0.0625rem solid var(--sys-border);
+  border-radius: var(--sys-radius-sm);
+  background: var(--sys-code-bg);
+  font-family: var(--sys-mono);
+  font-size: var(--text-xxs);
+  color: var(--sys-text-secondary);
+}
+
+.row-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.1875rem;
+  font-size: var(--text-xs);
+}
+
+td.row-actions {
+  text-align: right;
+  white-space: nowrap;
 }
 
 // ============================================================

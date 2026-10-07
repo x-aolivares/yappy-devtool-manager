@@ -49,3 +49,5 @@ export type { UpdateSessionItem$Params as UpdateSessionItem$Params } from './fn/
 export { updateSessionItem as updateSessionItem } from './fn/sessions/update-session-item';
 export type { CreateSessionItem$Params as CreateSessionItem$Params } from './fn/sessions/create-session-item';
 export { createSessionItem as createSessionItem } from './fn/sessions/create-session-item';
+export type { ListDeploymentBranches$Params as ListDeploymentBranches$Params } from './fn/deployments/list-deployment-branches';
+export { listDeploymentBranches as listDeploymentBranches } from './fn/deployments/list-deployment-branches';

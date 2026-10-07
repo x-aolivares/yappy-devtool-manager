@@ -79,23 +79,31 @@ describe('App', () => {
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
 
+    // CircleCI es la única sección sin herramientas: Bitbucket ya tiene "Rama
+    // desplegada", así que su `emptyNote` se fue con ella.
     const empty = [...compiled.querySelectorAll('.section-empty')].map((el) =>
       el.textContent?.trim(),
     );
-    expect(empty).toEqual(['Sin herramientas todavía', 'Sin herramientas todavía']);
+    expect(empty).toEqual(['Sin herramientas todavía']);
   });
 
-  it('links every AWS and Database tool to a real route', async () => {
+  it('links every AWS, Database and Bitbucket tool to a real route', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
 
-    const hrefs = [...compiled.querySelectorAll('.section a')].map((el) =>
-      el.getAttribute('href'),
-    );
+    const hrefs = [...compiled.querySelectorAll('.section a')].map((el) => el.getAttribute('href'));
     // AWS quedó con una sola herramienta: Diff, Crear, Editar y Sesiones salen
     // del menú. `/sessions` sigue enrutada aunque no esté acá, porque la página
     // de leer parámetros enlaza a esa vista.
-    expect(hrefs).toEqual(['/params-read', '/compile', '/schema-sync', '/migrate-data', '/sql']);
+    // El orden importa y es el de NAV_SECTIONS, no alfabético.
+    expect(hrefs).toEqual([
+      '/params-read',
+      '/sql',
+      '/migrate-data',
+      '/compile',
+      '/schema-sync',
+      '/deployments',
+    ]);
   });
 });

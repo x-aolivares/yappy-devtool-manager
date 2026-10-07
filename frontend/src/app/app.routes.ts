@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 
 import { CompilePage } from './pages/compile';
+import { DeploymentsPage } from './pages/deployments';
 import { HomePage } from './pages/home';
 import { MigrateDataPage } from './pages/migrate-data';
 import { ParamsReadPage } from './pages/params-read';
@@ -23,5 +24,6 @@ export const routes: Routes = [
   { path: 'schema-sync', component: SchemaSyncPage },
   { path: 'migrate-data', component: MigrateDataPage },
   { path: 'sql', component: SqlPage },
+  { path: 'deployments', component: DeploymentsPage },
   { path: '**', redirectTo: '' },
 ];

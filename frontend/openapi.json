@@ -1059,6 +1059,48 @@
           }
         }
       }
+    },
+    "/api/deployments/branches": {
+      "post": {
+        "tags": [
+          "deployments"
+        ],
+        "summary": "Api Deployment Branches",
+        "description": "Walk repo -> parameters.json -> ECS -> CircleCI for each environment asked.",
+        "operationId": "list_deployment_branches",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeploymentsBranchesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentsBranchesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1510,6 +1552,252 @@
           "ok"
         ],
         "title": "DeleteResponse"
+      },
+      "DeploymentEnvInfo": {
+        "properties": {
+          "env": {
+            "type": "string",
+            "title": "Env"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "ok | not_applicable | no_task_definition | no_container | no_pipeline_id | circleci_unavailable | bitbucket_unavailable | error"
+          },
+          "task_definition_family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Definition Family"
+          },
+          "task_definition_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Definition Revision"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          },
+          "pipeline_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pipeline Id"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit"
+          },
+          "commit_subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit Subject"
+          },
+          "tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag"
+          },
+          "source_pipeline_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Pipeline Id"
+          },
+          "branch_from_pipeline": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch From Pipeline"
+          },
+          "pipeline_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pipeline Url"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "env",
+          "status"
+        ],
+        "title": "DeploymentEnvInfo",
+        "description": "One environment. Every field is optional because the chain can stop at any step."
+      },
+      "DeploymentsBranchesRequest": {
+        "properties": {
+          "repo": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Repo",
+            "description": "Nombre del repo en Bitbucket, sin el workspace. Ej: yappy-trnxd-backend-payment-aggregator"
+          },
+          "envs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Envs",
+            "description": "Ambientes a consultar. Vacío o ausente = todos los que estén en la configuración. Es lo que hace que mirar una región no cueste el viaje a las otras."
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo"
+        ],
+        "title": "DeploymentsBranchesRequest"
+      },
+      "DeploymentsBranchesResponse": {
+        "properties": {
+          "repo": {
+            "type": "string",
+            "title": "Repo"
+          },
+          "group_name": {
+            "type": "string",
+            "title": "Group Name"
+          },
+          "service_name": {
+            "type": "string",
+            "title": "Service Name"
+          },
+          "cluster": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cluster"
+          },
+          "task_definition_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Definition Type"
+          },
+          "environments": {
+            "items": {
+              "$ref": "#/components/schemas/DeploymentEnvInfo"
+            },
+            "type": "array",
+            "title": "Environments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo",
+          "group_name",
+          "service_name",
+          "environments"
+        ],
+        "title": "DeploymentsBranchesResponse"
       },
       "DiffResponse": {
         "properties": {
