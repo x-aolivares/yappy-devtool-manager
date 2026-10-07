@@ -1,8 +1,10 @@
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import webbrowser
 from pathlib import Path
 
 import typer
@@ -31,6 +33,11 @@ app = typer.Typer(
     help="AWS CLI Manager - orchestrate AWS, DB, Kafka, and SSM workflows",
     no_args_is_help=True,
 )
+
+# Puerto del dev server de Angular en modo `yappy web --watch`. Separate del
+# 8765 del backend a propósito: es el que ya usa ng serve por defecto y el que
+# responde el proxy, así que fijarlo evita que choquen si hay otra cosa en 4200.
+DEV_PORT = 4200
 
 # Viejos (deprecated)
 app.add_typer(aws_app, name="aws", help="AWS session management [deprecated]")
@@ -136,13 +143,116 @@ def web(
         help="Compilar el frontend Angular. Por defecto se compila "
         "solo si falta dist/browser o el código está desactualizado.",
     ),
+    watch: bool = typer.Option(
+        False,
+        "--watch",
+        help="Recompilar el frontend en caliente y servirlo con ng serve. "
+        "La web queda en el puerto 4200 y el backend sigue en el que sea. "
+        "Cada vez que guardás un archivo de frontend/ se actualiza solo.",
+    ),
 ):
     """Abrir la web de Region Sync (diff de DB y de parámetros/secretos entre ambientes)."""
+    if watch:
+        _serve_web_with_watch(port=port, open_browser=not no_browser)
+        return
     if build or (build is None and _frontend_needs_build()):
         _build_web_frontend()
     from yappy_api.run import run
 
     run(port=port, open_browser=not no_browser)
+
+
+def _serve_web_with_watch(port: int, open_browser: bool) -> None:
+    """Backend en `port` + `ng serve` en DEV_PORT, con recarga en caliente.
+
+    El modo normal sirve `dist/browser` con un `FileResponse`: es el build que
+    hace `npm run build` y no vuelve a mirar las fuentes, así que para ver un
+    cambio hay que reiniciar el comando. Con `--watch` se levanta el dev server
+    de Angular en paralelo y el navegador apunta a él.
+
+    La separación de puertos es la que ya usa el repo: `proxy.conf.json` manda
+    `/api/*` al backend (8765) y el resto lo sirve ng serve. Por eso el proxy
+    tiene que apuntar al `port` de esta llamada y no a un 8765 fijo — si se
+    levanta el backend en otro puerto y el proxy no lo sigue, la SPA carga pero
+    cada llamada a la API da error de CORS o connection refused.
+
+    El backend se corre en un hilo aparte con uvicorn en vez de como subproceso:
+    así el Ctrl+C lo corta a él y al watcher juntos, en un solo proceso de Python.
+    """
+    frontend = get_project_root() / "frontend"
+    npm = shutil.which("npm")
+    if not npm:
+        die("npm no está instalado — instalá Node.js (>=24.15) para el modo --watch")
+    if not (frontend / "node_modules").exists():
+        die(
+            "Faltan las dependencias del frontend (frontend/node_modules no existe).\n"
+            "  Ejecuta 'yappy setup' (o 'cd frontend && npm ci') y volve a intentar."
+        )
+
+    proxy = frontend / "proxy.conf.json"
+    target = f"http://127.0.0.1:{port}"
+    needs_proxy = not proxy.exists() or target not in proxy.read_text(encoding="utf-8")
+
+    import threading
+
+    import uvicorn
+
+    from yappy_api.app import app as api_app
+
+    info(f"Backend en http://127.0.0.1:{port} y frontend en http://localhost:{DEV_PORT}")
+
+    config = uvicorn.Config(
+        api_app, host="127.0.0.1", port=port, log_level="warning"
+    )
+    server = uvicorn.Server(config)
+    threading.Thread(target=server.run, daemon=True).start()
+
+    # `npm run start` y no `npm run dev`: el script "dev" de package.json es
+    # `ng build --watch`, que compila a dist/ sin servir nada ni proxy, así que
+    # no levanta la web ni recarga el navegador. "start" es `ng serve`.
+    cmd = [
+        npm,
+        "run",
+        "start",
+        "--",
+        "--port",
+        str(DEV_PORT),
+        "--host",
+        "127.0.0.1",
+    ]
+    if needs_proxy:
+        # El proxy del repo apunta a otro puerto: se genera uno temporal con el
+        # puerto real en vez de fallar, porque el watcher es para iterar rápido
+        # y tener que editar el proxy a mano en cada prueba lo rompe.
+        cmd += ["--proxy-config", str(_write_temp_proxy(frontend, target))]
+
+    try:
+        if open_browser:
+            threading.Timer(2.5, lambda: webbrowser.open(f"http://localhost:{DEV_PORT}")).start()
+        raise SystemExit(subprocess.call(cmd, cwd=str(frontend)))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.should_exit = True
+
+
+def _write_temp_proxy(frontend: Path, target: str) -> Path:
+    """Proxy temporal para `--watch` apuntando al puerto que se está usando."""
+    tmp = frontend / ".proxy.watch.json"
+    tmp.write_text(
+        json.dumps(
+            {
+                "/api/*": {
+                    "target": target,
+                    "secure": False,
+                    "changeOrigin": True,
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return tmp
 
 
 def _frontend_needs_build(frontend: Path | None = None) -> bool:

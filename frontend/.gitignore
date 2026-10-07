@@ -39,6 +39,10 @@ testem.log
 /typings
 __screenshots__/
 
+# Proxy generado por `yappy web --watch` cuando el backend no está en el 8765.
+# Es local: no va al repo.
+/.proxy.watch.json
+
 # System files
 .DS_Store
 Thumbs.db
