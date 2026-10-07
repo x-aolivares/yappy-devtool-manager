@@ -242,7 +242,14 @@ def _write_temp_proxy(frontend: Path, target: str) -> Path:
     tmp.write_text(
         json.dumps(
             {
-                "/api/*": {
+                # "/api/**" y no "/api/*": Angular convierte el glob a regex con
+                # picomatch (load-proxy-config.js), donde `*` no cruza la "/" — se
+                # traduce a `[^/]*`. Con "/api/*" sólo proxaban los endpoints de
+                # un segmento (/api/envs, /api/query) y los anidados
+                # (/api/params/read, /api/db/schemas) se caían en el fallback de
+                # la SPA, que devuelve el index.html con 200 en vez de la respuesta
+                # del backend. La app los leía como error de red o como HTML.
+                "/api/**": {
                     "target": target,
                     "secure": False,
                     "changeOrigin": True,
