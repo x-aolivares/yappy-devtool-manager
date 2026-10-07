@@ -362,6 +362,22 @@ h2 {
   margin-bottom: 1.25rem;
 }
 
+/* Input y su acción en una misma fila. Es `.value-row` para los casos en que no
+   hay textarea: el campo crece con el panel y la acción no se estira. */
+.field-row {
+  display: flex;
+  gap: 0.625rem;
+  align-items: center;
+}
+
+.field-row input {
+  flex: 1;
+}
+
+.field-row button {
+  flex: none;
+}
+
 /* Los últimos de una fila ya no necesitan el margen: la grilla los separa. */
 .field:last-child {
   margin-bottom: 0;
@@ -634,8 +650,15 @@ h2 {
 
 /* Título de panel sin la regla, para cuando los controles van en la misma línea
    a la derecha. `.section-title` conserva su `display:flex` con
-   `space-between`, que es lo que permite alojar los botones ahí. */
-.section-title--plain {
+   `space-between`, que es lo que permite alojar los botones ahí.
+
+   El selector lleva las dos clases a propósito: la variante está declarada
+   mucho antes que `.section-title` en este archivo, y con una sola clase cada
+   una ganaba por orden, así que la base le pisaba las tres declaraciones y la
+   variante quedaba inerte: el título salía con la línea horizontal que
+   justamente quería sacar. Con las dos clases gana por especificidad y no
+   depende de que nadie mueva la regla de más abajo. */
+.section-title.section-title--plain {
   border-bottom: none;
   padding-bottom: 0;
   margin: 0 0 0.75rem;

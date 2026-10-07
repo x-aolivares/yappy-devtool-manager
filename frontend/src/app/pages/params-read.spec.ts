@@ -20,7 +20,14 @@ import { SessionService } from '../core/services/session.service';
 const READ_OK: Record<string, any> = {
   env: 'dev',
   results: [
-    { env: 'dev', key: '/prod/db/url', ok: true, value: 'postgres://dev', error: null, found: true },
+    {
+      env: 'dev',
+      key: '/prod/db/url',
+      ok: true,
+      value: 'postgres://dev',
+      error: null,
+      found: true,
+    },
     { env: 'qa', key: '/prod/db/url', ok: true, value: 'postgres://qa', error: null, found: true },
   ],
   ok_count: 2,
@@ -31,11 +38,14 @@ describe('ParamsReadPage', () => {
   let reads: Array<[string[], string[]]>;
   let writes: any[];
   let sentSessions: any[];
+  /** Lo que devuelve el `read`. Los tests que necesitan JSON lo pisan. */
+  let readResponse: any;
 
   beforeEach(async () => {
     reads = [];
     writes = [];
     sentSessions = [];
+    readResponse = READ_OK;
 
     await TestBed.configureTestingModule({
       imports: [ParamsReadPage],
@@ -54,7 +64,7 @@ describe('ParamsReadPage', () => {
           useValue: {
             read: (envs: string[], names: string[]) => {
               reads.push([envs, names]);
-              return Promise.resolve(READ_OK);
+              return Promise.resolve(readResponse);
             },
             multi: (req: any) => {
               writes.push(req);
@@ -89,7 +99,11 @@ describe('ParamsReadPage', () => {
     fixture.detectChanges();
   }
 
-  async function buscar(): Promise<{ comp: any; el: HTMLElement; fixture: ComponentFixture<ParamsReadPage> }> {
+  async function buscar(): Promise<{
+    comp: any;
+    el: HTMLElement;
+    fixture: ComponentFixture<ParamsReadPage>;
+  }> {
     const fixture = TestBed.createComponent(ParamsReadPage);
     const comp = fixture.componentInstance as any;
     comp.envs.set(['dev', 'qa']);
@@ -97,6 +111,25 @@ describe('ParamsReadPage', () => {
     comp.search();
     await settle(fixture);
     return { comp, el: fixture.nativeElement as HTMLElement, fixture };
+  }
+
+  /** Busca un único ambiente con el valor crudo que se le pase. */
+  async function leerUnValor(raw: string) {
+    readResponse = {
+      env: 'dev',
+      results: [
+        { env: 'dev', key: '/prod/db/url', ok: true, value: raw, error: null, found: true },
+      ],
+      ok_count: 1,
+      err_count: 0,
+    };
+    const fixture = TestBed.createComponent(ParamsReadPage);
+    const comp = fixture.componentInstance as any;
+    comp.envs.set(['dev']);
+    comp.name.set('/prod/db/url');
+    comp.search();
+    await settle(fixture);
+    return { el: fixture.nativeElement as HTMLElement, comp, panel: comp.panels()[0], fixture };
   }
 
   it('lee la misma clave en todos los ambientes marcados', async () => {
@@ -108,13 +141,169 @@ describe('ParamsReadPage', () => {
   });
 
   it('arma un panel por ambiente, con el valor de ese ambiente', async () => {
-    const { comp, el } = await buscar();
+    const { el } = await buscar();
 
-    expect(comp.panels().length).toBe(2);
-    const boxes = [...el.querySelectorAll<HTMLTextAreaElement>('textarea.value-box')];
+    expect(el.querySelectorAll('.env-value-panel').length).toBe(2);
+    const boxes = [...el.querySelectorAll<HTMLInputElement>('.env-value-panel input')];
     expect(boxes.length).toBe(2);
     expect(boxes[0].value).toBe('postgres://dev');
     expect(boxes[1].value).toBe('postgres://qa');
+  });
+
+  describe('copiar el valor al portapapeles', () => {
+    let copied: string[];
+
+    function setClipboard(value: unknown) {
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value });
+    }
+
+    beforeEach(() => {
+      copied = [];
+      setClipboard({
+        writeText: (text: string) => {
+          copied.push(text);
+          return Promise.resolve();
+        },
+      });
+    });
+
+    afterEach(() => {
+      // jsdom no define `clipboard`: si queda el stub de este test, el siguiente
+      // heredaría un portapapeles falso y probaría contra nada.
+      setClipboard(undefined);
+      delete (navigator as any).clipboard;
+      vi.useRealTimers();
+    });
+
+    function botonesDe(el: HTMLElement): HTMLButtonElement[] {
+      return [...el.querySelectorAll<HTMLButtonElement>('.env-value-panel button')];
+    }
+
+    it('copia el valor del panel del botón que se apretó', async () => {
+      const { el, fixture } = await buscar();
+
+      botonesDe(el)[1].click();
+      await settle(fixture);
+
+      // El segundo panel, no el primero.
+      expect(copied).toEqual(['postgres://qa']);
+    });
+
+    it('el botón confirma que copió y solo vuelve a "Copiar"', async () => {
+      const { el, fixture } = await buscar();
+
+      // Los timers falsos van antes del click: si se instalan después, el
+      // setTimeout del componente ya quedó agendado con los reales y avanzar el
+      // reloj falso no lo dispara nunca.
+      vi.useFakeTimers();
+      botonesDe(el)[0].click();
+      await Promise.resolve();
+      fixture.detectChanges();
+      expect(botonesDe(el)[0].textContent).toContain('Copiado');
+
+      vi.advanceTimersByTime(2000);
+      fixture.detectChanges();
+
+      expect(botonesDe(el)[0].textContent).toContain('Copiar');
+    });
+
+    it('con JSON copia el texto indentado que se ve en pantalla', async () => {
+      const { el, fixture } = await leerUnValor('{"user":"u"}');
+
+      botonesDe(el)[0].click();
+      await settle(fixture);
+
+      // Lo que pegue el usuario tiene que ser lo que estaba leyendo, no el
+      // crudo de una línea que le llegue al portapapeles.
+      expect(copied).toEqual(['{\n  "user": "u"\n}']);
+    });
+
+    it('sin portapapeles avisa en vez de fingir que copió', async () => {
+      delete (navigator as any).clipboard;
+      const { el, comp, fixture } = await buscar();
+
+      botonesDe(el)[0].click();
+      await settle(fixture);
+
+      expect(comp.copiedEnv()).toBeNull();
+      expect(comp.error()).toContain('portapapeles');
+      expect(botonesDe(el)[0].textContent).toContain('Copiar');
+    });
+
+    it('si el navegador lo niega, avisa y no marca como copiado', async () => {
+      setClipboard({ writeText: () => Promise.reject(new Error('denied')) });
+      const { el, comp, fixture } = await buscar();
+
+      botonesDe(el)[0].click();
+      await settle(fixture);
+
+      expect(comp.copiedEnv()).toBeNull();
+      expect(comp.error()).toContain('portapapeles');
+    });
+
+    it('un valor vacío no ofrece copiar', async () => {
+      const { el } = await leerUnValor('');
+
+      expect(botonesDe(el)[0].disabled).toBe(true);
+    });
+  });
+
+  describe('el control depende de si el valor es un documento JSON', () => {
+    it('un objeto JSON va en textarea, con el valor indentado', async () => {
+      const { el, panel } = await leerUnValor('{"user":"u","pass":"p"}');
+
+      expect(panel.isJson).toBe(true);
+      const area = el.querySelector<HTMLTextAreaElement>('textarea.value-box');
+      expect(area).not.toBeNull();
+      expect(area!.value).toBe('{\n  "user": "u",\n  "pass": "p"\n}');
+      // Y no queda un input en el mismo panel: son excluyentes.
+      expect(el.querySelector('.env-value-panel input')).toBeNull();
+    });
+
+    it('un array JSON también va en textarea', async () => {
+      const { el, panel } = await leerUnValor('["a","b"]');
+
+      expect(panel.isJson).toBe(true);
+      expect(el.querySelector('textarea.value-box')).not.toBeNull();
+    });
+
+    it('un número se queda en input aunque sea JSON válido', async () => {
+      // El caso que obliga al filtro de escalar: `8401` parsea, pero no es un
+      // documento, y un puerto en una caja multilínea sería unurerón.
+      const { el, panel } = await leerUnValor('8401');
+
+      expect(panel.isJson).toBe(false);
+      expect(el.querySelector('textarea.value-box')).toBeNull();
+      expect(el.querySelector<HTMLInputElement>('.env-value-panel input')!.value).toBe('8401');
+    });
+
+    it('otros escalares válidos se quedan en input', async () => {
+      for (const raw of ['true', 'null', '"hola"']) {
+        const { el, panel } = await leerUnValor(raw);
+        expect(panel.isJson).toBe(false);
+        expect(el.querySelector('textarea.value-box')).toBeNull();
+      }
+    });
+
+    it('JSON mal formado se queda en input', async () => {
+      const { el, panel } = await leerUnValor('{a: 1}');
+
+      expect(panel.isJson).toBe(false);
+      expect(el.querySelector('textarea.value-box')).toBeNull();
+    });
+
+    it('un valor vacío se queda en input', async () => {
+      const { el, panel } = await leerUnValor('');
+
+      expect(panel.isJson).toBe(false);
+      expect(el.querySelector('textarea.value-box')).toBeNull();
+    });
+
+    it('la textarea crece con las líneas del JSON', async () => {
+      const { el } = await leerUnValor(JSON.stringify({ a: 1, b: 2, c: 3 }));
+
+      expect(el.querySelector<HTMLTextAreaElement>('textarea.value-box')!.rows).toBeGreaterThan(2);
+    });
   });
 
   it('el botón de escribir existe uno por panel', async () => {

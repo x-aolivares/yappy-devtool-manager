@@ -46,6 +46,28 @@ export function formatValue(v: unknown): string {
   return JSON.stringify(v, null, 2);
 }
 
+/**
+ * True si el valor crudo es un **documento** JSON (objeto o array), no un escalar.
+ *
+ * Hace falta el segundo filtro porque `formatValue` acepta cualquier cosa que
+ * `JSON.parse` pueda leer: `"8401"`, `"true"` y `"null"` son JSON válido. Un
+ * parámetro que es un puerto o un contador caería en la caja multilínea sólo por
+ * parsear, así que documento es lo que tiene llaves o corchetes.
+ *
+ * El valor crudo, no el de `formatValue`: el de arriba ya viene pretty-printeado
+ * y se pierde la diferencia entre un `"8401"` y un 8401.
+ */
+export function isJsonDocument(v: unknown): boolean {
+  if (typeof v !== 'string' || v.trim() === '') return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(v);
+  } catch {
+    return false;
+  }
+  return typeof parsed === 'object' && parsed !== null;
+}
+
 export function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);

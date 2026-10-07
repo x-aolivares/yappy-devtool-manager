@@ -28,9 +28,10 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     label: 'AWS',
     // Diff, alta/edición y Sesiones salen del menú. No es que el código se haya
     // ido: sigue acá, y `/sessions` sigue enrutada a propósito porque "Leer
-    // parámetros" crea una sesión y enlaza a esa vista. Si algún día se borran de
-    // verdad, hay queSACARLE a `params-read` el `SessionService`, el signal
-    // `sessionCreated` y el link "Abrir en Sesiones →" en el mismo cambio.
+    // parámetros" crea una sesión, que queda en su historial aunque la pantalla
+    // ya no enlace a esa vista. Por eso el `SessionService` se queda en
+    // `params-read`: si algún día se borran las sesiones de verdad, hay que
+    // sacar el `SessionService` en el mismo cambio.
     items: [
       {
         link: '/params-read',
@@ -44,6 +45,16 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     label: 'Database',
     items: [
       {
+        link: '/sql',
+        label: 'Ejecutar SQL',
+        hint: 'Consulta información y migra los datos de lo consultado',
+      },
+      {
+        link: '/migrate-data',
+        label: 'Migrar datos',
+        hint: 'Copia un conjunto de tablas de un ambiente a otro, con filtro por fecha por tabla',
+      },
+      {
         link: '/compile',
         label: 'Compilar',
         hint: 'Compila una tabla o stored procedure de un ambiente a otro',
@@ -52,16 +63,6 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         link: '/schema-sync',
         label: 'Sincronizar schema',
         hint: 'Lleva todas las tablas y stored procedures de un esquema a otro ambiente',
-      },
-      {
-        link: '/migrate-data',
-        label: 'Migrar datos',
-        hint: 'Copia un conjunto de tablas de un ambiente a otro, con filtro por fecha por tabla',
-      },
-      {
-        link: '/sql',
-        label: 'Ejecutar SQL',
-        hint: 'Consulta información y migra los datos de lo consultado',
       },
     ],
   },
