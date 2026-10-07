@@ -16,6 +16,77 @@ Before committing any changes, bump the version in `pyproject.toml`:
 - **Retrocompatible** — no romper comandos existentes. Si un cambio altera comportamiento, version mayor
 - **Versionable** — todo cambio se versiona, se commitea y se pushea
 
+## Estándar de diseño (frontend)
+
+El `frontend/` sigue el sistema visual de Apple: los colores, radios, elevación y
+movimiento de las
+[Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/design-principles).
+**Es el estándar del proyecto, no una preferencia:** un control nuevo se hace con
+esta escala, no eligiendo un valor suelto.
+
+### Cómo se aplica
+
+Los tokens viven todos en `frontend/src/styles.scss`. **No escribas un color, un
+radio ni un tiempo de transición literal en una plantilla o en un `styles` de
+componente** — usá el token. El motivo es concreto: cada valor tiene una versión
+distinta en claro y en oscuro, y un literal se ve bien en un tema y cortado en el
+otro.
+
+| Qué | Tokens | Valores |
+|---|---|---|
+| Tinta | `--sys-text`, `--sys-text-secondary` | `#1d1d1f` / `#f5f5f7`; secundario `#6e6e73` / `#a1a1a6` |
+| Superficies | `--sys-bg`, `--sys-surface`, `--sys-elevated`, `--sys-hover-bg`, `--sys-selected-bg`, `--sys-code-bg` | fondo `#ffffff` / `#1c1c1e`; superficie `#f5f5f7` / `#000000` |
+| Línea | `--sys-border` | `#d2d2d7` / `#38383a` |
+| Acento | `--sys-blue`, `--sys-blue-hover`, `--sys-blue-on` | `#0071e3` / `#0077ed`; en oscuro `#0a84ff` / `#409cff` |
+| Semánticos | `--sys-success`, `--sys-success-text`, `--sys-success-bg`, `--sys-success-border`, `--sys-warning`, `--sys-warning-text`, `--sys-warning-bg`, `--sys-warning-border`, `--sys-danger`, `--sys-danger-text`, `--sys-danger-bg`, `--sys-danger-border` | verde `#34c759`/`#30d158`, ámbar `#ff9500`/`#ff9f0a`, rojo `#ff3b30`/`#ff453a` |
+| Radios | `--sys-radius-sm`, `--sys-radius-md`, `--sys-radius-lg`, `--sys-radius-pill` | 6 / 10 / 14px / píldora |
+| Elevación | `--sys-shadow-sm`, `--sys-shadow-md`, `--sys-shadow-lg` | tres niveles; en oscuro van más densos |
+| Movimiento | `--sys-ease`, `--sys-dur-fast`, `--sys-dur` | `cubic-bezier(0.4, 0, 0.2, 1)`, 0.15s / 0.25s |
+| Medidas | `--sys-control-h`, `--sys-control-pad-x` | 2.5rem (40px) / 1.125rem |
+| Foco | `--sys-focus-ring` | halo del anillo de foco |
+| Tipografía | `--sys-sans`, `--sys-mono` | tipografía del sistema del usuario |
+
+Son 39 tokens en total y esta tabla los cubre todos: si agregás uno, agregalo
+acá.
+
+En modo oscuro, `html[data-theme='dark']` **redefine** los tokens. Un componente
+no consulta el tema: consume la misma variable y hereda el valor del tema activo.
+
+### Reglas que ya se pagaron de una romperse
+
+- **El prefijo es `--sys-`, no `--bb-`.** El `--bb-` era la paleta de BBit, que
+  este frontend dejó de usar. No lo re-introduzcas ni como alias.
+- **Nada de `Cascadia Code` como primera fuente.** Es una fuente de Windows: en
+  una Mac el bloque de código caía a Consolas y se veía distinto según el SO.
+  Arrancá siempre por `var(--sys-mono)` o `var(--sys-sans)`, que resuelven a la
+  tipografía del sistema del usuario — que es el criterio del HIG: nunca una
+  fuente incrustada salvo la de marca.
+- **Valdema es sólo el wordmark.** Es la única fuente de marca del producto y
+  vive en `.sidebar .brand`. No la lleves a otra parte.
+- **El `.secondary` y el toggle de tema conservan el `outline` en el foco.** Su
+  borde ya es del color de acento, así que el anillo de acento no se distingue
+  del control. Es la excepción consciente a la regla del anillo.
+- **Todo movimiento nuevo respeta `prefers-reduced-motion`.** Si agregás una
+  animación o una transición, agregala también al bloque del final de
+  `styles.scss`. Una animación de *entrada* es la que más molesta, porque no se
+  puede esquivar mirando.
+- **El `--sys-control-h` no sube a 44px.** 44px es el área táctil de iOS y
+  duplicaba la altura de cada barra de filtros. Este frontend corre en puntero y
+  con muchos controles por pantalla; 40px conserva el aire sin regalar espacio de
+  trabajo.
+
+### Lo que este estándar todavía no cubre
+
+El frontend tiene **11 llamadas a `confirm()` nativo en 8 archivos** (`compile.ts`,
+`migrate-data.ts`, `params-create.ts`, `params-diff.ts` ×4, `params-edit.ts`,
+`params-read.ts`, `schema-sync.ts`, `sessions.ts`). El navegador muestra un alert
+que no dice qué va a pasar ni deja recuperar nada, y dos de ellos llegan a decir
+*"No se puede deshacer"* (`params-diff.ts:862`, `sessions.ts:81`). Es el principio
+de Agency del HIG —*ofrecer perdón, que sea fácil deshacer*— y es donde la app
+más se aparta del estándar. Existe ya `shared/notice-modal.ts` con
+`role="dialog"` y foco preso, que es la pieza correcta y está sin usar para estas
+acciones. Tratarlo aparte.
+
 ## Workflow
 
 When a user requests an adjustment:
