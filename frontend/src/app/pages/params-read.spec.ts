@@ -38,6 +38,8 @@ describe('ParamsReadPage', () => {
   let reads: Array<[string[], string[]]>;
   let writes: any[];
   let sentSessions: any[];
+  /** La señal de aborto de cada `read`, para ver si la página la aborta. */
+  let readSignals: Array<AbortSignal | undefined>;
   /** Lo que devuelve el `read`. Los tests que necesitan JSON lo pisan. */
   let readResponse: any;
 
@@ -45,6 +47,7 @@ describe('ParamsReadPage', () => {
     reads = [];
     writes = [];
     sentSessions = [];
+    readSignals = [];
     readResponse = READ_OK;
 
     await TestBed.configureTestingModule({
@@ -62,8 +65,9 @@ describe('ParamsReadPage', () => {
         {
           provide: ParamsService,
           useValue: {
-            read: (envs: string[], names: string[]) => {
+            read: (envs: string[], names: string[], signal?: AbortSignal) => {
               reads.push([envs, names]);
+              readSignals.push(signal);
               return Promise.resolve(readResponse);
             },
             multi: (req: any) => {
@@ -390,7 +394,7 @@ describe('ParamsReadPage', () => {
     expect((fixture.nativeElement as HTMLElement).querySelector('.busy-modal')).toBeNull();
   });
 
-  it('el modal de espera no ofrece salida mientras corre', async () => {
+  it('el modal de espera corta la búsqueda con un botón, no con el backdrop', async () => {
     const fixture = TestBed.createComponent(ParamsReadPage);
     const comp = fixture.componentInstance as any;
     comp.envs.set(['dev', 'qa']);
@@ -399,13 +403,46 @@ describe('ParamsReadPage', () => {
     fixture.detectChanges();
 
     const el = fixture.nativeElement as HTMLElement;
-    // La petición ya está hecha y el backend no la cancela: un backdrop que
-    // cerrara el modal mentiría sobre lo que está pasando.
-    expect(el.querySelector('.busy-modal button')).toBeNull();
+    // El backdrop no cierra: la petición ya está hecha y cerrarlo con un click
+    // en el fondo mentiría sobre lo que está pasando. El botón es el que corta.
+    const backdrop = el.querySelector('.busy-modal__backdrop')!;
+    expect(backdrop.tagName).toBe('DIV');
     expect(el.querySelector('.busy-modal__x')).toBeNull();
+
     // Y el texto se anuncia por aria-live en vez de mover el foco.
     expect(el.querySelector('.busy-modal')?.getAttribute('role')).toBe('status');
 
     await settle(fixture);
+  });
+
+  it('el botón de cancelar aborta la búsqueda y no muestra error', async () => {
+    // El `read` del mock ignora la señal, así que la promesa resuelve igual: lo
+    // que se afirma es que el abort corta la operación y que una respuesta que
+    // llega después no escribe nada.
+    const fixture = TestBed.createComponent(ParamsReadPage);
+    const comp = fixture.componentInstance as any;
+    comp.envs.set(['dev', 'qa']);
+    comp.name.set('/prod/db/url');
+    comp.search();
+    fixture.detectChanges();
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.busy-modal__cancel')!
+      .click();
+    fixture.detectChanges();
+
+    // Cortar la espera es lo que pidió el usuario: no es un fallo y no hay caja
+    // de error. Los paneles de la búsqueda anterior siguen como estaban.
+    expect(comp.busy()).toBe(false);
+    expect(comp.error()).toBeNull();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.busy-modal')).toBeNull();
+
+    // Y la señal que viajó por el servicio quedó abortada: eso es lo que
+    // corta el fetch. Ver `core/cancel`.
+    expect(readSignals[0]?.aborted).toBe(true);
+
+    await settle(fixture);
+    // La respuesta que llegó tarde no arma paneles nuevos.
+    expect(comp.panels().length).toBe(0);
   });
 });

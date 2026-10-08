@@ -8,6 +8,7 @@ import {
 import { EnvironmentService } from '../core/services/environment.service';
 import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
+import { CancelSlot, isCancellation } from '../core/cancel';
 import { StatusBadge } from '../shared/status-badge';
 import { RegionControlsComponent } from '../shared/region-controls';
 import { SchemaSelectComponent } from '../shared/schema-select';
@@ -415,7 +416,12 @@ function lastDayOfMonth(month: string): string {
       <div class="error-box">{{ error() }}</div>
     }
 
-    <app-busy-modal [open]="busy()" [message]="busyText()" />
+    <app-busy-modal
+      [open]="busy()"
+      [message]="busyText()"
+      [writes]="busyWrites()"
+      (cancelled)="cancelBusy()"
+    />
 
     @if (result(); as r) {
       <div class="panel">
@@ -547,8 +553,26 @@ export class MigrateDataPage {
 
   readonly busy = signal(false);
   readonly busyText = signal('');
+  /**
+   * Si lo que está corriendo escribe.
+   *
+   * Simular cuenta filas y no escribe nada; Migrar hace `REPLACE INTO` en el
+   * destino y no corre en transacción, así que lo que ya se copió queda copiado.
+   * El modal no puede llamar "Cancelar" a lo segundo.
+   */
+  readonly busyWrites = signal(false);
   readonly error = signal<string | null>(null);
   readonly result = signal<MigrationResponse | null>(null);
+
+  /**
+   * La simulación o la migración en vuelo, para que el botón del modal corte la
+   * espera.
+   *
+   * Son N conexiones al origen y N al destino: con veinte tablas marcadas es la
+   * operación más larga de la app, y esperar sin poder abandonar es como se
+   * veía.
+   */
+  private readonly op = new CancelSlot();
 
   readonly sameEnv = computed(() => !!this.envB() && this.envB() === this.envA());
 
@@ -996,25 +1020,48 @@ export class MigrateDataPage {
         ? `Simulando ${this.selection().length} tabla(s) de ${schema} de ${envB} a ${envA}...`
         : `Migrando ${this.selection().length} tabla(s) de ${schema} de ${envB} a ${envA}...`,
     );
+    this.busyWrites.set(!dryRun);
 
+    const run = this.op.begin();
     this.dbService
-      .migrateTables({
-        env_b: envB,
-        env_a: envA,
-        schema_name: schema,
-        tables: this.selection(),
-        dry_run: dryRun,
-        confirm: !dryRun,
-      })
+      .migrateTables(
+        {
+          env_b: envB,
+          env_a: envA,
+          schema_name: schema,
+          tables: this.selection(),
+          dry_run: dryRun,
+          confirm: !dryRun,
+        },
+        run,
+      )
       .then(
         (d) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
           this.result.set(d);
         },
         (err) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
+          // Cortar la espera no es un fallo: el usuario lo pidió. Ver `core/cancel`.
+          if (isCancellation(err)) return;
           this.error.set(toApiError(err).message);
         },
       );
+  }
+
+  /**
+   * Dejar de esperar la simulación o la migración en vuelo.
+   *
+   * La selección de tablas y el filtro de fechas quedan como estaban, que es lo
+   * que hace falta para volver a apretar Migrar. En una migración real lo que se
+   * cortó es la espera: las tablas que el backend ya terminó de copiar quedaron
+   * copiadas, y eso no lo avisa nadie —el modal lo dice antes, con el rótulo de
+   * "dejar de esperar".
+   */
+  cancelBusy(): void {
+    if (!this.op.cancel()) return;
+    this.busy.set(false);
   }
 }

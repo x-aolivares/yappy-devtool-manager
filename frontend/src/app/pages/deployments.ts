@@ -5,6 +5,7 @@ import { DeploymentService } from '../core/services/deployment.service';
 import { EnvironmentService } from '../core/services/environment.service';
 import { toApiError } from '../core/services/api-error';
 import { explainDeploymentFailure, FailureExplained } from '../core/deployment-help';
+import { CancelSlot, isCancellation } from '../core/cancel';
 import { BusyModalComponent } from '../shared/busy-modal';
 import { CopyButton } from '../shared/copy-button';
 import { EnvPickerComponent } from '../shared/env-picker';
@@ -76,7 +77,7 @@ import { copyText } from '../core/copy';
       </div>
     </div>
 
-    <app-busy-modal [open]="busy()" message="Consultando…" />
+    <app-busy-modal [open]="busy()" message="Consultando…" (cancelled)="cancelBusy()" />
 
     @if (failure(); as fail) {
       <app-notice-modal [open]="true" [title]="fail.title" (closed)="failure.set(null)">
@@ -225,6 +226,16 @@ export class DeploymentsPage {
   readonly copied = signal(false);
   readonly result = signal<DeploymentsBranchesResponse | null>(null);
 
+  /**
+   * La consulta en vuelo, para que el botón del modal la corte.
+   *
+   * La cadena repo → parameters.json → ECS → CircleCI son cuatro saltos y cada
+   * uno puede tardar: es de las consultas donde más se echa de menos un
+   * "cancelar". Sólo lee, así que el botón dice "Cancelar" y no "Dejar de
+   * esperar": no hay nada que el backend pueda llegar a escribir.
+   */
+  private readonly op = new CancelSlot();
+
   private copyTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly allSelected = computed(
@@ -296,13 +307,18 @@ export class DeploymentsPage {
     }
     this.busy.set(true);
     this.failure.set(null);
-    this.deployments.branches(repo, this.envsToQuery()).then(
+    const run = this.op.begin();
+    this.deployments.branches(repo, this.envsToQuery(), run).then(
       (data) => {
+        if (!this.op.finish(run)) return;
         this.busy.set(false);
         this.result.set(data);
       },
       (err) => {
+        if (!this.op.finish(run)) return;
         this.busy.set(false);
+        // Cortar la espera no es un fallo: el usuario lo pidió. Ver `core/cancel`.
+        if (isCancellation(err)) return;
         // El status importa para elegir el arreglo: 405 es "reiniciá el
         // backend", un 502 con el nombre de una variable es "cargá la variable".
         // `toApiError` saca el texto; el status decide qué significa.
@@ -317,5 +333,11 @@ export class DeploymentsPage {
         this.result.set(null);
       },
     );
+  }
+
+  /** Cortar la consulta en vuelo y quedarse con lo que ya estaba en pantalla. */
+  cancelBusy(): void {
+    if (!this.op.cancel()) return;
+    this.busy.set(false);
   }
 }

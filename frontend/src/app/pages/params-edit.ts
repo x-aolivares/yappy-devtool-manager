@@ -3,6 +3,7 @@ import { EnvironmentInfo } from '../api-gen/models';
 import { EnvironmentService } from '../core/services/environment.service';
 import { ParamsService } from '../core/services/params.service';
 import { toApiError } from '../core/services/api-error';
+import { CancelSlot, isCancellation } from '../core/cancel';
 import { awsEnvironments } from '../core/format';
 import { BusyModalComponent } from '../shared/busy-modal';
 import { EnvControlsComponent } from '../shared/env-controls';
@@ -126,7 +127,16 @@ import { EnvControlsComponent } from '../shared/env-controls';
       </div>
     }
 
-    <app-busy-modal [open]="busy() && loaded()" message="Guardando…" />
+    <!-- El modal es del guardado, no de "busy": read() también pone busy y antes se
+         le mostraba "Guardando…" mientras lo que estaba pasando era una lectura.
+         Con saving el rótulo y el botón dicen la verdad, y el panel en línea de
+         "Leyendo…" sigue siendo el de la lectura. -->
+    <app-busy-modal
+      [open]="saving()"
+      message="Guardando…"
+      [writes]="true"
+      (cancelled)="cancelBusy()"
+    />
   `,
 })
 export class ParamsEditPage {
@@ -146,9 +156,25 @@ export class ParamsEditPage {
   readonly loaded = signal(false);
 
   readonly busy = signal(false);
+  /**
+   * Lo que está en vuelo es el **guardado**, no una lectura cualquiera.
+   *
+   * Es lo que abre el modal. Antes era `busy() && loaded()`, que también era
+   * cierto al volver a apretar "Leer" sobre un parámetro ya cargado: la lectura
+   * se anunciaba como "Guardando…".
+   */
+  readonly saving = signal(false);
   readonly error = signal<string | null>(null);
   readonly resultMsg = signal<string | null>(null);
   readonly resultIsError = signal(false);
+
+  /**
+   * El guardado en vuelo, para que el botón del modal corte la espera.
+   *
+   * Es la única operación de la página con modal. `writes` va en `true` porque
+   * escribe: si se corta la espera, el `put-parameter` puede igual haber salido.
+   */
+  private readonly op = new CancelSlot();
 
   /** El ambiente elegido: el array es la fuente de verdad, el string se deriva. */
   readonly env = computed(() => (this.envs().length === 1 ? this.envs()[0] : ''));
@@ -216,23 +242,30 @@ export class ParamsEditPage {
     }
 
     this.busy.set(true);
+    this.saving.set(true);
     this.error.set(null);
     this.resultMsg.set(null);
+    const run = this.op.begin();
     this.paramsService
-      .multi({
-        name,
-        value: secretBacked ? secretName : this.value(),
-        value_type: secretBacked ? 'SecureString' : this.valueType(),
-        secret_name: secretBacked ? secretName : '',
-        secret_value: secretBacked ? secretValue : '',
-        envs: [env],
-        create_secret: secretBacked,
-        dry_run: false,
-        confirm: true,
-      })
+      .multi(
+        {
+          name,
+          value: secretBacked ? secretName : this.value(),
+          value_type: secretBacked ? 'SecureString' : this.valueType(),
+          secret_name: secretBacked ? secretName : '',
+          secret_value: secretBacked ? secretValue : '',
+          envs: [env],
+          create_secret: secretBacked,
+          dry_run: false,
+          confirm: true,
+        },
+        run,
+      )
       .then(
         (d) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
+          this.saving.set(false);
           const first = d.results[0];
           if (first?.ok) {
             this.resultIsError.set(false);
@@ -243,9 +276,26 @@ export class ParamsEditPage {
           }
         },
         (err) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
+          this.saving.set(false);
+          // Cortar la espera no es un fallo: el usuario lo pidió. Ver `core/cancel`.
+          if (isCancellation(err)) return;
           this.error.set(toApiError(err).message);
         },
       );
+  }
+
+  /**
+   * Dejar de esperar el guardado.
+   *
+   * La caja con el valor editado sigue ahí, lista para volver a apretar Guardar.
+   * Lo que se cortó es la espera: si el `put-parameter` ya salió, se aplicó igual
+   * y el botón "Dejar de esperar" del modal lo dice.
+   */
+  cancelBusy(): void {
+    if (!this.op.cancel()) return;
+    this.busy.set(false);
+    this.saving.set(false);
   }
 }

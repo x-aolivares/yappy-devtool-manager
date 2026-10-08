@@ -3,6 +3,7 @@ import { CompileResponse, EnvironmentInfo, ExecuteSqlResponse } from '../api-gen
 import { EnvironmentService } from '../core/services/environment.service';
 import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
+import { CancelSlot, isCancellation } from '../core/cancel';
 import { objectLabel } from '../core/format';
 import { BusyModalComponent } from '../shared/busy-modal';
 import { StatusBadge } from '../shared/status-badge';
@@ -263,7 +264,12 @@ import { AutoGrowDirective } from '../shared/auto-grow';
       <div class="error-box">{{ error() }}</div>
     }
 
-    <app-busy-modal [open]="busy()" [message]="busyText()" />
+    <app-busy-modal
+      [open]="busy()"
+      [message]="busyText()"
+      [writes]="busyWrites()"
+      (cancelled)="cancelBusy()"
+    />
 
     @if (result()) {
       <div class="panel">
@@ -347,9 +353,26 @@ export class CompilePage {
 
   readonly busy = signal(false);
   readonly busyText = signal('');
+  /**
+   * Si lo que está corriendo escribe.
+   *
+   * "Generar" sólo arma texto —lee el objeto de los dos ambientes y arma el
+   * script—, pero "Compilar" ejecuta ese script en el destino, que puede ser un
+   * `DROP TABLE`. El modal no puede llamar "Cancelar" a lo segundo.
+   */
+  readonly busyWrites = signal(false);
   readonly error = signal<string | null>(null);
   readonly result = signal<CompileResponse | null>(null);
   readonly executed = signal<ExecuteSqlResponse | null>(null);
+
+  /**
+   * La operación en vuelo, para que el botón del modal corte la espera.
+   *
+   * Comparar un objeto de una tabla entre dos regiones es abrir dos conexiones
+   * y leer los dos DDL: con el túnel lento, esperar sin poder abandonar es la
+   * forma normal de que la pantalla parezca colgada.
+   */
+  private readonly op = new CancelSlot();
 
   /** `app-env-controls` habla arrays y `envA` es un string: se adapta acá. */
   protected readonly destEnvs = computed(() => (this.envA() ? [this.envA()] : []));
@@ -529,17 +552,23 @@ export class CompilePage {
     this.busyText.set(
       `Generando el script de ${objectLabel(this.objectType())} ${schema}.${objectName} de ${this.envB()} a ${this.envA()}...`,
     );
+    this.busyWrites.set(false);
 
+    const run = this.op.begin();
     this.dbService
-      .compile({
-        env_b: this.envB(),
-        env_a: this.envA(),
-        object_type: this.objectType(),
-        schema_name: schema,
-        object_name: objectName,
-      })
+      .compile(
+        {
+          env_b: this.envB(),
+          env_a: this.envA(),
+          object_type: this.objectType(),
+          schema_name: schema,
+          object_name: objectName,
+        },
+        run,
+      )
       .then(
         (d) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
           this.result.set(d);
           // Cuando no hay nada que aplicar (ya es igual, o el DDL difiere pero la
@@ -550,7 +579,10 @@ export class CompilePage {
           this.generated.set(true);
         },
         (err) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
+          // Cortar la espera no es un fallo: el usuario lo pidió. Ver `core/cancel`.
+          if (isCancellation(err)) return;
           this.error.set(toApiError(err).message);
         },
       );
@@ -588,25 +620,50 @@ export class CompilePage {
     this.busy.set(true);
     this.error.set(null);
     this.busyText.set(`Ejecutando el script en ${env}...`);
+    // Esto escribe en el destino y el script puede empezar con un DROP: el
+    // botón del modal no dice "Cancelar" sino "Dejar de esperar". Ver
+    // `BusyModalComponent`.
+    this.busyWrites.set(true);
 
+    const run = this.op.begin();
     this.dbService
-      .executeSql({
-        env: env,
-        // En modo script el texto no viene de un objeto con nombre propio: se
-        // declara como lo que es para no etiquetar mal la respuesta.
-        object_type: fromScript ? 'script' : this.objectType(),
-        schema_name: schema,
-        code: code,
-      })
+      .executeSql(
+        {
+          env: env,
+          // En modo script el texto no viene de un objeto con nombre propio: se
+          // declara como lo que es para no etiquetar mal la respuesta.
+          object_type: fromScript ? 'script' : this.objectType(),
+          schema_name: schema,
+          code: code,
+        },
+        run,
+      )
       .then(
         (d) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
           this.executed.set(d);
         },
         (err) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
+          // Cortar la espera no es un fallo: el usuario lo pidió. Ver `core/cancel`.
+          if (isCancellation(err)) return;
           this.error.set(toApiError(err).message);
         },
       );
+  }
+
+  /**
+   * Dejar de esperar lo que esté corriendo: el `Generar` que sólo arma el script
+   * o el `Compilar` que lo ejecuta.
+   *
+   * El script del editor queda como estaba y `Compilar` se vuelve a habilitar, así
+   * que volver a apretarlo es una línea de costumbre. En el caso de "Compilar" lo
+   * que se cortó es la espera: el `DROP` puede igual haber salido.
+   */
+  cancelBusy(): void {
+    if (!this.op.cancel()) return;
+    this.busy.set(false);
   }
 }

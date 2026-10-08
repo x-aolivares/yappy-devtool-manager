@@ -343,6 +343,52 @@ El modal se abre si `errorSeq > dismissedSeq`. Consecuencia: cerrar el aviso
 **pega** hasta que algo nuevo rompa, en vez de reabrirse en el próximo change
 detection.
 
+## El modal de espera tiene una salida, y dice cuál es
+
+`app-busy-modal` (`shared/busy-modal.ts`) tapa la pantalla mientras una operación
+corre. Antes no tenía salida: ni botón, ni Escape, ni backdrop. La razón estaba
+anotada en el componente y era correcta para lo que hace —cerrar el modal no
+cancela nada, y un backdrop que cerrara mentiría sobre lo que está pasando— pero
+dejaba la app sin salida para lo que el navegador sí puede cortar: la conexión.
+Un `fetch` esperando un túnel que no responde no se puede abandonar desde la UI.
+
+Ahora tiene un botón, y lo que hace es **abortar el request** (`core/cancel.ts`):
+la señal viaja en el `HttpContext`, un interceptor la escucha y desuscribe, que es
+lo que hace que el backend de `fetch` corte la conexión. El modal sigue sin cerrar
+con Escape ni con el fondo, y sigue sin tomar el foco.
+
+### El rótulo depende de si la operación escribe
+
+Es la parte que no es cosmetics y la razón por la que el botón tiene dos textos:
+
+| La operación… | El botón dice | Porque… |
+|---|---|---|
+| sólo lee (Consultar, Buscar, Diff, Generar, Simular) | **Cancelar** | Cortar la conexión es todo lo que hay: no hay nada escrito que deshacer. |
+| escribe (Guardar, Migrar, Crear, Compilar, Sincronizar) | **Dejar de esperar** + una línea que aclara que la escritura puede igual terminar | Abortar el request corta la conexión, **no** el `REPLACE INTO` que el backend ya está corriendo. Un botón que dice "Cancelar" sobre eso promete una cosa falsa. |
+
+La línea de aclaración va antes del botón, en `--text-xs` y en `--muted`: es la
+advertencia, no la acción.
+
+Las páginas pasan esa decisión con `[writes]`, no con el texto del rótulo: lo que
+cada página sabe es si lo que está corriendo escribe, y el texto vive en un solo
+lugar.
+
+### Cortar la espera no es un fallo
+
+El error del rechazo es un `RequestCancelled` propio, no un `status` de HTTP. Las
+páginas lo reconocen con `isCancellation` y no muestran caja de error: el usuario
+cortó la espera, no falló nada. Y `CancelSlot.finish(signal)` devuelve `false`
+para la respuesta de una operación vieja, que es lo que impide que un `catch`
+llegado tarde apague el modal de la operación que la reemplazó.
+
+El foco vuelve al elemento que lo tenía cuando se abrió el modal. El caso que lo
+hace necesario es quien tabuló hasta "Cancelar": ese botón se va con el modal y
+sin esto el foco caía al `<body>`.
+
+**Los spinners en línea no llevan botón.** Son parte de un panel ya abierto —
+cargar columnas de una tabla, cargar esquemas, cargar sesiones— y un modal para
+cortar una lectura de milisegundos tapa la pantalla por nada.
+
 ## Errores de validación
 
 `.muted.hint-error` se usa en nueve templates de cinco archivos y antes de este

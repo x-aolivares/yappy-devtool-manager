@@ -3,6 +3,7 @@ import { EnvironmentInfo, MultiResultInfo, ParamsMultiResponse } from '../api-ge
 import { EnvironmentService } from '../core/services/environment.service';
 import { ParamsService } from '../core/services/params.service';
 import { toApiError } from '../core/services/api-error';
+import { CancelSlot, isCancellation } from '../core/cancel';
 import { awsEnvironments } from '../core/format';
 import { BusyModalComponent } from '../shared/busy-modal';
 import { StatusBadge } from '../shared/status-badge';
@@ -138,7 +139,12 @@ import { paginate } from '../shared/paginate';
       <div class="error-box">{{ error() }}</div>
     }
 
-    <app-busy-modal [open]="busy()" [message]="dryRun() ? 'Generando comandos…' : 'Ejecutando…'" />
+    <app-busy-modal
+      [open]="busy()"
+      [message]="dryRun() ? 'Generando comandos…' : 'Ejecutando…'"
+      [writes]="!dryRun()"
+      (cancelled)="cancelBusy()"
+    />
 
     @if (result()) {
       @if (result()!.err_count === 0) {
@@ -236,6 +242,15 @@ export class ParamsCreatePage {
   readonly error = signal<string | null>(null);
   readonly result = signal<ParamsMultiResponse | null>(null);
 
+  /**
+   * La escritura en vuelo, para que el botón del modal corte la espera.
+   *
+   * "Ver comandos" no escribe nada y "Crear en las regiones" escribe en todas
+   * las marcadas: el modal usa `dryRun` para no llamarlo "Cancelar" en el
+   * segundo caso.
+   */
+  private readonly op = new CancelSlot();
+
   readonly withSecret = computed(() => this.createSecret() || (this.serviceMode() || 'ssm') === 'ssm+secret');
 
   /**
@@ -320,15 +335,26 @@ export class ParamsCreatePage {
     this.error.set(null);
     this.result.set(null);
 
-    this.paramsService.multi(p).then(
+    const run = this.op.begin();
+    this.paramsService.multi(p, run).then(
       (d) => {
+        if (!this.op.finish(run)) return;
         this.busy.set(false);
         this.result.set(d);
       },
       (err) => {
+        if (!this.op.finish(run)) return;
         this.busy.set(false);
+        // Cortar la espera no es un fallo: el usuario lo pidió. Ver `core/cancel`.
+        if (isCancellation(err)) return;
         this.error.set(toApiError(err).message);
       },
     );
+  }
+
+  /** Dejar de esperar el comando o la creación en vuelo. Ver `core/cancel`. */
+  cancelBusy(): void {
+    if (!this.op.cancel()) return;
+    this.busy.set(false);
   }
 }

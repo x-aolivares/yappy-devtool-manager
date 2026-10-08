@@ -3,6 +3,7 @@ import { DiffResponse, EnvironmentInfo } from '../api-gen/models';
 import { EnvironmentService } from '../core/services/environment.service';
 import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
+import { CancelSlot, isCancellation } from '../core/cancel';
 import { objectLabel } from '../core/format';
 import { BusyModalComponent } from '../shared/busy-modal';
 import { StatusBadge } from '../shared/status-badge';
@@ -101,7 +102,7 @@ import { RegionControlsComponent } from '../shared/region-controls';
       <div class="error-box">{{ error() }}</div>
     }
 
-    <app-busy-modal [open]="busy()" [message]="busyText()" />
+    <app-busy-modal [open]="busy()" [message]="busyText()" (cancelled)="cancelBusy()" />
 
     @if (result()) {
       <div class="panel">
@@ -180,6 +181,15 @@ export class DbDiffPage {
   readonly error = signal<string | null>(null);
   readonly result = signal<DiffResponse | null>(null);
 
+  /**
+   * La comparación en vuelo, para que el botón del modal la corte.
+   *
+   * Sólo lee: lee el objeto en el origen y en el destino y arma el script. El
+   * botón dice "Cancelar" y es literal —nada de lo que hace esta pantalla
+   * escribe nada—.
+   */
+  private readonly op = new CancelSlot();
+
   constructor() {
     this.envService.list().then(
       (envs) => this.environments.set(envs.environments),
@@ -205,25 +215,39 @@ export class DbDiffPage {
       `Comparando ${objectLabel(this.objectType())} ${schema}.${objectName} de origen ${this.envB()} a destino ${this.envA()}...`,
     );
 
+    const run = this.op.begin();
     this.dbService
-      .diff({
-        env_a: this.envA(),
-        env_b: this.envB(),
-        schema_name: schema,
-        object_type: this.objectType(),
-        object_name: objectName,
-        include_deletes: this.includeDeletes(),
-      })
+      .diff(
+        {
+          env_a: this.envA(),
+          env_b: this.envB(),
+          schema_name: schema,
+          object_type: this.objectType(),
+          object_name: objectName,
+          include_deletes: this.includeDeletes(),
+        },
+        run,
+      )
       .then(
         (d) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
           this.result.set(d);
         },
         (err) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
+          // Cortar la espera no es un fallo: el usuario lo pidió. Ver `core/cancel`.
+          if (isCancellation(err)) return;
           this.error.set(toApiError(err).message);
         },
       );
+  }
+
+  /** Cortar la comparación en vuelo y dejar el diff anterior en pantalla. */
+  cancelBusy(): void {
+    if (!this.op.cancel()) return;
+    this.busy.set(false);
   }
 
   pre(v: string | null | undefined, empty: string): string {

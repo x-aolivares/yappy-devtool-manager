@@ -30,17 +30,27 @@ import {
   SchemasResponse,
   TableMigrateRequest,
 } from '../../api-gen/models';
+import { abortCtx } from '../cancel';
 
+/**
+ * Las llamadas que una página muestra en el modal de espera aceptan una `signal`
+ * para que el botón de cancelar aborte la petición.
+ *
+ * El parámetro va **al final y es opcional** a propósito: las que no lo pasan
+ * —las lecturas perezosas de esquemas y de tablas, que viven en un spinner en
+ * línea y no en un modal— siguen siendo promesas sin más, y `undefined` deja la
+ * petición exactamente como estaba.
+ */
 @Injectable({ providedIn: 'root' })
 export class DbService {
   private readonly api = inject(Api);
 
-  diff(request: DbDiffRequest): Promise<DiffResponse> {
-    return this.api.invoke(diffDbObject, { body: request });
+  diff(request: DbDiffRequest, signal?: AbortSignal): Promise<DiffResponse> {
+    return this.api.invoke(diffDbObject, { body: request }, abortCtx(signal));
   }
 
-  executeSql(request: ExecuteRequest): Promise<ExecuteSqlResponse> {
-    return this.api.invoke(executeSql, { body: request });
+  executeSql(request: ExecuteRequest, signal?: AbortSignal): Promise<ExecuteSqlResponse> {
+    return this.api.invoke(executeSql, { body: request }, abortCtx(signal));
   }
 
   listSchemas(env: string): Promise<SchemasResponse> {
@@ -52,23 +62,23 @@ export class DbService {
     return this.api.invoke(listDbObjects, { env, schema, object_type: objectType });
   }
   /** Generate the script that would take an object from source into destination. */
-  compile(request: CompileRequest): Promise<CompileResponse> {
-    return this.api.invoke(compileDbObject, { body: request });
+  compile(request: CompileRequest, signal?: AbortSignal): Promise<CompileResponse> {
+    return this.api.invoke(compileDbObject, { body: request }, abortCtx(signal));
   }
 
   /** The bulk sibling of `compile`: one script for a whole schema. Also generate-only. */
-  compileSchema(request: SchemaCompileRequest): Promise<SchemaCompileResponse> {
-    return this.api.invoke(compileDbSchema, { body: request });
+  compileSchema(request: SchemaCompileRequest, signal?: AbortSignal): Promise<SchemaCompileResponse> {
+    return this.api.invoke(compileDbSchema, { body: request }, abortCtx(signal));
   }
 
   /** Run one read-only statement and return its rows. */
-  query(request: QueryRequest): Promise<QueryResponse> {
-    return this.api.invoke(queryDb, { body: request });
+  query(request: QueryRequest, signal?: AbortSignal): Promise<QueryResponse> {
+    return this.api.invoke(queryDb, { body: request }, abortCtx(signal));
   }
 
   /** Migrate every table involved in a query, honouring its joins and filters. */
-  migrate(request: MigrationRequest): Promise<MigrationResponse> {
-    return this.api.invoke(migrateDbData, { body: request });
+  migrate(request: MigrationRequest, signal?: AbortSignal): Promise<MigrationResponse> {
+    return this.api.invoke(migrateDbData, { body: request }, abortCtx(signal));
   }
 
   /**
@@ -77,6 +87,10 @@ export class DbService {
    * Asked before migrating, so the picker offers real column names instead of
    * asking the user to remember them. An empty list is the answer that says
    * "this table migrates whole", not an error.
+   *
+   * Sin `signal`: son las columnas de una fila de la grilla, se piden perezosas
+   * al marcar la tabla y cada fila tiene su token de secuencia. No hay modal que
+   * cerrar.
    */
   dateColumns(env: string, schema: string, table: string): Promise<DateColumnsResponse> {
     return this.api.invoke(listDbDateColumns, { env, schema, table });
@@ -88,7 +102,7 @@ export class DbService {
    * The bulk sibling of `migrate`: same engine, same response, but the source of
    * each `SELECT` is this list instead of a user-written query.
    */
-  migrateTables(request: TableMigrateRequest): Promise<MigrationResponse> {
-    return this.api.invoke(migrateDbTableList, { body: request });
+  migrateTables(request: TableMigrateRequest, signal?: AbortSignal): Promise<MigrationResponse> {
+    return this.api.invoke(migrateDbTableList, { body: request }, abortCtx(signal));
   }
 }

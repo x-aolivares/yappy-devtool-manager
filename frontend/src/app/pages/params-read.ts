@@ -9,6 +9,7 @@ import { EnvironmentService } from '../core/services/environment.service';
 import { ParamsService } from '../core/services/params.service';
 import { SessionService } from '../core/services/session.service';
 import { toApiError } from '../core/services/api-error';
+import { CancelSlot, isCancellation } from '../core/cancel';
 import { awsEnvironments, formatValue, isJsonDocument } from '../core/format';
 import { EnvControlsComponent, PARAM_SERVICES } from '../shared/env-controls';
 import { StatusBadge } from '../shared/status-badge';
@@ -90,7 +91,7 @@ interface EnvPanel {
       <div class="error-box">{{ error() }}</div>
     }
 
-    <app-busy-modal [open]="busy()" message="Buscando…" />
+    <app-busy-modal [open]="busy()" message="Buscando…" (cancelled)="cancelBusy()" />
 
     @for (panel of panels(); track panel.env) {
       <div class="panel env-value-panel">
@@ -176,6 +177,13 @@ export class ParamsReadPage {
   /** Ambiente cuyo valor se acaba de copiar, para el "Copiado" del botón. */
   readonly copiedEnv = signal<string | null>(null);
 
+  /**
+   * La búsqueda en vuelo. N ambientes son N llamadas a SSM al mismo tiempo y cada
+   * una puede colgarse con un token que no responde: con cuatro marcados hay que
+   * poder abandonar la búsqueda a medio camino.
+   */
+  private readonly op = new CancelSlot();
+
   readonly services = PARAM_SERVICES;
 
   private copyTimer: ReturnType<typeof setTimeout> | null = null;
@@ -248,17 +256,33 @@ export class ParamsReadPage {
     this.busy.set(true);
     this.error.set(null);
 
-    this.paramsService.read(envs, [name]).then(
+    const run = this.op.begin();
+    this.paramsService.read(envs, [name], run).then(
       (d) => {
+        if (!this.op.finish(run)) return;
         this.busy.set(false);
         this.buildPanels(d, envs);
         this.ensureSession(name);
       },
       (err) => {
+        if (!this.op.finish(run)) return;
         this.busy.set(false);
+        // Cortar la espera no es un fallo: el usuario lo pidió. Ver `core/cancel`.
+        if (isCancellation(err)) return;
         this.error.set(toApiError(err).message);
       },
     );
+  }
+
+  /**
+   * Dejar de esperar la búsqueda.
+   *
+   * Los paneles que ya estaban quedan como estaban: describen la búsqueda
+   * anterior, que sigue siendo la última que se completó.
+   */
+  cancelBusy(): void {
+    if (!this.op.cancel()) return;
+    this.busy.set(false);
   }
 
   private buildPanels(res: ParamsReadResponse, envs: string[]): void {

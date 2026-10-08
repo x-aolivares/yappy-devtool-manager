@@ -68,12 +68,15 @@ const MIGRATION_OK: Record<string, any> = {
 describe('SqlPage', () => {
   let sentQueries: QueryRequest[];
   let sentMigrations: MigrationRequest[];
+  /** La señal de aborto de cada llamada, para ver si el modal la corta. */
+  let signals: Array<AbortSignal | undefined>;
   let mockQuery: () => Promise<Record<string, any>>;
   let mockMigration: () => Promise<Record<string, any>>;
 
   beforeEach(async () => {
     sentQueries = [];
     sentMigrations = [];
+    signals = [];
     mockQuery = () => Promise.resolve(QUERY_OK);
     mockMigration = () => Promise.resolve(MIGRATION_OK);
 
@@ -88,12 +91,14 @@ describe('SqlPage', () => {
         {
           provide: DbService,
           useValue: {
-            query: (req: QueryRequest) => {
+            query: (req: QueryRequest, signal?: AbortSignal) => {
               sentQueries.push(req);
+              signals.push(signal);
               return mockQuery();
             },
-            migrate: (req: MigrationRequest) => {
+            migrate: (req: MigrationRequest, signal?: AbortSignal) => {
               sentMigrations.push(req);
+              signals.push(signal);
               return mockMigration();
             },
           },
@@ -494,6 +499,71 @@ describe('SqlPage', () => {
 
     // El id lo consulta el resto del flujo; el refactor visual no lo renombra.
     expect(el.querySelector('textarea#sql')).not.toBeNull();
+  });
+
+  it('el botón del modal corta la consulta y no deja nada a medias', async () => {
+    const fixture = TestBed.createComponent(SqlPage);
+    const comp = fixture.componentInstance as any;
+    comp.envs.set(['dev']);
+    comp.sql.set('SELECT 1');
+    comp.runQuery();
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    el.querySelector<HTMLButtonElement>('.busy-modal__cancel')!.click();
+    fixture.detectChanges();
+
+    // La señal que hubo que abortar: eso es lo que corta el fetch. Ver
+    // `core/cancel`.
+    expect(signals[0]?.aborted).toBe(true);
+    expect(comp.busy()).toBe(false);
+    expect(el.querySelector('.busy-modal')).toBeNull();
+    // Y no es un fallo: sin error nuevo y sin resultado de una consulta que ya
+    // no se está esperando.
+    expect(comp.error()).toBeNull();
+
+    await settle(fixture);
+    expect(comp.result()).toBeNull();
+  });
+
+  it('consultar puede "cancelar" pero migrar sólo puede "dejar de esperar"', async () => {
+    // Assert sobre el rótulo, a propósito: acá el texto ES la diferencia de
+    // comportamiento. "Cancelar" sobre un `REPLACE INTO` en vuelo promete una
+    // cosa que el botón no puede cumplir.
+    /** Arranca algo y lee el botón del modal antes de que termine. */
+    const botonDelModal = async (arrancar: (comp: any) => void) => {
+      const fixture = TestBed.createComponent(SqlPage);
+      const comp = fixture.componentInstance as any;
+      comp.envs.set(['dev']);
+      comp.sql.set('SELECT * FROM t');
+      comp.destEnvs.set(['qa']);
+      arrancar(comp);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+      const boton = el.querySelector<HTMLButtonElement>('.busy-modal__cancel');
+      const etiqueta = boton?.textContent?.trim();
+      const aclaracion = el.querySelector('.busy-modal__hint');
+      await settle(fixture);
+      return { etiqueta, aclaracion };
+    };
+
+    // Consultar sólo lee: "Cancelar" es literal y no lleva aclaración.
+    const consulta = await botonDelModal((comp) => comp.runQuery());
+    expect(consulta.etiqueta).toBe('Cancelar');
+    expect(consulta.aclaracion).toBeNull();
+
+    // Simular sólo cuenta filas: tampoco escribe.
+    const simulacion = await botonDelModal((comp) => comp.previewMigration());
+    expect(simulacion.etiqueta).toBe('Cancelar');
+    expect(simulacion.aclaracion).toBeNull();
+
+    // Migrar escribe de verdad, y el botón lo dice antes de apretarlo.
+    const migracion = await botonDelModal((comp) => {
+      comp.confirmChecked.set(true);
+      comp.runMigration();
+    });
+    expect(migracion.etiqueta).toBe('Dejar de esperar');
+    expect(migracion.aclaracion).not.toBeNull();
   });
 
   it('un error del backend se muestra y libera el botón', async () => {

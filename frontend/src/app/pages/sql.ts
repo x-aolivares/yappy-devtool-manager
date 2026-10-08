@@ -3,6 +3,7 @@ import { EnvironmentInfo, MigrationResponse, QueryResponse } from '../api-gen/mo
 import { EnvironmentService } from '../core/services/environment.service';
 import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
+import { CancelSlot, isCancellation } from '../core/cancel';
 import { EnvControlsComponent } from '../shared/env-controls';
 import { BusyModalComponent } from '../shared/busy-modal';
 import { NoticeModalComponent } from '../shared/notice-modal';
@@ -78,7 +79,12 @@ import { StatusBadge } from '../shared/status-badge';
       </button>
     }
 
-    <app-busy-modal [open]="busy()" [message]="busyText()" />
+    <app-busy-modal
+      [open]="busy()"
+      [message]="busyText()"
+      [writes]="busyWrites()"
+      (cancelled)="cancelBusy()"
+    />
 
     @if (result()) {
       <div class="panel">
@@ -287,9 +293,19 @@ export class SqlPage {
 
   readonly busy = signal(false);
   readonly busyText = signal('');
+  /**
+   * Si lo que está corriendo escribe.
+   *
+   * Consultar sólo lee; migrar escribe filas. El modal lo dice con otro rótulo
+   * porque "Cancelar" sobre un `REPLACE INTO` en vuelo promete una cosa falsa.
+   */
+  readonly busyWrites = signal(false);
   readonly error = signal<string | null>(null);
   readonly result = signal<QueryResponse | null>(null);
   readonly migration = signal<MigrationResponse | null>(null);
+
+  /** La operación que el modal de espera puede cortar. Ver `core/cancel`. */
+  private readonly op = new CancelSlot();
 
   readonly noticeOpen = signal(false);
   readonly noticeTitle = signal('No se pudo consultar');
@@ -417,16 +433,19 @@ export class SqlPage {
     this.migration.set(null);
     this.confirmChecked.set(false);
     this.busyText.set(`Consultando ${env}...`);
+    this.busyWrites.set(false);
 
     // Sin timeout del lado del cliente a propósito: el backend ya acota el
     // trabajo (probe del saludo de MySQL, `read_timeout` en la conexión y un
     // `max_execution_time` de sesión), así que la promesa siempre resuelve. Un
     // `setTimeout` acá solo sumaría un timer pendiente de 90s que deja la app
     // "inestable" en Angular zoneless, sin agregar ninguna protección real.
+    const run = this.op.begin();
     this.dbService
-      .query({ env, code: this.sql() })
+      .query({ env, code: this.sql() }, run)
       .then(
         (d) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
           this.result.set(d);
           // Cada consulta arranca limpia: la página y el filtro anteriores
@@ -436,7 +455,11 @@ export class SqlPage {
           this.gridSearch.query.set('');
         },
         (err) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
+          // Cortar la espera no es un fallo: el usuario lo pidió y no hay nada
+          // que relatar. Ver `core/cancel`.
+          if (isCancellation(err)) return;
           this.fail(toApiError(err).message);
         },
       );
@@ -460,25 +483,47 @@ export class SqlPage {
         ? `Simulando la migración de ${this.env()} a ${this.destEnv()}...`
         : `Migrando datos de ${this.env()} a ${this.destEnv()}...`,
     );
+    // Simular cuenta filas y no escribe; migrar hace `REPLACE INTO`. La
+    // diferencia decide el rótulo del botón de cortar la espera.
+    this.busyWrites.set(!dryRun);
 
+    const run = this.op.begin();
     this.dbService
-      .migrate({
-        env_b: this.env(),
-        env_a: this.destEnv(),
-        code: text,
-        dry_run: dryRun,
-        confirm: !dryRun,
-      })
+      .migrate(
+        {
+          env_b: this.env(),
+          env_a: this.destEnv(),
+          code: text,
+          dry_run: dryRun,
+          confirm: !dryRun,
+        },
+        run,
+      )
       .then(
         (d) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
           this.migration.set(d);
         },
         (err) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
+          if (isCancellation(err)) return;
           this.fail(toApiError(err).message, dryRun ? 'No se pudo simular' : 'No se pudo migrar');
         },
       );
+  }
+
+  /**
+   * Dejar de esperar la consulta o la migración en vuelo.
+   *
+   * Corta la conexión y descarta la respuesta; no deshace lo que el backend
+   * haya alcanzado a escribir, y por eso el modal lo dice con el rótulo de
+   * "dejar de esperar" cuando la operación escribe.
+   */
+  cancelBusy(): void {
+    if (!this.op.cancel()) return;
+    this.busy.set(false);
   }
 
   previewMigration(): void {

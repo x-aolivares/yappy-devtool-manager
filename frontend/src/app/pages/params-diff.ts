@@ -5,6 +5,7 @@ import { EnvironmentService } from '../core/services/environment.service';
 import { ParamsService } from '../core/services/params.service';
 import { SessionService } from '../core/services/session.service';
 import { toApiError } from '../core/services/api-error';
+import { CancelSlot, isCancellation } from '../core/cancel';
 import { awsEnvironments, formatValue } from '../core/format';
 import { serializeMerged } from '../core/params-merge';
 import type { ChangeRow } from '../core/params-merge';
@@ -401,7 +402,10 @@ type PairKey = 'param' | 'secret';
       }
     }
 
-    <app-busy-modal [open]="busy() && !data()" [message]="busyText()" />
+    <!-- El modal es sólo de la comparación: los "Ejecutar en…" escriben con la
+         tabla ya abierta, así que el modal —que aparece sobre todo— no aplica y
+         ninguna de esas operaciones se cancela desde acá. -->
+    <app-busy-modal [open]="busy() && !data()" [message]="busyText()" (cancelled)="cancelBusy()" />
   `,
 })
 export class ParamsDiffPage {
@@ -438,6 +442,15 @@ export class ParamsDiffPage {
 
   private applyTimer: ReturnType<typeof setTimeout> | null = null;
   private applySeq = 0;
+
+  /**
+   * La comparación en vuelo, para que el botón del modal la corte.
+   *
+   * Lee el parámetro en las dos regiones y arma el parche: son dos idas a la base
+   * de cada ambiente, y con el túnel lento son de las consultas donde más se
+   * echa de menos abandonar a mitad de camino.
+   */
+  private readonly op = new CancelSlot();
 
   readonly mode = computed<Mode>(() => {
     const d = this.data();
@@ -577,8 +590,10 @@ export class ParamsDiffPage {
       with_secret: this.withSecret(),
     };
 
-    this.paramsService.diff(payload).then(
+    const run = this.op.begin();
+    this.paramsService.diff(payload, run).then(
       (d) => {
+        if (!this.op.finish(run)) return;
         this.busy.set(false);
         this.initState(d);
         this.sessionUpdate({
@@ -593,7 +608,10 @@ export class ParamsDiffPage {
         });
       },
       (err) => {
+        if (!this.op.finish(run)) return;
         this.busy.set(false);
+        // Cortar la espera no es un fallo: el usuario lo pidió. Ver `core/cancel`.
+        if (isCancellation(err)) return;
         const e = toApiError(err);
         this.error.set(e.message);
         this.sessionUpdate({
@@ -603,6 +621,18 @@ export class ParamsDiffPage {
         });
       },
     );
+  }
+
+  /**
+   * Cortar la comparación en vuelo y dejar la pantalla como estaba.
+   *
+   * Sin cambios a propósito: los datos que ya estaban siguen describiendo la
+   * última comparación que terminó, y la sesión —que se actualiza con cada
+   * comparación— no se toca, porque no hubo comparación.
+   */
+  cancelBusy(): void {
+    if (!this.op.cancel()) return;
+    this.busy.set(false);
   }
 
   private initState(d: ParamsDiffResponse) {

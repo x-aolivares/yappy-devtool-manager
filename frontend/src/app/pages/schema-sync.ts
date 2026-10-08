@@ -3,6 +3,7 @@ import { EnvironmentInfo, ExecuteSqlResponse, SchemaCompileResponse } from '../a
 import { EnvironmentService } from '../core/services/environment.service';
 import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
+import { CancelSlot, isCancellation } from '../core/cancel';
 import { BusyModalComponent } from '../shared/busy-modal';
 import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
@@ -274,7 +275,12 @@ type DestinationIndex = Record<SyncObject['kind'], Set<string>>;
       <div class="error-box">{{ error() }}</div>
     }
 
-    <app-busy-modal [open]="busy()" [message]="busyText()" />
+    <app-busy-modal
+      [open]="busy()"
+      [message]="busyText()"
+      [writes]="busyWrites()"
+      (cancelled)="cancelBusy()"
+    />
 
     @if (executed(); as ex) {
       <div class="panel">
@@ -353,9 +359,25 @@ export class SchemaSyncPage {
 
   readonly busy = signal(false);
   readonly busyText = signal('');
+  /**
+   * Si lo que está corriendo escribe.
+   *
+   * "Generar" arma texto leyendo los dos ambientes; "Sincronizar" ejecuta el
+   * script en el destino y ese script puede DROPear las tablas marcadas. El
+   * modal no puede llamar "Cancelar" a lo segundo.
+   */
+  readonly busyWrites = signal(false);
   readonly error = signal<string | null>(null);
   readonly result = signal<SchemaCompileResponse | null>(null);
   readonly executed = signal<ExecuteSqlResponse | null>(null);
+
+  /**
+   * La operación en vuelo, para que el botón del modal corte la espera.
+   *
+   * Armar el script de un esquema entero es la lectura más larga del frontend:
+   * cientos de objetos en dos ambientes. Es la que más necesita abandonarse.
+   */
+  private readonly op = new CancelSlot();
 
   /**
    * One row per object of the origin, tables first, alphabetical within each.
@@ -705,22 +727,28 @@ export class SchemaSyncPage {
     const selected = this.selected();
     const counted = `${selected.tables.length} tabla(s) y ${selected.procedures.length} procedure(s)`;
     this.busyText.set(`Generando el script de ${counted} de ${schema}, de ${envB} a ${envA}...`);
+    this.busyWrites.set(false);
 
+    const run = this.op.begin();
     this.dbService
-      .compileSchema({
-        env_b: envB,
-        env_a: envA,
-        schema_name: schema,
-        include_tables: selected.tables.length > 0,
-        include_procedures: selected.procedures.length > 0,
-        // La lista explícita es lo que se compiló: sin ella el backend usaría los
-        // flags y se llevaría el esquema entero. Las dos cosas viajan, y el
-        // backend le da prioridad a la lista.
-        tables: selected.tables,
-        procedures: selected.procedures,
-      })
+      .compileSchema(
+        {
+          env_b: envB,
+          env_a: envA,
+          schema_name: schema,
+          include_tables: selected.tables.length > 0,
+          include_procedures: selected.procedures.length > 0,
+          // La lista explícita es lo que se compiló: sin ella el backend usaría los
+          // flags y se llevaría el esquema entero. Las dos cosas viajan, y el
+          // backend le da prioridad a la lista.
+          tables: selected.tables,
+          procedures: selected.procedures,
+        },
+        run,
+      )
       .then(
         (d) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
           this.result.set(d);
           // El backend devuelve el script siempre —para el caso "no hay nada que
@@ -730,7 +758,10 @@ export class SchemaSyncPage {
           this.generated.set(true);
         },
         (err) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
+          // Cortar la espera no es un fallo: el usuario lo pidió. Ver `core/cancel`.
+          if (isCancellation(err)) return;
           this.error.set(toApiError(err).message);
         },
       );
@@ -774,22 +805,30 @@ export class SchemaSyncPage {
     this.busy.set(true);
     this.error.set(null);
     this.busyText.set(`Sincronizando el schema en ${env}...`);
+    // El script se ejecuta en el destino y puede DROPear las tablas marcadas: el
+    // botón del modal dice "Dejar de esperar", no "Cancelar".
+    this.busyWrites.set(true);
 
+    const run = this.op.begin();
     this.dbService
-      .executeSql({
-        env: env,
-        object_type: 'script',
-        // Vacío a propósito, y no el esquema. `execute_sql` emite su propio
-        // `USE <schema>` antes de la primera sentencia, así que mandar el nombre
-        // lo manda contra una base que el destino puede no tener todavía
-        // (`create_schema`), y el script falla con "Unknown database" en el
-        // primer `CREATE TABLE`. El script generado ya trae su
-        // `CREATE DATABASE IF NOT EXISTS` y su propio `USE`.
-        schema_name: '',
-        code: code,
-      })
+      .executeSql(
+        {
+          env: env,
+          object_type: 'script',
+          // Vacío a propósito, y no el esquema. `execute_sql` emite su propio
+          // `USE <schema>` antes de la primera sentencia, así que mandar el nombre
+          // lo manda contra una base que el destino puede no tener todavía
+          // (`create_schema`), y el script falla con "Unknown database" en el
+          // primer `CREATE TABLE`. El script generado ya trae su
+          // `CREATE DATABASE IF NOT EXISTS` y su propio `USE`.
+          schema_name: '',
+          code: code,
+        },
+        run,
+      )
       .then(
         (d) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
           this.executed.set(d);
           // El script corrió: lo que estaba "No, se crea" puede existir ahora. Se
@@ -799,9 +838,25 @@ export class SchemaSyncPage {
           this.refreshDestination();
         },
         (err) => {
+          if (!this.op.finish(run)) return;
           this.busy.set(false);
+          // Cortar la espera no es un fallo: el usuario lo pidió. Ver `core/cancel`.
+          if (isCancellation(err)) return;
           this.error.set(toApiError(err).message);
         },
       );
+  }
+
+  /**
+   * Dejar de esperar lo que esté corriendo: el `Generar` que sólo arma el script
+   * o el `Sincronizar` que lo ejecuta.
+   *
+   * En el segundo caso lo que se corta es la espera: el script puede seguir
+   * corriendo en el destino y borrar tablas que ya estaban. El modal lo dice con
+   * el rótulo de "dejar de esperar" y la línea de abajo.
+   */
+  cancelBusy(): void {
+    if (!this.op.cancel()) return;
+    this.busy.set(false);
   }
 }
