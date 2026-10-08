@@ -129,4 +129,62 @@ describe('BusyModalComponent', () => {
     expect(document.activeElement).toBe(trigger);
     trigger.remove();
   });
+
+  it('el reloj de la espera sube solo y pasa a minutos', async () => {
+    vi.useFakeTimers();
+    try {
+      fixture.componentRef.setInput('open', true);
+      fixture.detectChanges();
+      TestBed.tick();
+      fixture.detectChanges();
+
+      const reloj = (): string | undefined =>
+        host().querySelector('.busy-modal__elapsed')?.textContent?.trim();
+      expect(reloj()).toBe('0 s');
+
+      await vi.advanceTimersByTimeAsync(3000);
+      fixture.detectChanges();
+      expect(reloj()).toBe('3 s');
+
+      // Pasado el minuto deja de ser "150 s" y pasa a "2:30": el número tiene que
+      // seguir siendo legible de un vistazo cuando la espera ya es larga.
+      await vi.advanceTimersByTimeAsync(150_000);
+      fixture.detectChanges();
+      expect(reloj()).toBe('2:33');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cerrado el modal, el reloj se para', async () => {
+    vi.useFakeTimers();
+    try {
+      fixture.componentRef.setInput('open', true);
+      fixture.detectChanges();
+      TestBed.tick();
+
+      fixture.componentRef.setInput('open', false);
+      fixture.detectChanges();
+      TestBed.tick();
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      // Sin modal no hay nada que mirar, y sobre todo: el intervalo tiene que
+      // estar limpiado. Un timer vivo acá escribe en una signal de un componente
+      // que ya no está en pantalla.
+      expect(host().querySelector('.busy-modal__elapsed')).toBeNull();
+      expect(fixture.componentInstance.elapsed()).toBe('0 s');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('el reloj no se anuncia: vive en una región aria-live', () => {
+    fixture.componentRef.setInput('open', true);
+    fixture.detectChanges();
+
+    // El contenedor del modal es `role="status"` con `aria-live="polite"`. Un
+    // número que cambia cada segundo dentro de una región viva se anunciaría cada
+    // segundo, que es ruido para quien lee con lector de pantalla.
+    expect(host().querySelector('.busy-modal__elapsed')?.getAttribute('aria-hidden')).toBe('true');
+  });
 });

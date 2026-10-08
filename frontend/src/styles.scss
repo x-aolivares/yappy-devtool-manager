@@ -581,6 +581,18 @@ h2 {
   text-align: center;
 }
 
+/* El reloj de la espera. Es una medición, no parte del mensaje: va debajo, en
+   secundario y con cifras tabulares para que el ancho no dance cada segundo.
+   Monoespaciada para que el número se pueda leer de reojo mientras se decide si
+   se corta la espera. */
+.busy-modal__elapsed {
+  margin: 0;
+  font-family: var(--sys-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
 .busy-modal__cancel {
   flex: none;
 }

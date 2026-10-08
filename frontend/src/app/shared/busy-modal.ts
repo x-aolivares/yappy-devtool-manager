@@ -18,7 +18,23 @@
  * El `role="alert"` de un modal de error no corresponde acá: no es una
  * interrupción, es un estado que la propia app inició y va a terminar.
  */
-import { Component, effect, input, output } from '@angular/core';
+import { Component, effect, input, output, signal } from '@angular/core';
+
+/**
+ * Los segundos que lleva esperando, en el formato más corto que se lea de un
+ * vistazo: `"0 s"` hasta el minuto, `"1:05"` de ahí en más.
+ *
+ * **No es una cuenta regresiva**, y no hay un plazo después del cual la
+ * operación esté mal: una consulta tarda tres minutos si MySQL está lento y esa vez
+ * va bien, y Compilar un esquema de trescientas tablas es lo normal. Lo que el
+ * usuario quiere es saber cuánto lleva esperando para decidir si lo corta, y eso
+ * sólo se mide hacia adelante.
+ */
+function elapsedLabel(segundos: number): string {
+  const minutos = Math.floor(segundos / 60);
+  const resto = segundos % 60;
+  return minutos ? `${minutos}:${String(resto).padStart(2, '0')}` : `${resto} s`;
+}
 
 @Component({
   selector: 'app-busy-modal',
@@ -30,6 +46,10 @@ import { Component, effect, input, output } from '@angular/core';
           <span class="spinner" aria-hidden="true"></span>
           <span class="busy-modal__text">{{ message() }}</span>
         </div>
+        <!-- aria-hidden a propósito: el contenedor es una región aria-live, y anunciar
+             un número que cambia cada segundo es ruido para quien lee con lector
+             de pantalla. El reloj es para el que está mirando. -->
+        <p class="busy-modal__elapsed" aria-hidden="true">{{ elapsed() }}</p>
         @if (writes()) {
           <p class="busy-modal__hint">{{ writeHint }}</p>
         }
@@ -72,6 +92,16 @@ export class BusyModalComponent {
    */
   private wasFocused: HTMLElement | null = null;
 
+  /**
+   * Cuánto se lleva esperando.
+   *
+   * Es la mitad del motivo por el que el botón de cortar la espera sirve: sin
+   * reloj, "Consultando…" no distingue entre una consulta lenta y una conexión
+   * colgada, que es justo la decisión que el botón le pide al usuario. Cuenta
+   * desde que el modal se abre, que es cuando se aprieta el botón.
+   */
+  readonly elapsed = signal('0 s');
+
   constructor() {
     effect(() => {
       if (this.open()) {
@@ -86,6 +116,30 @@ export class BusyModalComponent {
       if (back && document.contains(back) && document.activeElement === document.body) {
         back.focus();
       }
+    });
+
+    // El reloj. Va en un `effect` y no en un `ngOnInit` porque tiene que arrancar
+    // y parar con `open()`: el componente está en el DOM de la página siempre,
+    // esté el modal abierto o no, y un `setInterval` vivo con el modal cerrado
+    // sería un timer que no para y que escribe en una signal que nadie mira.
+    effect((onCleanup) => {
+      if (!this.open()) return;
+      const desde = Date.now();
+      let ultimo = -1;
+      const tick = (): void => {
+        const segundos = Math.floor((Date.now() - desde) / 1000);
+        // Sólo escribe cuando cambia el segundo: el tick corre más seguido para no
+        // demorar hasta un segundo en mostrar el nuevo, pero la pantalla se
+        // actualiza una vez por segundo, no cinco.
+        if (segundos === ultimo) return;
+        ultimo = segundos;
+        this.elapsed.set(elapsedLabel(segundos));
+      };
+      tick();
+      const id = setInterval(tick, 200);
+      // El `onCleanup` corre al cerrar el modal y al destruirse el componente: sin
+      // esto el intervalo seguiría contando y escribiendo en una signal huérfana.
+      onCleanup(() => clearInterval(id));
     });
   }
 }

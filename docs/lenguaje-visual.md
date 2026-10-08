@@ -373,6 +373,26 @@ Las páginas pasan esa decisión con `[writes]`, no con el texto del rótulo: lo
 cada página sabe es si lo que está corriendo escribe, y el texto vive en un solo
 lugar.
 
+### El modal lleva un reloj, y no es cuenta regresiva
+
+El modal muestra cuánto se lleva esperando (`0 s`, y `2:33` pasado el minuto), en
+`--sys-mono`, `--text-xs`, `--muted` y con cifras tabulares para que el ancho no
+dance cada segundo.
+
+Es lo que hace decidible el botón: sin reloj, "Consultando…" no distingue entre
+una consulta lenta y una conexión colgada. **No hay cuenta regresiva** porque no
+existe un plazo tras el cual la operación esté mal —Compilar un esquema de tres
+cientas tablas es lento y es lo normal—, así que el número sólo sube.
+
+Dos detalles que no son de estilo:
+
+- **Es `aria-hidden`.** El contenedor del modal es `role="status"` con
+  `aria-live="polite"`, y anunciar un número que cambia cada segundo sería ruido
+  para quien lee con lector de pantalla. El reloj es para el que está mirando.
+- **Vive en un `effect` sobre `open()`, no en un `ngOnInit`.** El componente está
+  en el DOM de la página esté el modal abierto o no; un `setInterval` que no se
+  limpia en el `onCleanup` sigue contando y escribiendo en una signal huérfana.
+
 ### Cortar la espera no es un fallo
 
 El error del rechazo es un `RequestCancelled` propio, no un `status` de HTTP. Las
