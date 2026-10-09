@@ -185,3 +185,130 @@ main {
     padding: 1.25rem 0.75rem;
   }
 }
+
+// -------------------------------------------------------- refreshed shell
+.shell {
+  grid-template-columns: 16.5rem minmax(0, 1fr);
+  background: var(--bg);
+}
+
+.sidebar {
+  gap: 1.25rem;
+  padding: 1.5rem 1rem;
+  background: var(--nav-bg);
+  border-right-color: var(--nav-border);
+  box-shadow: 0.25rem 0 1.25rem rgb(9 30 66 / 0.08);
+}
+
+.sidebar .brand {
+  color: var(--nav-text);
+  font-size: 1.375rem;
+}
+
+.sidebar .brand span {
+  color: var(--nav-muted);
+}
+
+.nav {
+  gap: 1.375rem;
+}
+
+.nav .home {
+  min-height: 2.75rem;
+  padding: 0.625rem 0.75rem;
+  border-bottom-color: var(--nav-border);
+  color: var(--nav-text);
+
+  &:hover {
+    background: var(--nav-hover);
+  }
+
+  &.active {
+    color: #ffffff;
+    background: var(--nav-selected);
+  }
+}
+
+.section-label {
+  margin-bottom: 0.5rem;
+  color: var(--nav-muted);
+  font-size: var(--text-xxs);
+  letter-spacing: 0.1em;
+}
+
+.section ul {
+  gap: 0.25rem;
+}
+
+.section a {
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  padding: 0.625rem 0.75rem;
+  border-left-width: 0.1875rem;
+  border-radius: var(--sys-radius-sm);
+  color: var(--nav-text);
+
+  &:hover {
+    background: var(--nav-hover);
+  }
+
+  &.active {
+    color: #ffffff;
+    background: var(--nav-selected);
+    border-left-color: #85b8ff;
+  }
+}
+
+.section-empty {
+  padding: 0.375rem 0.75rem;
+  color: var(--nav-muted);
+}
+
+.theme-toggle {
+  min-height: 2.75rem;
+  border-color: #8294aa;
+  background: transparent;
+  color: var(--nav-text);
+
+  &:hover:not(:disabled) {
+    background: var(--nav-hover);
+    border-color: var(--nav-text);
+  }
+
+  &:focus-visible {
+    outline-color: #9cc5ff;
+  }
+}
+
+main {
+  max-width: 1440px;
+  padding: clamp(1.5rem, 3vw, 3rem);
+}
+
+@media (max-width: 48rem) {
+  .sidebar {
+    gap: 1rem;
+    padding: 1rem;
+    box-shadow: 0 0.25rem 1rem rgb(9 30 66 / 0.12);
+  }
+
+  .nav {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+    gap: 1rem;
+  }
+
+  .nav .home {
+    grid-column: 1 / -1;
+  }
+
+  .theme-toggle {
+    align-self: flex-start;
+    min-width: 12rem;
+  }
+
+  main {
+    padding: clamp(1rem, 4vw, 1.5rem);
+  }
+}
