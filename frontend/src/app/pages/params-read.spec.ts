@@ -103,6 +103,26 @@ describe('ParamsReadPage', () => {
     fixture.detectChanges();
   }
 
+  /**
+   * Click en el botón de confirmar del `NoticeModal`.
+   *
+   * `update()` ya no escribe: deja la actualización pendiente y abre el modal. El
+   * click va por el `output` `confirmed`, o sea por el mismo camino que el del
+   * usuario. No hay `sleep`: el modal es un signal y el click es síncrono.
+   */
+  function confirmarEnModal(el: HTMLElement): void {
+    const boton = el.querySelector<HTMLButtonElement>('.notice-modal__confirm');
+    if (!boton) throw new Error('No hay modal de confirmación abierto');
+    boton.click();
+  }
+
+  /** Click en "Cancelar": la vía que no escribe. */
+  function cancelarEnModal(el: HTMLElement): void {
+    const boton = el.querySelector<HTMLButtonElement>('.notice-modal__cancel');
+    if (!boton) throw new Error('No hay modal de confirmación abierto');
+    boton.click();
+  }
+
   async function buscar(): Promise<{
     comp: any;
     el: HTMLElement;
@@ -310,24 +330,19 @@ describe('ParamsReadPage', () => {
     });
   });
 
-  it('el botón de escribir existe uno por panel', async () => {
-    const { el } = await buscar();
-
-    expect(el.querySelectorAll('button.update-btn').length).toBe(2);
-  });
-
+  // `update()` no lo llama ningún botón del template —el panel quedó sólo con
+  // el de copiar, y la escritura se hace desde otro lado—. Por eso estos tests la
+  // llaman por el componente en vez de hacer click: lo que fijan es el contrato
+  // del método, su guarda y su confirmación.
   it('Actualizar escribe SÓLO el ambiente de ese panel', async () => {
     const { comp, el, fixture } = await buscar();
 
-    // `update()` pasa por `window.confirm`, que en el entorno de test devuelve
-    // false: sin esto el método corta antes de escribir y el test probaría nada.
-    const spy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const botones = [...el.querySelectorAll<HTMLButtonElement>('button.update-btn')];
-    botones[1].click();
+    comp.update(comp.panels()[1]);
     await settle(fixture);
-    spy.mockRestore();
+    confirmarEnModal(el);
+    await settle(fixture);
 
-    // El ambiente enviado es el del panel que se apretó, no el primero.
+    // El ambiente enviado es el del panel que se pidió, no el primero.
     expect(writes).toHaveLength(1);
     expect(writes[0].envs).toEqual(['qa']);
     expect(writes[0].confirm).toBe(true);
@@ -336,15 +351,32 @@ describe('ParamsReadPage', () => {
   });
 
   it('Actualizar sin confirmar no escribe nada', async () => {
-    const { el, fixture } = await buscar();
+    const { comp, el, fixture } = await buscar();
 
-    const spy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    const botones = [...el.querySelectorAll<HTMLButtonElement>('button.update-btn')];
-    botones[1].click();
+    comp.update(comp.panels()[1]);
     await settle(fixture);
-    spy.mockRestore();
+    // Abrir el modal ya alcanza para probar la guarda: nada se escribió.
+    expect(writes).toHaveLength(0);
+    expect(el.querySelector('.notice-modal')).not.toBeNull();
+
+    cancelarEnModal(el);
+    await settle(fixture);
 
     expect(writes).toHaveLength(0);
+  });
+
+  it('Actualizar un valor vacío no abre el modal ni escribe', async () => {
+    const { comp, el, fixture } = await buscar();
+    comp.onEdit(comp.panels()[1], '   ');
+
+    comp.update(comp.panels()[1]);
+    await settle(fixture);
+
+    // La guarda de valor vacío corta antes de la confirmación, y lo dice en el
+    // panel en vez de dejarle al usuario un modal que no explica nada.
+    expect(el.querySelector('.notice-modal')).toBeNull();
+    expect(writes).toHaveLength(0);
+    expect(comp.writeStatus()['qa']?.ok).toBe(false);
   });
 
   it('editar el valor de un panel no toca el otro', async () => {

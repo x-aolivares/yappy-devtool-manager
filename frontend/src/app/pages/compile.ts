@@ -5,13 +5,14 @@ import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
 import { CancelSlot, isCancellation } from '../core/cancel';
 import { objectLabel } from '../core/format';
-import { BusyModalComponent } from '../shared/busy-modal';
+import { BusyModal } from '../shared/busy-modal';
 import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
-import { EnvControlsComponent } from '../shared/env-controls';
-import { RegionControlsComponent } from '../shared/region-controls';
-import { SchemaSelectComponent } from '../shared/schema-select';
+import { EnvControls } from '../shared/env-controls';
+import { RegionControls } from '../shared/region-controls';
+import { SchemaSelect } from '../shared/schema-select';
 import { AutoGrowDirective } from '../shared/auto-grow';
+import { NoticeModal } from '../shared/notice-modal';
 
 /**
  * Compilar: ejecutar SQL contra un ambiente, tomando el SQL de donde sea.
@@ -41,13 +42,14 @@ import { AutoGrowDirective } from '../shared/auto-grow';
 @Component({
   selector: 'app-compile-page',
   imports: [
-    EnvControlsComponent,
-    RegionControlsComponent,
-    SchemaSelectComponent,
+    EnvControls,
+    RegionControls,
+    SchemaSelect,
     StatusBadge,
-    BusyModalComponent,
+    BusyModal,
     CopyButton,
     AutoGrowDirective,
+    NoticeModal,
   ],
   template: `
     <h1>Compilar</h1>
@@ -271,6 +273,21 @@ import { AutoGrowDirective } from '../shared/auto-grow';
       (cancelled)="cancelBusy()"
     />
 
+    @if (pendingRun(); as p) {
+      <app-notice-modal
+        [open]="true"
+        [title]="p.titulo"
+        tone="default"
+        confirmLabel="Ejecutar"
+        (confirmed)="confirmar()"
+        (closed)="cancelar()"
+      >
+        @for (parrafo of p.parrafos; track $index) {
+          <p>{{ parrafo }}</p>
+        }
+      </app-notice-modal>
+    }
+
     @if (result()) {
       <div class="panel">
         <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
@@ -411,6 +428,23 @@ export class CompilePage {
    * this check and the button don't care which origin is selected.
    */
   readonly canExecute = computed(() => !!this.envA() && this.script().trim().length > 0);
+
+  /**
+   * La ejecución pendiente de confirmar.
+   *
+   * Guarda el destino y el script junto con el texto, y no se recalculan al
+   * confirmar: entre el click y el clic en "Ejecutar" el usuario puede cambiar el
+   * editor o el ambiente, y lo que tiene que correr es lo que se le mostró en el
+   * diálogo, no lo que quedó después.
+   */
+  readonly pendingRun = signal<{
+    titulo: string;
+    parrafos: string[];
+    env: string;
+    code: string;
+    fromScript: boolean;
+    schema: string;
+  } | null>(null);
 
   /**
    * Aviso de reemplazo: compilar borra el objeto del destino y lo vuelve a crear.
@@ -608,21 +642,41 @@ export class CompilePage {
 
     // El script que genera Compilar arranca con un DROP, y hay que decirlo antes
     // de que corra, no después. Un `DROP TABLE` se lleva las filas del destino.
+    //
+    // El aviso va como párrafo aparte, no pegado con `\n\n`: el cuerpo del modal es
+    // HTML, así que los saltos de línea los decide el marcado. Ver `styles.scss`,
+    // `.notice-modal__body p`.
     const drops = /\bDROP\s+(TABLE|PROCEDURE|FUNCTION|TRIGGER)\b/i.test(code);
     const aviso = drops
-      ? `\n\nOjo: el script borra lo que haya en ${env} — en una tabla, la tabla y todas sus ` +
+      ? `Ojo: el script borra lo que haya en ${env} — en una tabla, la tabla y todas sus ` +
         'filas. Compilar reemplaza; para conservar los datos del destino usá el Diff de base ' +
         'de datos.'
       : '';
-    if (!confirm(`¿Ejecutar ${target}?\nCorre exactamente lo que está en el editor.${aviso}`))
-      return;
+
+    this.pendingRun.set({
+      titulo: `¿Ejecutar ${target}?`,
+      parrafos: ['Corre exactamente lo que está en el editor.', aviso].filter(Boolean),
+      env,
+      code,
+      fromScript,
+      schema,
+    });
+  }
+
+  /** Confirmó en el modal: recién acá se ejecuta el script contra el destino. */
+  confirmar(): void {
+    const p = this.pendingRun();
+    this.pendingRun.set(null);
+    if (!p) return;
+
+    const { env, code, fromScript, schema } = p;
 
     this.busy.set(true);
     this.error.set(null);
     this.busyText.set(`Ejecutando el script en ${env}...`);
     // Esto escribe en el destino y el script puede empezar con un DROP: el
     // botón del modal no dice "Cancelar" sino "Dejar de esperar". Ver
-    // `BusyModalComponent`.
+    // `BusyModal`.
     this.busyWrites.set(true);
 
     const run = this.op.begin();
@@ -652,6 +706,11 @@ export class CompilePage {
           this.error.set(toApiError(err).message);
         },
       );
+  }
+
+  /** ✕, Escape, backdrop o "Cancelar": no se ejecuta nada. */
+  cancelar(): void {
+    this.pendingRun.set(null);
   }
 
   /**

@@ -1,6 +1,6 @@
 import { Component, computed, input, model } from '@angular/core';
 import { EnvironmentInfo } from '../api-gen/models';
-import { EnvControlsComponent, PARAM_SERVICES } from './env-controls';
+import { EnvControls, PARAM_SERVICES } from './env-controls';
 
 /**
  * Controles de un par origen → destino, sobre los grupos de píldoras.
@@ -14,7 +14,7 @@ import { EnvControlsComponent, PARAM_SERVICES } from './env-controls';
  */
 @Component({
   selector: 'app-region-controls',
-  imports: [EnvControlsComponent],
+  imports: [EnvControls],
   template: `
     <app-env-controls
       [environments]="environments()"
@@ -45,7 +45,7 @@ import { EnvControlsComponent, PARAM_SERVICES } from './env-controls';
     }
   `,
 })
-export class RegionControlsComponent {
+export class RegionControls {
   environments = input<EnvironmentInfo[] | null>(null);
   withService = input(true);
   withName = input(false);

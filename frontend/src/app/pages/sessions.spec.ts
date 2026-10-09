@@ -31,11 +31,19 @@ const MUCHAS = Array.from({ length: 60 }, (_, i) =>
 );
 
 describe('SessionsPage filtro + paginación', () => {
+  /**
+   * `borradas` recibe los ids que pasaron por `SessionService.delete`. Es como se
+   * prueba que el borrado ocurrió sin volver a armar el módulo de testing en cada
+   * test: `setup` es compartida y `remove()` ya no borra al clickear.
+   */
+  let borradas: string[] = [];
+
   async function setup(sesiones: SessionSummaryInfo[]): Promise<{
     fixture: ComponentFixture<SessionsPage>;
     comp: any;
     el: HTMLElement;
   }> {
+    borradas = [];
     await TestBed.configureTestingModule({
       imports: [SessionsPage],
       providers: [
@@ -44,7 +52,10 @@ describe('SessionsPage filtro + paginación', () => {
           provide: SessionService,
           useValue: {
             list: () => Promise.resolve({ sessions: sesiones }),
-            delete: () => Promise.resolve({}),
+            delete: (id: string) => {
+              borradas.push(id);
+              return Promise.resolve({});
+            },
           },
         },
       ],
@@ -65,6 +76,70 @@ describe('SessionsPage filtro + paginación', () => {
   }
 
   const filas = (el: HTMLElement) => el.querySelectorAll('table.sessions-table tbody tr').length;
+
+  /** El botón "Eliminar" de la fila `n`. */
+  const botonEliminar = (el: HTMLElement, n: number): HTMLButtonElement =>
+    [...el.querySelectorAll<HTMLButtonElement>('button.secondary')].filter((b) =>
+      (b.textContent ?? '').includes('Eliminar'),
+    )[n];
+
+  /**
+   * Click en el botón de confirmar del `NoticeModal`.
+   *
+   * `remove()` ya no borra: deja la sesión pendiente y abre el modal. El click va
+   * por el `output` `confirmed`, o sea por el mismo camino que el del usuario. No
+   * hay `sleep`: el modal es un signal y el click es síncrono.
+   */
+  function confirmarEnModal(el: HTMLElement): void {
+    const boton = el.querySelector<HTMLButtonElement>('.notice-modal__confirm');
+    if (!boton) throw new Error('No hay modal de confirmación abierto');
+    boton.click();
+  }
+
+  it('eliminar una sesión pide confirmación y recién ahí borra', async () => {
+    const { fixture, el } = await setup(MUCHAS.slice(0, 3));
+
+    botonEliminar(el, 1).click();
+    await settle(fixture);
+
+    // El click sólo abre el modal. El texto es lo que dice qué va a pasar, que es
+    // justo lo que el `confirm()` del navegador no decía.
+    expect(borradas).toEqual([]);
+    const texto = el.querySelector('.notice-modal')?.textContent ?? '';
+    expect(texto).toContain('DEFINITIVAMENTE');
+    expect(texto).toContain('No se puede deshacer');
+
+    confirmarEnModal(el);
+    await settle(fixture);
+
+    expect(borradas).toEqual(['sesion-2']);
+    expect(el.querySelector('.notice-modal')).toBeNull();
+  });
+
+  it('cancelar la confirmación no borra la sesión', async () => {
+    const { fixture, el } = await setup(MUCHAS.slice(0, 3));
+
+    botonEliminar(el, 0).click();
+    await settle(fixture);
+
+    el.querySelector<HTMLButtonElement>('.notice-modal__cancel')!.click();
+    await settle(fixture);
+
+    expect(borradas).toEqual([]);
+    expect(el.querySelector('.notice-modal')).toBeNull();
+  });
+
+  it('el modal de eliminar es destructivo: el botón de confirmar va con tono de peligro', async () => {
+    const { fixture, el } = await setup(MUCHAS.slice(0, 2));
+
+    botonEliminar(el, 0).click();
+    await settle(fixture);
+
+    const confirmar = el.querySelector<HTMLButtonElement>('.notice-modal__confirm')!;
+    expect(confirmar.classList).toContain('notice-modal__confirm--danger');
+    // Y el título va en la tinta de error: es lo único que no se puede deshacer.
+    expect(el.querySelector('.notice-modal--danger')).not.toBeNull();
+  });
 
   it('con muchas sesiones muestra una sola página', async () => {
     const { el } = await setup(MUCHAS);

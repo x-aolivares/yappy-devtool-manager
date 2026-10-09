@@ -37,7 +37,7 @@ import { toApiError } from '../core/services/api-error';
     }
   `,
 })
-export class SchemaSelectComponent {
+export class SchemaSelect {
   private readonly dbService = inject(DbService);
 
   env = input('');

@@ -5,14 +5,14 @@ import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
 import { CancelSlot, isCancellation } from '../core/cancel';
 import { objectLabel } from '../core/format';
-import { BusyModalComponent } from '../shared/busy-modal';
+import { BusyModal } from '../shared/busy-modal';
 import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
-import { RegionControlsComponent } from '../shared/region-controls';
+import { RegionControls } from '../shared/region-controls';
 
 @Component({
   selector: 'app-db-diff-page',
-  imports: [RegionControlsComponent, StatusBadge, BusyModalComponent, CopyButton],
+  imports: [RegionControls, StatusBadge, BusyModal, CopyButton],
   template: `
     <h1>Diff de Base de Datos</h1>
     <p class="muted">

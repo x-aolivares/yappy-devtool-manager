@@ -11,9 +11,10 @@ import { SessionService } from '../core/services/session.service';
 import { toApiError } from '../core/services/api-error';
 import { CancelSlot, isCancellation } from '../core/cancel';
 import { awsEnvironments, formatValue, isJsonDocument } from '../core/format';
-import { EnvControlsComponent, PARAM_SERVICES } from '../shared/env-controls';
+import { EnvControls, PARAM_SERVICES } from '../shared/env-controls';
 import { StatusBadge } from '../shared/status-badge';
-import { BusyModalComponent } from '../shared/busy-modal';
+import { BusyModal } from '../shared/busy-modal';
+import { NoticeModal } from '../shared/notice-modal';
 
 interface EnvPanel {
   env: string;
@@ -39,7 +40,7 @@ interface EnvPanel {
  */
 @Component({
   selector: 'app-params-read-page',
-  imports: [EnvControlsComponent, StatusBadge, BusyModalComponent],
+  imports: [EnvControls, StatusBadge, BusyModal, NoticeModal],
   template: `
     <h1>Leer Parámetros / Secretos</h1>
     <p class="muted">
@@ -92,6 +93,21 @@ interface EnvPanel {
     }
 
     <app-busy-modal [open]="busy()" message="Buscando…" (cancelled)="cancelBusy()" />
+
+    @if (pendingUpdate(); as p) {
+      <app-notice-modal
+        [open]="true"
+        [title]="p.titulo"
+        tone="default"
+        confirmLabel="Actualizar"
+        (confirmed)="confirmar()"
+        (closed)="cancelar()"
+      >
+        @for (parrafo of p.parrafos; track $index) {
+          <p>{{ parrafo }}</p>
+        }
+      </app-notice-modal>
+    }
 
     @for (panel of panels(); track panel.env) {
       <div class="panel env-value-panel">
@@ -345,10 +361,26 @@ export class ParamsReadPage {
       }));
       return;
     }
-    const text = `¿Actualizar '${name}' en ${panel.env}?\nSe escribe el valor del cuadro, sobrescribe el actual.`;
-    if (!confirm(text)) {
-      return;
-    }
+    // El diálogo es asíncrono, así que el click no escribe: deja pendiente lo que
+    // hay que mandar y devuelve. El guardado pasa por `confirmar()`, que corre
+    // cuando el usuario confirma. El texto va en párrafos porque el cuerpo del
+    // modal es HTML y un `\n` adentro de un `<p>` es un espacio.
+    this.pendingUpdate.set({
+      titulo: `¿Actualizar '${name}' en ${panel.env}?`,
+      parrafos: ['Se escribe el valor del cuadro, sobrescribe el actual.'],
+      panel,
+    });
+  }
+
+  /** Confirmó en el modal: recién acá se arma el request y se escribe. */
+  confirmar(): void {
+    const p = this.pendingUpdate();
+    this.pendingUpdate.set(null);
+    if (!p) return;
+
+    const panel = p.panel;
+    const name = this.name().trim();
+    const value = panel.value;
 
     const multi: CreateMultiParamsRequest =
       panel.valueType === 'SecureString'
@@ -396,6 +428,20 @@ export class ParamsReadPage {
       },
     );
   }
+
+  /** ✕, Escape, backdrop o "Cancelar": no se escribe nada. */
+  cancelar(): void {
+    this.pendingUpdate.set(null);
+  }
+
+  /**
+   * La actualización pendiente de confirmar. Guarda el panel entero, y no sólo
+   * el ambiente: entre el click y el clic en "Actualizar" el usuario puede editar
+   * el cuadro, y lo que se escribe tiene que ser lo que se le mostró.
+   */
+  readonly pendingUpdate = signal<{ titulo: string; parrafos: string[]; panel: EnvPanel } | null>(
+    null,
+  );
 
   private ensureSession(name: string) {
     const [origin, destination] = this.envs();

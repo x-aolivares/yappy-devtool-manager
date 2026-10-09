@@ -4,11 +4,11 @@ import { EnvironmentService } from '../core/services/environment.service';
 import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
 import { CancelSlot, isCancellation } from '../core/cancel';
-import { EnvControlsComponent } from '../shared/env-controls';
-import { BusyModalComponent } from '../shared/busy-modal';
-import { NoticeModalComponent } from '../shared/notice-modal';
-import { PaginationBarComponent } from '../shared/pagination-bar';
-import { TableSearchComponent, searchable } from '../shared/table-search';
+import { EnvControls } from '../shared/env-controls';
+import { BusyModal } from '../shared/busy-modal';
+import { NoticeModal } from '../shared/notice-modal';
+import { PaginationBar } from '../shared/pagination-bar';
+import { TableSearch, searchable } from '../shared/table-search';
 import { paginate } from '../shared/paginate';
 import { StatusBadge } from '../shared/status-badge';
 
@@ -30,12 +30,12 @@ import { StatusBadge } from '../shared/status-badge';
 @Component({
   selector: 'app-sql-page',
   imports: [
-    EnvControlsComponent,
+    EnvControls,
     StatusBadge,
-    BusyModalComponent,
-    NoticeModalComponent,
-    PaginationBarComponent,
-    TableSearchComponent,
+    BusyModal,
+    NoticeModal,
+    PaginationBar,
+    TableSearch,
   ],
   template: `
     <h1>Ejecutar SQL</h1>

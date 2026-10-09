@@ -67,7 +67,7 @@ export function searchable<T>(
     </div>
   `,
 })
-export class TableSearchComponent {
+export class TableSearch {
   readonly controlId = input.required<string>();
   readonly query = input('');
   readonly label = input('Filtrar');

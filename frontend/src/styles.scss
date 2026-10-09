@@ -486,8 +486,15 @@ h2 {
   padding: 1rem;
   overflow-y: auto;
 
+  /* `pre-line` y no sólo el colapso por defecto: los textos de confirmación
+     llegan como un único string con `\n` adentro —los arms de `migrate-data` y
+     `schema-sync` los arman con `\n\n` entre la pregunta y el aviso— y en HTML
+     un `\n` es un espacio, así que sin esto las cuatro líneas del aviso se
+     leen como un bloque pegado. Con `pre-line` el `\n` vuelve a ser un salto de
+     línea, y los párrafos llegan separados en `<p>` de verdad. */
   p {
     margin: 0 0 0.75rem;
+    white-space: pre-line;
   }
 
   ul {
@@ -503,8 +510,33 @@ h2 {
 .notice-modal__actions {
   display: flex;
   justify-content: flex-end;
+  gap: 0.5rem;
   padding: 0.75rem 1rem 1rem;
   border-top: 0.0625rem solid var(--border);
+}
+
+/* El botón que confirma algo destructivo va teñido, no sólido: la superficie
+   es la semántica de error del tema y el rótulo, su tinta. Un rojo de
+   advertencia macizo exigiría además un color de texto que no está entre los
+   tokens de semántica, y un literal ahí se ve bien en un tema y cortado en el
+   otro. Con estos cuatro, el botón se lee como destructivo en claro y en oscuro
+   sin escribir un color nuevo. */
+.notice-modal__confirm--danger {
+  background: var(--sys-danger-bg);
+  border-color: var(--sys-danger-border);
+  color: var(--sys-danger-text);
+  box-shadow: none;
+
+  &:hover:not(:disabled) {
+    background: var(--sys-danger-bg);
+    border-color: var(--sys-danger-text);
+  }
+}
+
+/* El título de un diálogo destructivo va en la tinta de error: es la señal más
+   fuerte del tema y acá hay algo que no se puede deshacer. */
+.notice-modal--danger .notice-modal__head h2 {
+  color: var(--sys-danger-text);
 }
 
 /* Modal de espera (`shared/busy-modal.ts`).
@@ -2055,211 +2087,4 @@ details {
   .spinner {
     animation: none;
   }
-}
-
-// ============================================================
-// Yappy DevTool visual refresh — shared light/dark tokens
-// ============================================================
-:root {
-  --text-sm: 0.9375rem;
-  --text-md: 1rem;
-  --text-base: 1.0625rem;
-  --text-lg: 1.25rem;
-
-  --sys-blue: #0052cc;
-  --sys-blue-hover: #0747a6;
-  --sys-blue-on: #ffffff;
-  --sys-bg: #ffffff;
-  --sys-surface: #f4f5f7;
-  --sys-border: #dfe1e6;
-  --sys-text: #172b4d;
-  --sys-text-secondary: #5e6c84;
-  --sys-success: #22a06b;
-  --sys-success-text: #216e4e;
-  --sys-success-bg: #dcfff1;
-  --sys-success-border: #7ee2b8;
-  --sys-warning: #e56910;
-  --sys-warning-text: #974f0c;
-  --sys-warning-bg: #fff7d6;
-  --sys-warning-border: #f5cd47;
-  --sys-danger: #c9372c;
-  --sys-danger-text: #ae2e24;
-  --sys-danger-bg: #ffeceb;
-  --sys-danger-border: #f5a59d;
-  --sys-code-bg: #f4f5f7;
-  --sys-hover-bg: #f1f2f4;
-  --sys-selected-bg: #deebff;
-  --sys-elevated: #ffffff;
-  --sys-radius-sm: 0.375rem;
-  --sys-radius-md: 0.625rem;
-  --sys-radius-lg: 0.875rem;
-  --sys-control-h: 2.75rem;
-  --sys-shadow-sm: 0 1px 2px rgb(9 30 66 / 0.08), 0 0 1px rgb(9 30 66 / 0.16);
-  --sys-shadow-md: 0 4px 10px rgb(9 30 66 / 0.12), 0 0 1px rgb(9 30 66 / 0.16);
-  --sys-shadow-lg: 0 12px 28px rgb(9 30 66 / 0.2);
-  --sys-focus-ring: rgb(0 82 204 / 0.28);
-
-  --nav-bg: #172b4d;
-  --nav-border: #29456b;
-  --nav-text: #f4f5f7;
-  --nav-muted: #c1c7d0;
-  --nav-hover: rgb(255 255 255 / 0.08);
-  --nav-selected: rgb(76 154 255 / 0.2);
-
-  --mat-sys-primary: var(--sys-blue);
-  --mat-sys-on-primary: var(--sys-blue-on);
-  --mat-sys-primary-container: var(--sys-selected-bg);
-  --mat-sys-on-primary-container: var(--sys-text);
-  --mat-sys-tertiary: var(--sys-warning);
-  --mat-sys-on-tertiary: var(--sys-warning-text);
-  --mat-sys-error: var(--sys-danger);
-  --mat-sys-on-error: #ffffff;
-  --mat-sys-background: var(--sys-surface);
-  --mat-sys-on-background: var(--sys-text);
-  --mat-sys-surface: var(--sys-bg);
-  --mat-sys-surface-container-low: var(--sys-hover-bg);
-  --mat-sys-surface-container: var(--sys-surface);
-  --mat-sys-surface-container-high: #ebecf0;
-  --mat-sys-surface-container-highest: var(--sys-border);
-  --mat-sys-on-surface: var(--sys-text);
-  --mat-sys-on-surface-variant: var(--sys-text-secondary);
-  --mat-sys-outline: #8590a2;
-  --mat-sys-outline-variant: var(--sys-border);
-}
-
-html[data-theme='dark'] {
-  --sys-blue: #579dff;
-  --sys-blue-hover: #85b8ff;
-  --sys-blue-on: #092957;
-  --sys-bg: #202a36;
-  --sys-surface: #151b23;
-  --sys-border: #394655;
-  --sys-text: #e6edf3;
-  --sys-text-secondary: #b1bdca;
-  --sys-success: #4bce97;
-  --sys-success-text: #7ee2b8;
-  --sys-success-bg: #123c2d;
-  --sys-success-border: #216e4e;
-  --sys-warning: #f5cd47;
-  --sys-warning-text: #f5cd47;
-  --sys-warning-bg: #3a2e13;
-  --sys-warning-border: #8f6f01;
-  --sys-danger: #f87462;
-  --sys-danger-text: #ff9c8f;
-  --sys-danger-bg: #42221f;
-  --sys-danger-border: #ae2e24;
-  --sys-code-bg: #202a36;
-  --sys-hover-bg: #283442;
-  --sys-selected-bg: #183b62;
-  --sys-elevated: #202a36;
-  --sys-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.28), 0 0 1px rgb(0 0 0 / 0.45);
-  --sys-shadow-md: 0 4px 12px rgb(0 0 0 / 0.35);
-  --sys-shadow-lg: 0 12px 28px rgb(0 0 0 / 0.5);
-  --sys-focus-ring: rgb(87 157 255 / 0.42);
-
-  --nav-bg: #111820;
-  --nav-border: #2d3946;
-  --nav-text: #e6edf3;
-  --nav-muted: #b1bdca;
-  --nav-hover: rgb(255 255 255 / 0.07);
-  --nav-selected: rgb(87 157 255 / 0.18);
-
-  --mat-sys-primary-container: #183b62;
-  --mat-sys-on-primary-container: #e6edf3;
-  --mat-sys-on-tertiary: #2b1d00;
-  --mat-sys-on-error: #2b0907;
-  --mat-sys-surface-container-high: #283442;
-  --mat-sys-surface-container-highest: #394655;
-  --mat-sys-outline: #718096;
-  --mat-sys-outline-variant: #394655;
-}
-
-body {
-  font-size: 1rem;
-  line-height: 1.55;
-}
-
-h1 {
-  font-size: clamp(1.65rem, 2.5vw, 2rem);
-  font-weight: 700;
-  letter-spacing: -0.025em;
-}
-
-h2 {
-  font-size: 1.125rem;
-  font-weight: 650;
-}
-
-.panel,
-.card {
-  border-color: var(--border);
-  border-radius: var(--sys-radius-lg);
-  box-shadow: var(--sys-shadow-sm);
-}
-
-.panel {
-  padding: clamp(1rem, 2vw, 1.5rem);
-  margin-top: 1rem;
-}
-
-.card:hover {
-  border-color: var(--sys-blue);
-  box-shadow: var(--sys-shadow-md);
-}
-
-.field-label {
-  font-size: var(--text-xs);
-  line-height: 1.4;
-  letter-spacing: 0.065em;
-}
-
-select,
-input[type='text'],
-input:not([type]),
-textarea {
-  border-color: var(--border);
-  border-radius: var(--sys-radius-md);
-}
-
-select,
-input[type='text'],
-input:not([type]) {
-  min-height: var(--sys-control-h);
-}
-
-table {
-  font-size: var(--text-sm);
-}
-
-th {
-  color: var(--sys-text-secondary);
-  background: var(--sys-surface);
-  letter-spacing: 0.055em;
-}
-
-td {
-  color: var(--sys-text);
-}
-
-tbody tr:hover {
-  background: var(--sys-hover-bg);
-}
-
-.table-scroll {
-  border-color: var(--border);
-  border-radius: var(--sys-radius-md);
-}
-
-.badge {
-  border-radius: var(--sys-radius-sm);
-  line-height: 1.4;
-}
-
-.error-box,
-.ok-box {
-  border-radius: var(--sys-radius-md);
-}
-
-.empty-result {
-  color: var(--muted);
 }

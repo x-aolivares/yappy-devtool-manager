@@ -5,6 +5,30 @@ import { DbService } from '../core/services/db.service';
 import { EnvironmentService } from '../core/services/environment.service';
 import { ExecuteRequest } from '../api-gen/models';
 
+/**
+ * Click en el botón de confirmar del `NoticeModal`.
+ *
+ * `run()` ya no escribe nada: deja la ejecución pendiente y abre el modal, así
+ * que un test que quiera ver el `executeSql` tiene que confirmar primero. Es el
+ * mismo camino que el del usuario —el botón emite `confirmed`— y por eso el test
+ * no depende de que `confirmar()` sea público ni de su firma.
+ *
+ * No hay `sleep` ni espera arbitraria: el modal es un signal y el click dispara
+ * un `output`, así que con un `detectChanges()` alcanza.
+ */
+function confirmarEnModal(el: HTMLElement): void {
+  const boton = el.querySelector<HTMLButtonElement>('.notice-modal__confirm');
+  if (!boton) throw new Error('No hay modal de confirmación abierto');
+  boton.click();
+}
+
+/** Click en "Cancelar" del modal: la vía segura, la que no ejecuta nada. */
+function cancelarEnModal(el: HTMLElement): void {
+  const boton = el.querySelector<HTMLButtonElement>('.notice-modal__cancel');
+  if (!boton) throw new Error('No hay modal de confirmación abierto');
+  boton.click();
+}
+
 const BASE: Record<string, any> = {
   env_a: 'local',
   env_b: 'dev',
@@ -159,12 +183,7 @@ describe('CompilePage origen = script', () => {
         },
       ],
     }).compileComponents();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
-
-  // El spy de `confirm` se reinserta en cada beforeEach: sin restaurarlo el
-  // segundo wrap acumula las llamadas de los tests anteriores.
-  afterEach(() => vi.restoreAllMocks());
 
   async function settle(fixture: ComponentFixture<CompilePage>) {
     fixture.detectChanges();
@@ -220,6 +239,8 @@ describe('CompilePage origen = script', () => {
 
     comp.run();
     await settle(fixture);
+    confirmarEnModal(el);
+    await settle(fixture);
 
     expect(sent.length).toBe(1);
     expect(sent[0].env).toBe('qa');
@@ -240,12 +261,14 @@ describe('CompilePage origen = script', () => {
 
     comp.run();
     await settle(fixture);
+    confirmarEnModal(fixture.nativeElement as HTMLElement);
+    await settle(fixture);
 
     expect(sent[0].schema_name).toBe('yappy');
   });
 
   it('no pide confirmación con el nombre del objeto cuando el origen es el script', async () => {
-    const { fixture, comp } = await inScriptMode();
+    const { fixture, comp, el } = await inScriptMode();
     comp.envB.set('qa'); // queda del modo ambiente
     comp.objectName.set('orders');
     comp.onDestEnvChange(['local']);
@@ -255,9 +278,14 @@ describe('CompilePage origen = script', () => {
     comp.run();
     await settle(fixture);
 
-    expect(window.confirm).toHaveBeenCalledWith(
-      expect.stringContaining('el script en local'),
-    );
+    // Sin confirmar no se ejecuta nada, y el título del modal nombra el destino
+    // en vez de pedir "¿Ejecutar?" a secas.
+    expect(sent).toHaveLength(0);
+    expect(el.querySelector('.notice-modal')!.textContent).toContain('el script en local');
+
+    confirmarEnModal(el);
+    await settle(fixture);
+
     expect(sent[0].env).toBe('local');
   });
 
@@ -296,6 +324,7 @@ describe('CompilePage origen = script', () => {
   it('sigue mandando el tipo del objeto cuando el origen es un ambiente', async () => {
     const fixture = TestBed.createComponent(CompilePage);
     const comp = fixture.componentInstance as any;
+    const el = fixture.nativeElement as HTMLElement;
     comp.envB.set('dev');
     comp.envA.set('local');
     comp.objectType.set('procedure');
@@ -314,15 +343,18 @@ describe('CompilePage origen = script', () => {
     comp.run();
     await settle(fixture);
 
+    expect(el.querySelector('.notice-modal')!.textContent).toContain('yappy.proc_calcular en local');
+
+    confirmarEnModal(el);
+    await settle(fixture);
+
     expect(sent[0].object_type).toBe('procedure');
-    expect(window.confirm).toHaveBeenCalledWith(
-      expect.stringContaining('yappy.proc_calcular en local'),
-    );
   });
 
   it('la confirmación avisa que el DROP se lleva lo que haya en el destino', async () => {
     const fixture = TestBed.createComponent(CompilePage);
     const comp = fixture.componentInstance as any;
+    const el = fixture.nativeElement as HTMLElement;
     comp.envB.set('dev');
     comp.envA.set('local');
     comp.script.set('DROP TABLE IF EXISTS `yappy`.`ledger`;\nCREATE TABLE `ledger` (`id` INT);');
@@ -331,17 +363,15 @@ describe('CompilePage origen = script', () => {
     comp.run();
     await settle(fixture);
 
-    expect(window.confirm).toHaveBeenCalledWith(
-      expect.stringContaining('el script borra lo que haya en local'),
-    );
-    expect(window.confirm).toHaveBeenCalledWith(
-      expect.stringContaining('todas sus filas'),
-    );
+    const texto = el.querySelector('.notice-modal')!.textContent ?? '';
+    expect(texto).toContain('el script borra lo que haya en local');
+    expect(texto).toContain('todas sus filas');
   });
 
   it('no mete el aviso de DROP cuando el script no borra nada', async () => {
     const fixture = TestBed.createComponent(CompilePage);
     const comp = fixture.componentInstance as any;
+    const el = fixture.nativeElement as HTMLElement;
     comp.envA.set('local');
     comp.source.set('script');
     comp.script.set('ALTER TABLE `ledger` ADD COLUMN `canal` VARCHAR(10);');
@@ -350,8 +380,24 @@ describe('CompilePage origen = script', () => {
     comp.run();
     await settle(fixture);
 
-    const mensaje = (window.confirm as unknown as { mock: { calls: string[][] } }).mock.calls[0][0];
-    expect(mensaje).not.toContain('borra lo que haya');
+    expect(el.querySelector('.notice-modal')!.textContent).not.toContain('borra lo que haya');
+  });
+
+  it('cancelar en el modal no ejecuta el script', async () => {
+    const { fixture, comp, el } = await inScriptMode();
+    comp.onDestEnvChange(['qa']);
+    comp.script.set('DROP TABLE IF EXISTS `ledger`;');
+    await settle(fixture);
+
+    comp.run();
+    await settle(fixture);
+    expect(el.querySelector('.notice-modal')).not.toBeNull();
+
+    cancelarEnModal(el);
+    await settle(fixture);
+
+    expect(sent).toHaveLength(0);
+    expect(el.querySelector('.notice-modal')).toBeNull();
   });
 });
 

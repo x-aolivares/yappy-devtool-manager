@@ -5,12 +5,12 @@ import { ParamsService } from '../core/services/params.service';
 import { toApiError } from '../core/services/api-error';
 import { CancelSlot, isCancellation } from '../core/cancel';
 import { awsEnvironments } from '../core/format';
-import { BusyModalComponent } from '../shared/busy-modal';
-import { EnvControlsComponent } from '../shared/env-controls';
+import { BusyModal } from '../shared/busy-modal';
+import { EnvControls } from '../shared/env-controls';
 
 @Component({
   selector: 'app-params-edit-page',
-  imports: [BusyModalComponent, EnvControlsComponent],
+  imports: [BusyModal, EnvControls],
   template: `
     <h1>Editar / actualizar un parámetro</h1>
     <p class="muted">

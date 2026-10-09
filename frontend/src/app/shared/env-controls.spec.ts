@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { EnvironmentInfo } from '../api-gen/models';
-import { EnvControlsComponent, PARAM_SERVICES } from './env-controls';
+import { EnvControls, PARAM_SERVICES } from './env-controls';
 
 const ENVS: EnvironmentInfo[] = [
   { env: 'dev', region: 'us-west-2', profile: 'localstack' },
@@ -9,9 +9,9 @@ const ENVS: EnvironmentInfo[] = [
 ];
 
 async function setup(inputs: Record<string, unknown> = {}) {
-  await TestBed.configureTestingModule({ imports: [EnvControlsComponent] }).compileComponents();
-  const fixture: ComponentFixture<EnvControlsComponent> =
-    TestBed.createComponent(EnvControlsComponent);
+  await TestBed.configureTestingModule({ imports: [EnvControls] }).compileComponents();
+  const fixture: ComponentFixture<EnvControls> =
+    TestBed.createComponent(EnvControls);
   fixture.componentRef.setInput('environments', ENVS);
   for (const [key, value] of Object.entries(inputs)) {
     fixture.componentRef.setInput(key, value);
@@ -20,17 +20,17 @@ async function setup(inputs: Record<string, unknown> = {}) {
   return fixture;
 }
 
-function groups(fixture: ComponentFixture<EnvControlsComponent>): string[] {
+function groups(fixture: ComponentFixture<EnvControls>): string[] {
   return [...fixture.nativeElement.querySelectorAll('.pill-label')].map(
     (el) => (el as HTMLElement).textContent?.trim() ?? '',
   );
 }
 
-function envButtons(fixture: ComponentFixture<EnvControlsComponent>): HTMLButtonElement[] {
+function envButtons(fixture: ComponentFixture<EnvControls>): HTMLButtonElement[] {
   return [...fixture.nativeElement.querySelectorAll('.env-item')] as HTMLButtonElement[];
 }
 
-describe('EnvControlsComponent', () => {
+describe('EnvControls', () => {
   it('labels the environments group and renders one pill per environment', async () => {
     const fixture = await setup();
 

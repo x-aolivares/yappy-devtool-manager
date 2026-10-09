@@ -8,11 +8,11 @@
  */
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { PaginationBarComponent } from './pagination-bar';
+import { PaginationBar } from './pagination-bar';
 import { paginate } from './paginate';
 
 @Component({
-  imports: [PaginationBarComponent],
+  imports: [PaginationBar],
   template: `<app-pagination-bar [p]="p" />`,
 })
 class Host {
@@ -20,7 +20,7 @@ class Host {
   readonly p = paginate(() => this.items());
 }
 
-describe('PaginationBarComponent', () => {
+describe('PaginationBar', () => {
   async function setup(n: number, size = 25): Promise<{ fixture: ComponentFixture<Host>; host: Host }> {
     await TestBed.configureTestingModule({ imports: [Host] }).compileComponents();
     const fixture = TestBed.createComponent(Host);

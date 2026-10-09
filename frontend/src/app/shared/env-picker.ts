@@ -53,7 +53,7 @@ import { EnvironmentInfo } from '../api-gen/models';
     </div>
   `,
 })
-export class EnvPickerComponent {
+export class EnvPicker {
   environments = input<EnvironmentInfo[] | null>(null);
   /** 0 = sin límite. 1 = un solo ambiente. 2 = origen + destino. */
   max = input(0);

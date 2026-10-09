@@ -60,7 +60,7 @@ function elapsedLabel(segundos: number): string {
     }
   `,
 })
-export class BusyModalComponent {
+export class BusyModal {
   readonly open = input(false);
   readonly message = input('Trabajando…');
   /**

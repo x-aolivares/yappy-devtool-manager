@@ -10,12 +10,12 @@ import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
 import { CancelSlot, isCancellation } from '../core/cancel';
 import { StatusBadge } from '../shared/status-badge';
-import { RegionControlsComponent } from '../shared/region-controls';
-import { SchemaSelectComponent } from '../shared/schema-select';
-import { BusyModalComponent } from '../shared/busy-modal';
-import { NoticeModalComponent } from '../shared/notice-modal';
-import { PaginationBarComponent } from '../shared/pagination-bar';
-import { TableSearchComponent, searchable } from '../shared/table-search';
+import { RegionControls } from '../shared/region-controls';
+import { SchemaSelect } from '../shared/schema-select';
+import { BusyModal } from '../shared/busy-modal';
+import { NoticeModal } from '../shared/notice-modal';
+import { PaginationBar } from '../shared/pagination-bar';
+import { TableSearch, searchable } from '../shared/table-search';
 import { paginate } from '../shared/paginate';
 
 /**
@@ -124,13 +124,13 @@ function lastDayOfMonth(month: string): string {
 @Component({
   selector: 'app-migrate-data-page',
   imports: [
-    RegionControlsComponent,
-    SchemaSelectComponent,
+    RegionControls,
+    SchemaSelect,
     StatusBadge,
-    BusyModalComponent,
-    NoticeModalComponent,
-    PaginationBarComponent,
-    TableSearchComponent,
+    BusyModal,
+    NoticeModal,
+    PaginationBar,
+    TableSearch,
   ],
   template: `
     <h1>Migrar datos</h1>
@@ -422,6 +422,21 @@ function lastDayOfMonth(month: string): string {
       [writes]="busyWrites()"
       (cancelled)="cancelBusy()"
     />
+
+    @if (pendingRun(); as p) {
+      <app-notice-modal
+        [open]="true"
+        [title]="p.titulo"
+        tone="default"
+        confirmLabel="Migrar"
+        (confirmed)="confirmar()"
+        (closed)="cancelar()"
+      >
+        @for (parrafo of p.parrafos; track $index) {
+          <p>{{ parrafo }}</p>
+        }
+      </app-notice-modal>
+    }
 
     @if (result(); as r) {
       <div class="panel">
@@ -967,21 +982,43 @@ export class MigrateDataPage {
   migrate(): void {
     const tables = this.includedTables().length;
     const destino = this.envA() || 'el destino';
+    // El aviso va como párrafo aparte, no pegado con `\n\n`: el cuerpo del modal es
+    // HTML, así que los saltos de línea los decide el marcado. Ver `styles.scss`,
+    // `.notice-modal__body p`.
     const aviso =
-      `\n\nEsto escribe filas en ${destino}: cada fila que ya está en el destino y coincide ` +
+      `Esto escribe filas en ${destino}: cada fila que ya está en el destino y coincide ` +
       'en la primary key se reemplaza por la del origen. No borra las filas del destino que ' +
       'quedan fuera de la ventana, no crea las tablas que falten allá, y no corre en una ' +
       'transacción: si una tabla falla, las que venían antes ya quedaron copiadas.';
-    if (
-      !confirm(
-        `¿Migrar ${tables} tabla(s) de ${this.schema() || '…'} de ${this.envB() || 'el origen'} a ` +
-          `${destino}?${aviso}`,
-      )
-    )
-      return;
 
+    this.pendingRun.set({
+      titulo:
+        `¿Migrar ${tables} tabla(s) de ${this.schema() || '…'} de ` +
+        `${this.envB() || 'el origen'} a ${destino}?`,
+      parrafos: [aviso],
+    });
+  }
+
+  /** Confirmó en el modal: recién acá se manda la migración de verdad. */
+  confirmar(): void {
+    const p = this.pendingRun();
+    this.pendingRun.set(null);
+    if (!p) return;
+
+    // `submit` relee los signals, y eso está bien: el backdrop del modal cubre
+    // la página mientras está abierto, así que entre el click y el clic en
+    // "Migrar" no se puede cambiar la selección, el esquema ni los ambientes. La
+    //dialogue muestra los mismos valores que va a mandar `submit`.
     this.submit(false);
   }
+
+  /** ✕, Escape, backdrop o "Cancelar": no se manda nada. */
+  cancelar(): void {
+    this.pendingRun.set(null);
+  }
+
+  /** La migración pendiente de confirmar. Sólo el texto: el `submit` relee los signals. */
+  readonly pendingRun = signal<{ titulo: string; parrafos: string[] } | null>(null);
 
   private submit(dryRun: boolean): void {
     const envB = this.envB();

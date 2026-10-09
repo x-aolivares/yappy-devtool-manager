@@ -1,6 +1,6 @@
 import { Component, computed, input, model } from '@angular/core';
 import { EnvironmentInfo } from '../api-gen/models';
-import { EnvPickerComponent } from './env-picker';
+import { EnvPicker } from './env-picker';
 
 /** Una opción de un grupo de servicios (SSM, Secrets Manager, ...). */
 export interface ServiceOption {
@@ -29,7 +29,7 @@ export const PARAM_SERVICES: readonly ServiceOption[] = [
  */
 @Component({
   selector: 'app-env-controls',
-  imports: [EnvPickerComponent],
+  imports: [EnvPicker],
   template: `
     <div class="pill-controls">
       @if (services().length) {
@@ -70,7 +70,7 @@ export const PARAM_SERVICES: readonly ServiceOption[] = [
     }
   `,
 })
-export class EnvControlsComponent {
+export class EnvControls {
   environments = input<EnvironmentInfo[] | null>(null);
 
   /** Opciones del grupo de servicios. Vacío = el grupo no se dibuja. */

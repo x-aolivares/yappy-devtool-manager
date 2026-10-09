@@ -105,3 +105,18 @@
     ></app-empty-state-card>
   }
 }
+
+@if (pending(); as p) {
+  <app-notice-modal
+    [open]="true"
+    [title]="p.titulo"
+    tone="danger"
+    confirmLabel="Eliminar"
+    (confirmed)="borrar()"
+    (closed)="cancelar()"
+  >
+    @for (parrafo of p.parrafos; track $index) {
+      <p>{{ parrafo }}</p>
+    }
+  </app-notice-modal>
+}

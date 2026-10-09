@@ -1,12 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { BusyModalComponent } from './busy-modal';
+import { BusyModal } from './busy-modal';
 
-describe('BusyModalComponent', () => {
-  let fixture: ComponentFixture<BusyModalComponent>;
+describe('BusyModal', () => {
+  let fixture: ComponentFixture<BusyModal>;
 
   beforeEach(async () => {
-    await TestBed.configureTestingModule({ imports: [BusyModalComponent] }).compileComponents();
-    fixture = TestBed.createComponent(BusyModalComponent);
+    await TestBed.configureTestingModule({ imports: [BusyModal] }).compileComponents();
+    fixture = TestBed.createComponent(BusyModal);
   });
 
   const host = (): HTMLElement => fixture.nativeElement as HTMLElement;

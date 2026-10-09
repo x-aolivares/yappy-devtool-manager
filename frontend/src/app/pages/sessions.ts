@@ -4,9 +4,10 @@ import { SessionSummaryInfo } from '../api-gen/models';
 import { SessionService } from '../core/services/session.service';
 import { toApiError } from '../core/services/api-error';
 import { fmtDate } from '../core/format';
-import { EmptyStateCardComponent } from '../shared/empty-state-card';
-import { PageHeaderComponent } from '../shared/page-header';
-import { PaginationBarComponent } from '../shared/pagination-bar';
+import { EmptyStateCard } from '../shared/empty-state-card';
+import { NoticeModal } from '../shared/notice-modal';
+import { PageHeader } from '../shared/page-header';
+import { PaginationBar } from '../shared/pagination-bar';
 import { paginate } from '../shared/paginate';
 import { StatusBadge } from '../shared/status-badge';
 
@@ -15,9 +16,10 @@ import { StatusBadge } from '../shared/status-badge';
   imports: [
     RouterLink,
     StatusBadge,
-    PageHeaderComponent,
-    EmptyStateCardComponent,
-    PaginationBarComponent,
+    PageHeader,
+    EmptyStateCard,
+    PaginationBar,
+    NoticeModal,
   ],
   templateUrl: './sessions.html',
 })
@@ -29,6 +31,19 @@ export class SessionsPage {
   readonly error = signal<string | null>(null);
   readonly busy = signal(false);
   readonly deleting = signal(false);
+
+  /**
+   * La confirmación pendiente de borrar una sesión.
+   *
+   * Es un signal y no un `confirm()` porque la respuesta del usuario llega
+   * después: el modal es asíncrono. El click guarda qué borrar, el modal
+   * pregunta, y `borrar()` corre sólo si confirmó.
+   *
+   * El texto va partido en párrafos porque el cuerpo del modal es HTML y un
+   * `\n` adentro de un `<p>` es un espacio. Ver `styles.scss`,
+   * `.notice-modal__body p`.
+   */
+  readonly pending = signal<{ titulo: string; parrafos: string[] } | null>(null);
 
   /**
    * La tabla de sesiones, paginada.
@@ -77,8 +92,23 @@ export class SessionsPage {
     );
   }
 
+  /** El click en "Eliminar": abre el modal y guarda qué borrar. */
   remove(id: string) {
-    if (!confirm('¿Eliminar DEFINITIVAMENTE esta sesión y su progreso?\nNo se puede deshacer.')) return;
+    this.pending.set({
+      titulo: 'Eliminar sesión',
+      parrafos: [
+        'Se va a eliminar DEFINITIVAMENTE la sesión y todo su progreso.',
+        'No se puede deshacer.',
+      ],
+    });
+    this.pendingId = id;
+  }
+
+  /** Confirmó en el modal: recién acá se borra. */
+  borrar(): void {
+    const id = this.pendingId;
+    this.cancelar();
+    if (id === null) return;
     this.deleting.set(true);
     this.sessionService.delete(id).then(
       () => {
@@ -91,6 +121,14 @@ export class SessionsPage {
       },
     );
   }
+
+  /** ✕, Escape, backdrop o "Cancelar": no se borra nada. */
+  cancelar(): void {
+    this.pending.set(null);
+    this.pendingId = null;
+  }
+
+  private pendingId: string | null = null;
 
   protected readonly fmtDate = fmtDate;
 }

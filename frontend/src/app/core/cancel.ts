@@ -16,7 +16,7 @@ import { Observable } from 'rxjs';
  *    desuscripción hay que provocarla, y `abortInterceptor` es quien lo hace.
  * 3. **El backend ya puede haber empezado a trabajar.** Abortar el request corta
  *    la conexión, no el `SELECT` que el Python está corriendo: por eso el botón
- *    de una operación que escribe no dice "Cancelar" (ver `BusyModalComponent`).
+ *    de una operación que escribe no dice "Cancelar" (ver `BusyModal`).
  *
  * Ninguna de las dos últimas es excusa para no hacerlo. Un `fetch` colgado
  * esperando un túnel que no responde mantiene el request abierto, ocupa un

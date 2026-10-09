@@ -5,21 +5,21 @@ import { ParamsService } from '../core/services/params.service';
 import { toApiError } from '../core/services/api-error';
 import { CancelSlot, isCancellation } from '../core/cancel';
 import { awsEnvironments } from '../core/format';
-import { BusyModalComponent } from '../shared/busy-modal';
+import { BusyModal } from '../shared/busy-modal';
 import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
-import { EnvControlsComponent, ServiceOption } from '../shared/env-controls';
-import { PaginationBarComponent } from '../shared/pagination-bar';
+import { EnvControls, ServiceOption } from '../shared/env-controls';
+import { PaginationBar } from '../shared/pagination-bar';
 import { paginate } from '../shared/paginate';
 
 @Component({
   selector: 'app-params-create-page',
   imports: [
     StatusBadge,
-    BusyModalComponent,
+    BusyModal,
     CopyButton,
-    EnvControlsComponent,
-    PaginationBarComponent,
+    EnvControls,
+    PaginationBar,
   ],
   template: `
     <h1>Crear / Actualizar en múltiples regiones</h1>

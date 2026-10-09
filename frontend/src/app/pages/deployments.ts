@@ -6,10 +6,10 @@ import { EnvironmentService } from '../core/services/environment.service';
 import { toApiError } from '../core/services/api-error';
 import { explainDeploymentFailure, FailureExplained } from '../core/deployment-help';
 import { CancelSlot, isCancellation } from '../core/cancel';
-import { BusyModalComponent } from '../shared/busy-modal';
+import { BusyModal } from '../shared/busy-modal';
 import { CopyButton } from '../shared/copy-button';
-import { EnvPickerComponent } from '../shared/env-picker';
-import { NoticeModalComponent } from '../shared/notice-modal';
+import { EnvPicker } from '../shared/env-picker';
+import { NoticeModal } from '../shared/notice-modal';
 import { copyText } from '../core/copy';
 
 /**
@@ -25,7 +25,7 @@ import { copyText } from '../core/copy';
  */
 @Component({
   selector: 'app-deployments-page',
-  imports: [BusyModalComponent, CopyButton, NoticeModalComponent, EnvPickerComponent],
+  imports: [BusyModal, CopyButton, NoticeModal, EnvPicker],
   template: `
     <h1>Rama desplegada por ambiente</h1>
     <p class="muted">

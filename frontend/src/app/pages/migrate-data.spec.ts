@@ -124,6 +124,26 @@ async function settle(fixture: ComponentFixture<MigrateDataPage>): Promise<void>
   fixture.detectChanges();
 }
 
+/**
+ * Click en el botón de confirmar del `NoticeModal`.
+ *
+ * `migrate()` ya no manda nada: deja la migración pendiente y abre el modal. El
+ * click va por el `output` `confirmed`, o sea por el mismo camino que el del
+ * usuario. No hay `sleep`: el modal es un signal y el click es síncrono.
+ */
+function confirmarEnModal(el: HTMLElement): void {
+  const boton = el.querySelector<HTMLButtonElement>('.notice-modal__confirm');
+  if (!boton) throw new Error('No hay modal de confirmación abierto');
+  boton.click();
+}
+
+/** Click en "Cancelar": la vía que no manda la migración. */
+function cancelarEnModal(el: HTMLElement): void {
+  const boton = el.querySelector<HTMLButtonElement>('.notice-modal__cancel');
+  if (!boton) throw new Error('No hay modal de confirmación abierto');
+  boton.click();
+}
+
 /** Crea la página con origen, destino y esquema ya cargados. */
 async function ready(): Promise<{
   fixture: ComponentFixture<MigrateDataPage>;
@@ -794,15 +814,10 @@ describe('MigrateDataPage un solo día', () => {
 describe('MigrateDataPage simular y migrar', () => {
   beforeEach(async () => {
     await setup();
-    // El espía va siempre: `Simular` no debe preguntar, y eso sólo se prueba si
-    // `window.confirm` está vigilado.
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
 
-  afterEach(() => vi.restoreAllMocks());
-
   it('Simular manda dry_run true y no manda confirm true', async () => {
-    const { fixture, comp } = await ready();
+    const { fixture, comp, el } = await ready();
     await marcarConRango(comp, fixture);
 
     comp.simulate();
@@ -813,15 +828,22 @@ describe('MigrateDataPage simular y migrar', () => {
     // `confirm` va explícito en false, como en "Migrar info": una simulación no
     // puede pedir permiso para escribir.
     expect(sent[0].confirm).toBe(false);
-    // Simular no escribe: no puede pedir confirmación.
-    expect(window.confirm).not.toHaveBeenCalled();
+    // Simular no escribe: no puede pedir confirmación. Ni el `confirm()` del
+    // navegador ni el modal de la app.
+    expect(el.querySelector('.notice-modal')).toBeNull();
   });
 
   it('Migrar manda confirm true', async () => {
-    const { fixture, comp } = await ready();
+    const { fixture, comp, el } = await ready();
     await marcarConRango(comp, fixture);
 
     comp.migrate();
+    await settle(fixture);
+
+    // Todavía no se mandó nada: el modal está esperando.
+    expect(sent).toHaveLength(0);
+
+    confirmarEnModal(el);
     await settle(fixture);
 
     expect(sent).toHaveLength(1);
@@ -830,27 +852,33 @@ describe('MigrateDataPage simular y migrar', () => {
   });
 
   it('Migrar pregunta antes y el aviso dice que escribe y reemplaza por primary key', async () => {
-    const { fixture, comp } = await ready();
+    const { fixture, comp, el } = await ready();
     await marcarConRango(comp, fixture);
 
     comp.migrate();
     await settle(fixture);
 
-    const mensaje = vi.mocked(window.confirm).mock.calls[0][0];
-    expect(mensaje).toContain('¿Migrar 1 tabla(s) de yappy de dev a local?');
-    expect(mensaje).toContain('escribe filas en local');
-    expect(mensaje).toContain('primary key');
+    // El aviso va en el cuerpo del modal, no en un `confirm()` del navegador: es
+    // lo que el usuario lee antes de decidir.
+    expect(el.querySelector('.notice-modal__head h2')!.textContent).toBe(
+      '¿Migrar 1 tabla(s) de yappy de dev a local?',
+    );
+    const texto = el.querySelector('.notice-modal')!.textContent ?? '';
+    expect(texto).toContain('escribe filas en local');
+    expect(texto).toContain('primary key');
   });
 
-  it('declinar la confirmación no manda nada', async () => {
-    vi.mocked(window.confirm).mockReturnValue(false);
-    const { fixture, comp } = await ready();
+  it('cancelar la confirmación no manda nada', async () => {
+    const { fixture, comp, el } = await ready();
     await marcarConRango(comp, fixture);
 
     comp.migrate();
     await settle(fixture);
+    expect(el.querySelector('.notice-modal')).not.toBeNull();
 
-    expect(window.confirm).toHaveBeenCalledTimes(1);
+    cancelarEnModal(el);
+    await settle(fixture);
+
     expect(sent).toHaveLength(0);
     expect(comp.result()).toBeNull();
     expect(comp.busy()).toBe(false);
@@ -980,16 +1008,15 @@ describe('MigrateDataPage simular y migrar', () => {
 describe('MigrateDataPage resultado', () => {
   beforeEach(async () => {
     await setup();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
-
-  afterEach(() => vi.restoreAllMocks());
 
   it('renderiza cada tabla con su estado, sus conteos y el SELECT usado', async () => {
     const { fixture, comp, el } = await ready();
     await marcarConRango(comp, fixture);
 
     comp.migrate();
+    await settle(fixture);
+    confirmarEnModal(el);
     await settle(fixture);
 
     expect(el.textContent).toContain('Resultado por tabla');
@@ -1009,6 +1036,8 @@ describe('MigrateDataPage resultado', () => {
 
     comp.migrate();
     await settle(fixture);
+    confirmarEnModal(el);
+    await settle(fixture);
 
     expect(el.textContent).toContain('columnas que no existen en el destino, omitidas');
     expect(el.textContent).toContain('legacy_id, note');
@@ -1020,6 +1049,8 @@ describe('MigrateDataPage resultado', () => {
     await marcarConRango(comp, fixture);
 
     comp.migrate();
+    await settle(fixture);
+    confirmarEnModal(el);
     await settle(fixture);
 
     for (const n of BASE['notes'] as string[]) {

@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { EnvironmentInfo } from '../api-gen/models';
 import { awsEnvironments } from '../core/format';
-import { EnvPickerComponent } from './env-picker';
+import { EnvPicker } from './env-picker';
 
 const ENVS: EnvironmentInfo[] = [
   { env: 'dev', region: 'us-west-2', profile: 'localstack' },
@@ -10,8 +10,8 @@ const ENVS: EnvironmentInfo[] = [
 ];
 
 async function setup(max = 0, selected: string[] = []) {
-  await TestBed.configureTestingModule({ imports: [EnvPickerComponent] }).compileComponents();
-  const fixture: ComponentFixture<EnvPickerComponent> = TestBed.createComponent(EnvPickerComponent);
+  await TestBed.configureTestingModule({ imports: [EnvPicker] }).compileComponents();
+  const fixture: ComponentFixture<EnvPicker> = TestBed.createComponent(EnvPicker);
   fixture.componentRef.setInput('environments', ENVS);
   fixture.componentRef.setInput('max', max);
   fixture.componentRef.setInput('selected', selected);
@@ -19,11 +19,11 @@ async function setup(max = 0, selected: string[] = []) {
   return fixture;
 }
 
-function buttons(fixture: ComponentFixture<EnvPickerComponent>): HTMLButtonElement[] {
+function buttons(fixture: ComponentFixture<EnvPicker>): HTMLButtonElement[] {
   return [...fixture.nativeElement.querySelectorAll('.env-item')] as HTMLButtonElement[];
 }
 
-describe('EnvPickerComponent', () => {
+describe('EnvPicker', () => {
   it('renders one toggle pill per environment, with no select and no checkbox', async () => {
     const fixture = await setup();
     const el = fixture.nativeElement as HTMLElement;
@@ -135,8 +135,8 @@ describe('EnvPickerComponent', () => {
     // Un ambiente local no tiene región ni profile: hereda `us-west-2` y
     // `base-profile` de env.base, que son defaults con forma de AWS. Mostrarlos
     // sería inventar datos, y `base-profile` existe de verdad en la máquina.
-    await TestBed.configureTestingModule({ imports: [EnvPickerComponent] }).compileComponents();
-    const fixture = TestBed.createComponent(EnvPickerComponent);
+    await TestBed.configureTestingModule({ imports: [EnvPicker] }).compileComponents();
+    const fixture = TestBed.createComponent(EnvPicker);
     fixture.componentRef.setInput('environments', [{ env: 'local', is_local: true }]);
     fixture.detectChanges();
 

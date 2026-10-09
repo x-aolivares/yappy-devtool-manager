@@ -68,7 +68,7 @@ import { PAGE_SIZES, Pagination } from './paginate';
     }
   `,
 })
-export class PaginationBarComponent {
+export class PaginationBar {
   /** La lista que se pagina. Genérica para que el tipo no se pierda al pasarla. */
   readonly p = input.required<Pagination<unknown>>();
 

@@ -4,14 +4,15 @@ import { EnvironmentService } from '../core/services/environment.service';
 import { DbService } from '../core/services/db.service';
 import { toApiError } from '../core/services/api-error';
 import { CancelSlot, isCancellation } from '../core/cancel';
-import { BusyModalComponent } from '../shared/busy-modal';
+import { BusyModal } from '../shared/busy-modal';
 import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
-import { RegionControlsComponent } from '../shared/region-controls';
-import { SchemaSelectComponent } from '../shared/schema-select';
+import { RegionControls } from '../shared/region-controls';
+import { SchemaSelect } from '../shared/schema-select';
 import { AutoGrowDirective } from '../shared/auto-grow';
-import { PaginationBarComponent } from '../shared/pagination-bar';
-import { TableSearchComponent, searchable } from '../shared/table-search';
+import { NoticeModal } from '../shared/notice-modal';
+import { PaginationBar } from '../shared/pagination-bar';
+import { TableSearch, searchable } from '../shared/table-search';
 import { paginate } from '../shared/paginate';
 
 /** One object of the origin schema, as the picker table renders it. */
@@ -75,14 +76,15 @@ type DestinationIndex = Record<SyncObject['kind'], Set<string>>;
 @Component({
   selector: 'app-schema-sync-page',
   imports: [
-    RegionControlsComponent,
-    SchemaSelectComponent,
+    RegionControls,
+    SchemaSelect,
     StatusBadge,
-    BusyModalComponent,
+    BusyModal,
     CopyButton,
     AutoGrowDirective,
-    PaginationBarComponent,
-    TableSearchComponent,
+    NoticeModal,
+    PaginationBar,
+    TableSearch,
   ],
   template: `
     <h1>Sincronizar schema</h1>
@@ -281,6 +283,21 @@ type DestinationIndex = Record<SyncObject['kind'], Set<string>>;
       [writes]="busyWrites()"
       (cancelled)="cancelBusy()"
     />
+
+    @if (pendingRun(); as p) {
+      <app-notice-modal
+        [open]="true"
+        [title]="p.titulo"
+        tone="default"
+        confirmLabel="Sincronizar"
+        (confirmed)="confirmar()"
+        (closed)="cancelar()"
+      >
+        @for (parrafo of p.parrafos; track $index) {
+          <p>{{ parrafo }}</p>
+        }
+      </app-notice-modal>
+    }
 
     @if (executed(); as ex) {
       <div class="panel">
@@ -785,22 +802,35 @@ export class SchemaSyncPage {
     const drops = /\bDROP\s+(TABLE|PROCEDURE|FUNCTION|TRIGGER)\b/i.test(code);
     const tablas = this.selected().tables.length;
     // El aviso cuenta las tablas, no los objetos: lo que se pierde son filas, y
-    // una tabla es lo que tiene filas.
+    // una tabla es lo que tiene filas. Va como párrafo aparte y no pegado con
+    // `\n\n`: el cuerpo del modal es HTML y los saltos los decide el marcado.
+    // Ver `styles.scss`, `.notice-modal__body p`.
     const aviso =
       tablas > 0
-        ? `\n\nEl script borra y vuelve a crear ${this.scopeLabel()} en ${env}. Las filas que ` +
+        ? `El script borra y vuelve a crear ${this.scopeLabel()} en ${env}. Las filas que ` +
           `están en ${env} en esas ${tablas} tabla(s) se pierden: el script reemplaza la ` +
           'estructura y no copia los datos del origen. No es una fusión. Para conservar los ' +
           'datos del destino, editá el script y dejá solo los ALTER que faltan.'
-        : `\n\nEl script reemplaza ${this.scopeLabel()} en ${env}. No se borra ninguna tabla, ` +
+        : `El script reemplaza ${this.scopeLabel()} en ${env}. No se borra ninguna tabla, ` +
           'así que no hay filas que perder.';
-    if (
-      !confirm(
-        `¿Sincronizar ${this.schema() || 'el esquema'} de ${this.envB() || 'el origen'} a ${env}?\n` +
-          `Corre exactamente lo que está en el editor.${drops ? aviso : ''}`,
-      )
-    )
-      return;
+
+    this.pendingRun.set({
+      titulo: `¿Sincronizar ${this.schema() || 'el esquema'} de ${this.envB() || 'el origen'} a ${env}?`,
+      parrafos: ['Corre exactamente lo que está en el editor.', drops ? aviso : ''].filter(
+        Boolean,
+      ),
+      env,
+      code,
+    });
+  }
+
+  /** Confirmó en el modal: recién acá se ejecuta el script contra el destino. */
+  confirmar(): void {
+    const p = this.pendingRun();
+    this.pendingRun.set(null);
+    if (!p) return;
+
+    const { env, code } = p;
 
     this.busy.set(true);
     this.error.set(null);
@@ -846,6 +876,23 @@ export class SchemaSyncPage {
         },
       );
   }
+
+  /** ✕, Escape, backdrop o "Cancelar": no se ejecuta nada. */
+  cancelar(): void {
+    this.pendingRun.set(null);
+  }
+
+  /**
+   * La sincronización pendiente de confirmar. Guarda el destino y el script junto
+   * con el texto: entre el click y el clic en "Sincronizar" el usuario puede tocar
+   * el editor, y lo que tiene que correr es lo que se le mostró en el diálogo.
+   */
+  readonly pendingRun = signal<{
+    titulo: string;
+    parrafos: string[];
+    env: string;
+    code: string;
+  } | null>(null);
 
   /**
    * Dejar de esperar lo que esté corriendo: el `Generar` que sólo arma el script

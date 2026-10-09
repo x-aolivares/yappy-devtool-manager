@@ -2,7 +2,6 @@ import { Component, input } from '@angular/core';
 
 @Component({
   selector: 'app-page-header',
-  standalone: true,
   template: `
     <header class="page-header">
       <h1>{{ title() }}</h1>
@@ -37,7 +36,7 @@ import { Component, input } from '@angular/core';
     }
   `,
 })
-export class PageHeaderComponent {
+export class PageHeader {
   readonly title = input.required<string>();
   readonly description = input<string | null>(null);
 }

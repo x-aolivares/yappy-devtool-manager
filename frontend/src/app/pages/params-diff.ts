@@ -10,11 +10,11 @@ import { awsEnvironments, formatValue } from '../core/format';
 import { serializeMerged } from '../core/params-merge';
 import type { ChangeRow } from '../core/params-merge';
 import { ParamsDiffResponse, UpdateSessionItemRequest } from '../api-gen/models';
-import { BusyModalComponent } from '../shared/busy-modal';
-import { RegionControlsComponent } from '../shared/region-controls';
+import { BusyModal } from '../shared/busy-modal';
+import { RegionControls } from '../shared/region-controls';
 import { StatusBadge } from '../shared/status-badge';
 import { CopyButton } from '../shared/copy-button';
-import { PaginationBarComponent } from '../shared/pagination-bar';
+import { PaginationBar } from '../shared/pagination-bar';
 import { paginate } from '../shared/paginate';
 
 interface DiffChange {
@@ -51,11 +51,11 @@ type PairKey = 'param' | 'secret';
   selector: 'app-params-diff-page',
   imports: [
     RouterLink,
-    RegionControlsComponent,
+    RegionControls,
     StatusBadge,
-    BusyModalComponent,
+    BusyModal,
     CopyButton,
-    PaginationBarComponent,
+    PaginationBar,
   ],
   template: `
     <h1>Diff de Parámetros / Secretos</h1>

@@ -4,8 +4,8 @@ import { SessionDetailResponse, SessionItemInfo } from '../api-gen/models';
 import { SessionService } from '../core/services/session.service';
 import { toApiError } from '../core/services/api-error';
 import { fmtDate } from '../core/format';
-import { PageHeaderComponent } from '../shared/page-header';
-import { PaginationBarComponent } from '../shared/pagination-bar';
+import { PageHeader } from '../shared/page-header';
+import { PaginationBar } from '../shared/pagination-bar';
 import { paginate } from '../shared/paginate';
 import { StatusBadge } from '../shared/status-badge';
 
@@ -18,7 +18,7 @@ const STATUS_META: Record<string, [string, string]> = {
 
 @Component({
   selector: 'app-session-detail-page',
-  imports: [RouterLink, StatusBadge, PageHeaderComponent, PaginationBarComponent],
+  imports: [RouterLink, StatusBadge, PageHeader, PaginationBar],
   templateUrl: './session-detail.html',
 })
 export class SessionDetailPage {

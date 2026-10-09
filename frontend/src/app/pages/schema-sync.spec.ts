@@ -140,6 +140,26 @@ function textarea(el: HTMLElement): HTMLTextAreaElement {
 }
 
 /**
+ * Click en el botón de confirmar del `NoticeModal`.
+ *
+ * `run()` ya no escribe: deja la sincronización pendiente y abre el modal. El
+ * click va por el `output` `confirmed`, o sea por el mismo camino que el del
+ * usuario. No hay `sleep`: el modal es un signal y el click es síncrono.
+ */
+function confirmarEnModal(el: HTMLElement): void {
+  const boton = el.querySelector<HTMLButtonElement>('.notice-modal__confirm');
+  if (!boton) throw new Error('No hay modal de confirmación abierto');
+  boton.click();
+}
+
+/** Click en "Cancelar": la vía que no sincroniza. */
+function cancelarEnModal(el: HTMLElement): void {
+  const boton = el.querySelector<HTMLButtonElement>('.notice-modal__cancel');
+  if (!boton) throw new Error('No hay modal de confirmación abierto');
+  boton.click();
+}
+
+/**
  * Arma la página con la cadena completa y genera. Los pasos van con un flush en el
  * medio porque `app-schema-select` se vacía solo cuando cambia el ambiente.
  */
@@ -772,10 +792,7 @@ describe('SchemaSyncPage la tabla de objetos', () => {
 describe('SchemaSyncPage sincronizar', () => {
   beforeEach(async () => {
     await setup();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
-
-  afterEach(() => vi.restoreAllMocks());
 
   it('vuelve a preguntar al destino si ya tiene lo que se acaba de correr', async () => {
     const { fixture, comp } = await generate();
@@ -787,6 +804,8 @@ describe('SchemaSyncPage sincronizar', () => {
     const antes = objectCalls.filter((c) => c.env === 'local').length;
 
     comp.run();
+    await settle(fixture);
+    confirmarEnModal(fixture.nativeElement as HTMLElement);
     await settle(fixture);
 
     // El script corrió, así que se vuelve a preguntar. La columna era un snapshot
@@ -800,9 +819,20 @@ describe('SchemaSyncPage sincronizar', () => {
     comp.toggle('orders', false);
     await settle(fixture);
 
-    comp.run();
+    // Sacar una tabla descarta el script generado: describe una selección
+    // concreta y ya no la describe. Por eso el editor queda vacío y `run()` cortaría
+    // en la guarda. Se vuelve a pegar el SQL para que la sincronización corra de
+    // verdad —si no, la aserción de abajo era cierta por la guarda y no por lo que
+    // dice probar.
+    comp.script.set(CREATE_SCRIPT);
     await settle(fixture);
 
+    comp.run();
+    await settle(fixture);
+    confirmarEnModal(fixture.nativeElement as HTMLElement);
+    await settle(fixture);
+
+    expect(executeRequests.length).toBe(1);
     // Correr no puede volver a marcar lo que el usuario sacó: la selección es
     // suya, y pisarla haría que el próximo script incluyera una tabla que se
     // había sacado a propósito.
@@ -810,10 +840,12 @@ describe('SchemaSyncPage sincronizar', () => {
   });
 
   it('ejecuta con el esquema vacío y como script, aunque el destino no lo tenga', async () => {
-    const { fixture, comp } = await generate({ create_schema: true, script: CREATE_SCRIPT });
+    const { fixture, comp, el } = await generate({ create_schema: true, script: CREATE_SCRIPT });
     expect(comp.result()!.create_schema).toBe(true);
 
     comp.run();
+    await settle(fixture);
+    confirmarEnModal(el);
     await settle(fixture);
 
     expect(executeRequests.length).toBe(1);
@@ -827,27 +859,32 @@ describe('SchemaSyncPage sincronizar', () => {
   });
 
   it('un script con DROP TABLE pide confirmación y lo dice claro', async () => {
-    const { fixture, comp } = await generate();
+    const { fixture, comp, el } = await generate();
 
     comp.run();
     await settle(fixture);
 
-    expect(window.confirm).toHaveBeenCalledWith(
-      expect.stringContaining('¿Sincronizar yappy de dev a local?'),
+    // El aviso va en el cuerpo del modal, no en un `confirm()` del navegador: es
+    // lo que el usuario lee antes de decidir.
+    expect(el.querySelector('.notice-modal__head h2')!.textContent).toBe(
+      '¿Sincronizar yappy de dev a local?',
     );
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('borra y vuelve a crear'));
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('se pierden'));
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('No es una fusión'));
+    const texto = el.querySelector('.notice-modal')!.textContent ?? '';
+    expect(texto).toContain('borra y vuelve a crear');
+    expect(texto).toContain('se pierden');
+    expect(texto).toContain('No es una fusión');
   });
 
-  it('declinar la confirmación no llama a la API', async () => {
-    vi.mocked(window.confirm).mockReturnValue(false);
-    const { fixture, comp } = await generate();
+  it('cancelar la confirmación no llama a la API', async () => {
+    const { fixture, comp, el } = await generate();
 
     comp.run();
     await settle(fixture);
+    expect(el.querySelector('.notice-modal')).not.toBeNull();
 
-    expect(window.confirm).toHaveBeenCalledTimes(1);
+    cancelarEnModal(el);
+    await settle(fixture);
+
     expect(executeRequests).toHaveLength(0);
     expect(comp.executed()).toBeNull();
     expect(comp.busy()).toBe(false);
@@ -856,6 +893,7 @@ describe('SchemaSyncPage sincronizar', () => {
   it('omite el aviso de DROP para un script que no borra nada, pero igual pregunta', async () => {
     const fixture = TestBed.createComponent(SchemaSyncPage);
     const comp = fixture.componentInstance as any;
+    const el = fixture.nativeElement as HTMLElement;
     comp.envA.set('local');
     comp.script.set('CREATE TABLE `yappy`.`orders` (`id` INT);');
     await settle(fixture);
@@ -863,11 +901,14 @@ describe('SchemaSyncPage sincronizar', () => {
     comp.run();
     await settle(fixture);
 
-    const mensaje = vi.mocked(window.confirm).mock.calls[0][0];
-    expect(mensaje).not.toContain('No es una fusión');
+    const texto = el.querySelector('.notice-modal')!.textContent ?? '';
+    expect(texto).not.toContain('No es una fusión');
     // La confirmación va siempre: sincronizar un esquema nunca es una operación de
     // lectura, aunque el texto que se pegó no borre nada.
-    expect(mensaje).toContain('¿Sincronizar');
+    expect(el.querySelector('.notice-modal__head h2')!.textContent).toContain('¿Sincronizar');
+
+    confirmarEnModal(el);
+    await settle(fixture);
     expect(executeRequests.length).toBe(1);
   });
 
@@ -875,6 +916,8 @@ describe('SchemaSyncPage sincronizar', () => {
     const { fixture, comp, el } = await generate();
 
     comp.run();
+    await settle(fixture);
+    confirmarEnModal(el);
     await settle(fixture);
 
     expect(comp.executed()!.err_count).toBe(0);
@@ -889,6 +932,7 @@ describe('SchemaSyncPage sincronizar', () => {
   it('no sincroniza con el editor vacío', async () => {
     const fixture = TestBed.createComponent(SchemaSyncPage);
     const comp = fixture.componentInstance as any;
+    const el = fixture.nativeElement as HTMLElement;
     comp.envA.set('local');
     await settle(fixture);
 
@@ -898,7 +942,8 @@ describe('SchemaSyncPage sincronizar', () => {
     comp.run();
     await settle(fixture);
 
-    expect(window.confirm).not.toHaveBeenCalled();
+    // Ni modal ni request: la guarda corta antes de la confirmación.
+    expect(el.querySelector('.notice-modal')).toBeNull();
     expect(executeRequests).toHaveLength(0);
   });
 });

@@ -3,7 +3,6 @@ import { RouterLink } from '@angular/router';
 
 @Component({
   selector: 'app-empty-state-card',
-  standalone: true,
   imports: [RouterLink],
   template: `
     <div class="panel empty-state-card">
@@ -39,7 +38,7 @@ import { RouterLink } from '@angular/router';
     }
   `,
 })
-export class EmptyStateCardComponent {
+export class EmptyStateCard {
   readonly message = input.required<string>();
   readonly buttonLabel = input<string | null>(null);
   readonly buttonLink = input<string>('/params-read');

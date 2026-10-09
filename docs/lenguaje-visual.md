@@ -11,23 +11,38 @@ cálculo. El estado sale siempre del DOM.
 
 ## Paleta
 
-**No se toca.** Los tokens viven en dos lugares de `frontend/src/styles.scss` y
-ya tienen lo que hace falta:
+**No se toca.** Los tokens viven en `frontend/src/styles.scss` y ya tienen lo que
+hace falta. El inventario completo está en `AGENTS.md`; esta sección es sólo la
+idea.
 
 | Token | Rol |
 |---|---|
-| `--bb-surface` / `--bg` | Fondo de la página |
-| `--bb-bg` / `--panel` | Fondo de los paneles |
-| `--bb-border` | El borde de 1px de todo |
-| `--bb-blue` / `--accent` | Acento: estado activo y acción primaria |
-| `--bb-blue-on` / `--accent-on` | Texto sobre el acento |
-| `--bb-hover-bg`, `--bb-selected-bg` | Estados de hover y seleccionado |
+| `--sys-surface` / `--bg` | Fondo de la página |
+| `--sys-bg` / `--panel` | Fondo de los paneles |
+| `--sys-border` | El borde de 1px de todo |
+| `--sys-blue` / `--accent` | Acento: estado activo y acción primaria |
+| `--sys-blue-on` / `--accent-on` | Texto sobre el acento |
+| `--sys-hover-bg`, `--sys-selected-bg` | Estados de hover y seleccionado |
 
-Ojo con una inversión que confunde: en dark, `--bb-bg` es el **panel** y
-`--bb-surface` es la **página**. Están al revés de lo intuitivo.
+Ojo con una inversión que confunde: en dark, `--sys-bg` es el **panel** y
+`--sys-surface` es la **página**. Están al revés de lo intuitivo.
 
 El tema se aplica con `data-theme` en `<html>`, y lo mueve
 `ThemeService.setTheme()`. Es el único lugar donde se cambia.
+
+### El prefijo es `--sys-`, y `styles.scss` tiene UN `:root`
+
+Dos cosas que ya se pagaron de romperse y que conviene no volver a romper:
+
+- **El prefijo es `--sys-`.** El `--bb-` era la paleta de BBit, que este frontend
+  dejó de usar. No existe más en `styles.scss`; las ocho apariciones que quedaban
+  en este documento eran de una paleta anterior.
+- **Un solo bloque `:root`.** `styles.scss` tuvo dos, y el segundo ganaba por orden
+  de cascada: pisaba `--sys-control-h` a `2.75rem` (44px, el valor que
+  `AGENTS.md` prohíbe por nombre) y el cuerpo a `1rem`. El efecto era que todo se
+  veía ~10-14% más grande y había que bajar el zoom del navegador a 80% para que
+  se leyera normal. Los tokens se declaran una vez; si un valor nuevo necesita
+  pisar otro, es una decisión de diseño y va anotada acá, no en un `:root` de más.
 
 ## La regla del `.field-label`
 
@@ -343,6 +358,74 @@ El modal se abre si `errorSeq > dismissedSeq`. Consecuencia: cerrar el aviso
 **pega** hasta que algo nuevo rompa, en vez de reabrirse en el próximo change
 detection.
 
+## Confirmar es un modal con dos salidas, no un `confirm()`
+
+El `confirm()` del navegador era el último confirmador que quedaba: 11 llamadas en
+8 archivos. No dice qué va a pasar, no deja recuperar nada, y dos de los textos
+llegaban a decir *"No se puede deshacer"*.
+
+`app-notice-modal` ya era la pieza correcta y estaba sin usar para esto, así que
+**se le agregaron los dos modos que le faltaban** en vez de crear otro modal:
+
+| `tone` | Botones | Para qué |
+|---|---|---|
+| `aviso` (default) | uno, `confirmLabel` | Mostrar un error. Es lo que ya usaban tres páginas. |
+| `default` | Cancelar + confirmar | *"¿Ejecutar el script?"* |
+| `danger` | Cancelar + confirmar, confirmar en tinta de error | *"¿Eliminar DEFINITIVAMENTE?"* |
+
+`aviso` es el default a propósito: los usos que sólo muestran no tienen que
+declarar nada, y agregar el segundo modo no los tocó.
+
+Tres reglas que no son negociables:
+
+- **Escape, ✕ y el backdrop siempre cancelan.** Nunca confirman. Un Escape de más
+  no puede disparar un borrado, y un borrado es lo único que no se arregla con
+  otro clic.
+- **Cancelar a la izquierda, confirmar a la derecha.** En un diálogo, la acción por
+  defecto de la interfaz es la segura.
+- **El botón de confirmar en `danger` va teñido, no macizo.** Un rojo lleno
+  necesita una tinta de texto sobre el que no existe token semántico, y un literal
+  ahí se ve bien en un tema y cortado en el otro.
+
+### El modal es asíncrono, y eso parte el método en dos
+
+`confirm()` se contestaba en la línea siguiente. El modal no: la respuesta llega
+por `output`. Así que **el código no puede seguir linealmente**, y la página que lo
+abre parte su acción en dos.
+
+```ts
+// 1. El click abre el modal y guarda qué ejecutar.
+readonly pending = signal<{ texto: string; titulo: string; peligro: boolean } | null>(null);
+
+// 2. La respuesta ejecuta lo guardado.
+confirmar() {
+  const p = this.pending();
+  this.pending.set(null);
+  if (!p) return;
+  // ... la acción
+}
+```
+
+**Lo que se guarda es un snapshot, no una relectura de signals.** En `compile.ts` y
+`schema-sync.ts` eso no es una preferencia: entre el click y el clic en "Ejecutar"
+el usuario puede tocar el editor, y releyendo se ejecutaría algo distinto de lo
+que el diálogo le mostró. Es la misma razón por la que el aviso dice *"Corre
+exactamente lo que está en el editor"*.
+
+### Los `\n` de un `confirm()` no son párrafos
+
+Varios textos eran concatenaciones largas con `\n\n` en el medio. En el alert del
+navigator se veían de cualquier manera; en HTML, `\n` no es un salto de línea.
+Cada texto se parte en `string[]` y el template dibuja un `<p>` por elemento, más
+`white-space: pre-line` en el cuerpo por si un texto trae un salto simple.
+
+### El foco necesita `tabindex="-1"`
+
+El diálogo toma el foco al abrirse para que el lector de pantalla lo anuncie.
+`focus()` sobre un `<div>` **sin `tabindex` es un no-op silencioso**: el foco se
+queda en la página de atrás y el modal no se anuncia. El comentario del componente
+ya mentía sobre eso. Con `tabindex="-1"` funciona.
+
 ## El modal de espera tiene una salida, y dice cuál es
 
 `app-busy-modal` (`shared/busy-modal.ts`) tapa la pantalla mientras una operación
@@ -510,7 +593,9 @@ de negocio, no caption de UI.
 
 ## Lo que este trabajo NO cambió
 
-Los tokens de color, el tema, las rutas, los servicios, y la lógica de todas las
-páginas. Los cambios de comportamiento de esta tanda: ninguno. La única lógica
-nueva es `AutoGrowDirective`, que es presentación pura.
+Los servicios, las rutas, el tema y la lógica de negocio de las páginas. Los
+cambios de comportamiento son tres y están anotados arriba: el `confirm()` nativo
+pasó a ser un modal con dos salidas, `NoticeModalComponent` ganó los modos
+`default` y `danger`, y la densidad de la interfaz volvió a la escala de
+`AGENTS.md` porque el segundo `:root` de `styles.scss` dejó de pisarla.
 
