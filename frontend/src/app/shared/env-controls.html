@@ -1,0 +1,37 @@
+<div class="pill-controls">
+  @if (services().length) {
+    <div class="pill-group">
+      <label class="pill-label">{{ serviceLabel() }}</label>
+      <div class="env-list" role="group" [attr.aria-label]="serviceLabel()">
+        @for (s of services(); track s.value) {
+          <button
+            type="button"
+            class="chip"
+            [class.selected]="service() === s.value"
+            [attr.aria-pressed]="service() === s.value"
+            (click)="service.set(s.value)"
+          >
+            <span aria-hidden="true">{{ service() === s.value ? '✓' : '' }}</span>
+            {{ s.label }}
+          </button>
+        }
+      </div>
+    </div>
+  }
+
+  <div class="pill-group">
+    <label class="pill-label">{{ envLabel() }}</label>
+    <app-env-picker
+      [environments]="environments()"
+      [selected]="envs()"
+      [max]="max()"
+      [roleLabels]="roleLabels()"
+      [label]="envLabel() + ' a seleccionar'"
+      (selectedChange)="envs.set($event)"
+    />
+  </div>
+</div>
+
+@if (hint(); as text) {
+  <p class="muted" style="margin-top: 0.25rem; font-size: var(--text-xs);">{{ text }}</p>
+}
