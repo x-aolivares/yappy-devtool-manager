@@ -1,0 +1,28 @@
+/* El filtro y su aclaración van juntos: separados, el hint parece otro bloque
+   y el input queda huérfano. */
+.sql-grid-search {
+  margin-top: 0.75rem;
+}
+.sql-grid-search__hint {
+  margin-top: 0.375rem;
+  font-size: var(--text-xs);
+}
+
+/* The inline marker: short on purpose, it only says there is a detail to
+   read and reopens the modal. The long text lives in the modal. */
+.error-marker {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--err);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--err) 10%, transparent);
+  color: var(--err);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.error-marker:hover {
+  background: color-mix(in srgb, var(--err) 18%, transparent);
+}
