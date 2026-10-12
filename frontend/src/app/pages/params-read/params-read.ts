@@ -4,17 +4,17 @@ import {
   EnvironmentInfo,
   ParamsReadResponse,
   ReadEntryResultInfo,
-} from '../api-gen/models';
-import { EnvironmentService } from '../core/services/environment.service';
-import { ParamsService } from '../core/services/params.service';
-import { SessionService } from '../core/services/session.service';
-import { toApiError } from '../core/services/api-error';
-import { CancelSlot, isCancellation } from '../core/cancel';
-import { awsEnvironments, formatValue, isJsonDocument } from '../core/format';
-import { EnvControls, PARAM_SERVICES } from '../shared/env-controls';
-import { StatusBadge } from '../shared/status-badge';
-import { BusyModal } from '../shared/busy-modal';
-import { NoticeModal } from '../shared/notice-modal';
+} from '../../api-gen/models';
+import { EnvironmentService } from '../../core/services/environment.service';
+import { ParamsService } from '../../core/services/params.service';
+import { SessionService } from '../../core/services/session.service';
+import { toApiError } from '../../core/services/api-error';
+import { CancelSlot, isCancellation } from '../../core/cancel';
+import { awsEnvironments, formatValue, isJsonDocument } from '../../core/format';
+import { EnvControls, PARAM_SERVICES } from '../../shared/env-controls';
+import { StatusBadge } from '../../shared/status-badge';
+import { BusyModal } from '../../shared/busy-modal';
+import { NoticeModal } from '../../shared/notice-modal';
 
 interface EnvPanel {
   env: string;

@@ -12,10 +12,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ParamsReadPage } from './params-read';
-import { DbService } from '../core/services/db.service';
-import { EnvironmentService } from '../core/services/environment.service';
-import { ParamsService } from '../core/services/params.service';
-import { SessionService } from '../core/services/session.service';
+import { DbService } from '../../core/services/db.service';
+import { EnvironmentService } from '../../core/services/environment.service';
+import { ParamsService } from '../../core/services/params.service';
+import { SessionService } from '../../core/services/session.service';
 
 const READ_OK: Record<string, any> = {
   env: 'dev',
