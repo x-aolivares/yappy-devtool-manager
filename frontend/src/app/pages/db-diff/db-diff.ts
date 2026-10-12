@@ -8,7 +8,7 @@ import { objectLabel } from '../../core/format';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { StatusBadge } from '../../components/status-badge';
 import { CopyButton } from '../../components/copy-button/copy-button';
-import { RegionControls } from '../../components/region-controls';
+import { RegionControls } from '../../components/region-controls/region-controls';
 
 @Component({
   selector: 'app-db-diff-page',

@@ -10,7 +10,7 @@ import { DbService } from '../../core/services/db.service';
 import { toApiError } from '../../core/services/api-error';
 import { CancelSlot, isCancellation } from '../../core/cancel';
 import { StatusBadge } from '../../components/status-badge';
-import { RegionControls } from '../../components/region-controls';
+import { RegionControls } from '../../components/region-controls/region-controls';
 import { SchemaSelect } from '../../components/schema-select';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { NoticeModal } from '../../components/notice-modal/notice-modal';

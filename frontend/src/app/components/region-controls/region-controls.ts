@@ -1,6 +1,6 @@
 import { Component, computed, input, model } from '@angular/core';
-import { EnvironmentInfo } from '../api-gen/models';
-import { EnvControls, PARAM_SERVICES } from './env-controls/env-controls';
+import { EnvironmentInfo } from '../../api-gen/models';
+import { EnvControls, PARAM_SERVICES } from '../env-controls/env-controls';
 
 /**
  * Controles de un par origen → destino, sobre los grupos de píldoras.
