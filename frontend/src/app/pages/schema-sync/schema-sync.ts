@@ -9,7 +9,7 @@ import { StatusBadge } from '../../components/status-badge';
 import { CopyButton } from '../../components/copy-button';
 import { RegionControls } from '../../components/region-controls';
 import { SchemaSelect } from '../../components/schema-select';
-import { AutoGrowDirective } from '../../components/auto-grow';
+import { AutoGrowDirective } from '../../components/auto-grow/auto-grow';
 import { NoticeModal } from '../../components/notice-modal';
 import { PaginationBar } from '../../components/pagination-bar';
 import { TableSearch, searchable } from '../../components/table-search';

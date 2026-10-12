@@ -11,7 +11,7 @@ import { CopyButton } from '../../components/copy-button';
 import { EnvControls } from '../../components/env-controls';
 import { RegionControls } from '../../components/region-controls';
 import { SchemaSelect } from '../../components/schema-select';
-import { AutoGrowDirective } from '../../components/auto-grow';
+import { AutoGrowDirective } from '../../components/auto-grow/auto-grow';
 import { NoticeModal } from '../../components/notice-modal';
 
 /**
