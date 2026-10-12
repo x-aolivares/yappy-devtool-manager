@@ -1,15 +1,15 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { SessionSummaryInfo } from '../api-gen/models';
-import { SessionService } from '../core/services/session.service';
-import { toApiError } from '../core/services/api-error';
-import { fmtDate } from '../core/format';
-import { EmptyStateCard } from '../shared/empty-state-card';
-import { NoticeModal } from '../shared/notice-modal';
-import { PageHeader } from '../shared/page-header';
-import { PaginationBar } from '../shared/pagination-bar';
-import { paginate } from '../shared/paginate';
-import { StatusBadge } from '../shared/status-badge';
+import { SessionSummaryInfo } from '../../api-gen/models';
+import { SessionService } from '../../core/services/session.service';
+import { toApiError } from '../../core/services/api-error';
+import { fmtDate } from '../../core/format';
+import { EmptyStateCard } from '../../shared/empty-state-card';
+import { NoticeModal } from '../../shared/notice-modal';
+import { PageHeader } from '../../shared/page-header';
+import { PaginationBar } from '../../shared/pagination-bar';
+import { paginate } from '../../shared/paginate';
+import { StatusBadge } from '../../shared/status-badge';
 
 @Component({
   selector: 'app-sessions-page',

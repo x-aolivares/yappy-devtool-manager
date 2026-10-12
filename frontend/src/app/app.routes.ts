@@ -7,7 +7,7 @@ import { MigrateDataPage } from './pages/migrate-data/migrate-data';
 import { ParamsReadPage } from './pages/params-read/params-read';
 import { SchemaSyncPage } from './pages/schema-sync/schema-sync';
 import { SessionDetailPage } from './pages/session-detail/session-detail';
-import { SessionsPage } from './pages/sessions';
+import { SessionsPage } from './pages/sessions/sessions';
 import { SqlPage } from './pages/sql';
 
 // `/params-diff`, `/params-create`, `/params-edit` y `/db-diff` dejaron de estar

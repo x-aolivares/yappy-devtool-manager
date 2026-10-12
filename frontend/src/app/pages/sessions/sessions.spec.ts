@@ -10,8 +10,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { SessionsPage } from './sessions';
-import { SessionService } from '../core/services/session.service';
-import { SessionSummaryInfo } from '../api-gen/models';
+import { SessionService } from '../../core/services/session.service';
+import { SessionSummaryInfo } from '../../api-gen/models';
 
 function session(n: number, title?: string): SessionSummaryInfo {
   return {
