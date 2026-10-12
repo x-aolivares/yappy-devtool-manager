@@ -12,7 +12,7 @@ import { SchemaSelect } from '../../components/schema-select/schema-select';
 import { AutoGrowDirective } from '../../components/auto-grow/auto-grow';
 import { NoticeModal } from '../../components/notice-modal/notice-modal';
 import { PaginationBar } from '../../components/pagination-bar/pagination-bar';
-import { TableSearch, searchable } from '../../components/table-search';
+import { TableSearch, searchable } from '../../components/table-search/table-search';
 import { paginate } from '../../core/paginate';
 
 /** One object of the origin schema, as the picker table renders it. */

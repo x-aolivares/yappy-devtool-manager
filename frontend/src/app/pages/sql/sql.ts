@@ -8,7 +8,7 @@ import { EnvControls } from '../../components/env-controls/env-controls';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { NoticeModal } from '../../components/notice-modal/notice-modal';
 import { PaginationBar } from '../../components/pagination-bar/pagination-bar';
-import { TableSearch, searchable } from '../../components/table-search';
+import { TableSearch, searchable } from '../../components/table-search/table-search';
 import { paginate } from '../../core/paginate';
 import { StatusBadge } from '../../components/status-badge/status-badge';
 

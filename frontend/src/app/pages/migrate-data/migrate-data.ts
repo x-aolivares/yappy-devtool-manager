@@ -15,7 +15,7 @@ import { SchemaSelect } from '../../components/schema-select/schema-select';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { NoticeModal } from '../../components/notice-modal/notice-modal';
 import { PaginationBar } from '../../components/pagination-bar/pagination-bar';
-import { TableSearch, searchable } from '../../components/table-search';
+import { TableSearch, searchable } from '../../components/table-search/table-search';
 import { paginate } from '../../core/paginate';
 
 /**
