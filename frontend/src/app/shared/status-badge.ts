@@ -3,7 +3,7 @@ import { statusLabel } from '../core/format';
 
 @Component({
   selector: 'app-badge',
-  template: `<span class="badge {{ status() }}">{{ display() }}</span>`,
+  templateUrl: './status-badge.html',
 })
 export class StatusBadge {
   status = input.required<string>();
