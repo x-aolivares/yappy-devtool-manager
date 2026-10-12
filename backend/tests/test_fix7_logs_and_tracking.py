@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -70,6 +71,18 @@ def test_show_logs_follow_prints_ctrl_c_hint(monkeypatch, tmp_path, capsys):
     assert "hello" in out
 
 
+# La gestion de Kafka es Windows-only por decision del producto: `_ensure_windows()`
+# en adapters/kafka/service.py corta con `die(...)` en cualquier otra plataforma.
+# Estos tests ejercitan `detach()` y `down()`, que lo llaman, asi que solo tienen
+# sentido donde la funcion existe. En Linux el skip es correcto; no es un test
+# roto, es cobertura de una plataforma que el producto todavia no soporta.
+requires_windows = pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="la gestion de Kafka solo existe en Windows (_ensure_windows)",
+)
+
+
+@requires_windows
 def test_kafka_service_detach_tracks_process_with_log_file(monkeypatch, tmp_path):
     tracked = []
     monkeypatch.setattr(api_kafka.process_tracker, "track_process", lambda **kw: tracked.append(kw))
@@ -99,6 +112,7 @@ def test_kafka_service_detach_tracks_process_with_log_file(monkeypatch, tmp_path
     assert (tmp_path / "kafka" / "temp-logs" / "kafka-server-4321.log").exists()
 
 
+@requires_windows
 def test_kafka_service_down_untracks_process(monkeypatch, tmp_path):
     untracked = []
     monkeypatch.setattr(process_tracker, "untrack_process", lambda pid: untracked.append(pid))
