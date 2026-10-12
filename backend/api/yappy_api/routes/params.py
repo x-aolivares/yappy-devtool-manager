@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from fastapi import APIRouter, HTTPException
 
 from yappy_library.application.database.sync import params as p
@@ -34,13 +36,19 @@ def _aws_error(exc: Exception, prefix: str) -> HTTPException:
     return HTTPException(status_code=400, detail=f"{prefix}: {exc}")
 
 
-def _has_paired_secret(cfg_a, cfg_b, name: str) -> bool:
+def _has_paired_secret(cfg_a, cfg_b, name: str, value_a, value_b) -> bool:
     """True when an SSM param is backed by a secret in either region.
 
     This supports both the legacy same-name secret pattern and the newer
     secret-alias pattern where the SSM value itself equals the secret name.
+
+    ``value_a``/``value_b`` are the SSM values the caller already read. Going back
+    to SSM for them cost a fresh client per environment and a round trip each, to
+    fetch what the caller was already holding. ``None`` means "not there":
+    ``diff_params`` only leaves a value as None when the parameter does not exist
+    (any other failure propagates), so it is exactly the ParamNotFound case.
     """
-    for cfg in (cfg_a, cfg_b):
+    for cfg, param_value in ((cfg_a, value_a), (cfg_b, value_b)):
         try:
             p.read_secret(cfg, name)
             return True
@@ -49,11 +57,7 @@ def _has_paired_secret(cfg_a, cfg_b, name: str) -> bool:
         except Exception:  # noqa: BLE001 — binary/no-value secrets don't pair
             pass
 
-        try:
-            param_value, _ = p.read_parameter(cfg, name)
-        except p.ParamNotFound:
-            continue
-        except Exception:  # noqa: BLE001 — unreadable parameter is not a valid pair
+        if param_value is None:
             continue
 
         secret_ref = str(param_value).strip()
@@ -96,7 +100,9 @@ def api_params_diff(req: ParamsDiffRequest):
                 cfg_a, cfg_b, req.service, req.name, req.env_a, req.env_b,
                 include_deletes=req.include_deletes,
             )
-            if req.service == "ssm" and _has_paired_secret(cfg_a, cfg_b, req.name):
+            if req.service == "ssm" and _has_paired_secret(
+                cfg_a, cfg_b, req.name, result.value_a, result.value_b
+            ):
                 result = p.diff_params_pair(
                     cfg_a, cfg_b, req.name, req.env_a, req.env_b
                 )
@@ -380,18 +386,32 @@ def api_params_read(envs: list[str], entries: list[ReadParamsEntry | str]):
         raise HTTPException(status_code=400, detail="La lista de parámetros está vacía.")
 
     results: list[dict] = []
-    for env in envs:
+
+    def _read_env(env: str) -> list[dict]:
+        """Rows for one environment, or error rows if it could not be read.
+
+        Runs in a worker thread: the environments are independent and the endpoint
+        already isolates a failure to its own env, so there is nothing to
+        serialize. It was sequential, which meant paying each AWS round trip one
+        after the other.
+        """
         try:
             cfg = env_config(env)
             # `read_many` knows nothing about which environment it read; stamp it
             # here so the client can group the panels without guessing.
-            results.extend({**row, "env": env} for row in p.read_many(cfg, normalized))
+            return [{**row, "env": env} for row in p.read_many(cfg, normalized)]
         except HTTPException as exc:
-            results.extend(_env_error_rows(env, entries, str(exc.detail)))
+            return _env_error_rows(env, entries, str(exc.detail))
         except ValueError as exc:
-            results.extend(_env_error_rows(env, entries, str(exc)))
-        except Exception as exc:
-            results.extend(_env_error_rows(env, entries, f"Error de AWS: {exc}"))
+            return _env_error_rows(env, entries, str(exc))
+        except Exception as exc:  # noqa: BLE001 — one bad env must not kill the rest
+            return _env_error_rows(env, entries, f"Error de AWS: {exc}")
+
+    with ThreadPoolExecutor(max_workers=min(len(envs), 8)) as pool:
+        # `map` keeps the order of `envs`, so the response groups the panels the
+        # same way it did when the loop was sequential.
+        for rows in pool.map(_read_env, envs):
+            results.extend(rows)
 
     return {
         "envs": list(envs),

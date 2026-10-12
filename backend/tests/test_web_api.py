@@ -1,5 +1,7 @@
 from datetime import date
 
+import threading
+
 import pytest
 from fastapi import HTTPException
 
@@ -155,10 +157,40 @@ def test_api_params_read_reads_every_selected_environment(monkeypatch):
 
     payload = api_params_read(envs=["dev", "qa", "uat"], entries=["/rate"])
 
-    assert seen == ["dev", "qa", "uat"]
+    # Los ambientes se leen en paralelo, así que el ORDEN en que entra cada uno no
+    # está garantizado. Lo que sí lo está es el orden de la respuesta, que es lo
+    # que el panel necesita para agrupar.
+    assert sorted(seen) == ["dev", "qa", "uat"]
     assert payload["envs"] == ["dev", "qa", "uat"]
     assert [r["env"] for r in payload["results"]] == ["dev", "qa", "uat"]
     assert payload["ok_count"] == 3
+
+
+def test_api_params_read_reads_environments_concurrently(monkeypatch):
+    """Los ambientes se van en paralelo, no uno detrás del otro.
+
+    Una barrera es la forma de probarlo sin medir tiempos: si fueran secuenciales,
+    el primero se quedaría esperando a los otros dos y la barrera se rompería.
+    """
+    monkeypatch.setattr(
+        Config, "known_environments", classmethod(lambda cls: ["dev", "qa", "uat"])
+    )
+    monkeypatch.setattr(Config, "with_env", staticmethod(lambda env: _FakeConfig(env)))
+
+    barrier = threading.Barrier(3, timeout=5)
+
+    def _read_many(cfg, entries):
+        barrier.wait()  # solo se desbloquea si los tres llegaron juntos
+        return [
+            {"env": cfg._env, "key": "/rate", "ok": True, "value": "1", "service": "ssm"}
+        ]
+
+    monkeypatch.setattr(p, "read_many", staticmethod(_read_many))
+
+    payload = api_params_read(envs=["dev", "qa", "uat"], entries=["/rate"])
+
+    assert payload["ok_count"] == 3, payload["results"]
+    assert [r["env"] for r in payload["results"]] == ["dev", "qa", "uat"]
 
 
 def test_api_params_read_keeps_other_environments_when_one_fails(monkeypatch):
@@ -462,6 +494,51 @@ def test_api_params_diff_no_auto_pair_when_no_secret(monkeypatch):
     )
 
     assert calls == [("ssm", "/abc", "dev", "qa")]
+    assert payload["pair"] is False
+
+
+def test_api_params_diff_does_not_reread_ssm_for_the_paired_secret_check(
+    monkeypatch,
+):
+    """`_has_paired_secret` ya no vuelve a SSM: usa los valores que diff_params leyó.
+
+    Releerlos costaba un cliente nuevo y un round trip por ambiente para pedir
+    exactamente lo que el caller tenía en la mano.
+    """
+    monkeypatch.setattr(
+        Config, "known_environments", classmethod(lambda cls: ["dev", "qa"])
+    )
+    monkeypatch.setattr(Config, "with_env", staticmethod(lambda env: _FakeConfig(env)))
+    monkeypatch.setattr(
+        p,
+        "read_secret",
+        staticmethod(lambda cfg, name: (_ for _ in ()).throw(p.ParamNotFound(name))),
+    )
+
+    def _boom(*a, **k):
+        raise AssertionError("el diff no debe volver a leer SSM para detectar el par")
+
+    monkeypatch.setattr(p, "read_parameter", _boom)
+    monkeypatch.setattr(
+        p,
+        "diff_params",
+        staticmethod(
+            lambda cfg_a, cfg_b, service, name, env_a, env_b, **kwargs: p.ParamDiffResult(
+                env_a=env_a, env_b=env_b, service=service, name=name,
+                status="equal", value_a="/alias/dev", value_b="/alias/qa",
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        p,
+        "diff_params_pair",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no debería llamarse")),
+    )
+
+    payload = api_params_diff(
+        ParamsDiffRequest(env_a="dev", env_b="qa", service="ssm", name="/abc")
+    )
+
     assert payload["pair"] is False
 
 

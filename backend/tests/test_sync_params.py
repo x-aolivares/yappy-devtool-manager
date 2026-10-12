@@ -1,6 +1,18 @@
 import json
 
+import pytest
+
 from yappy_library.application.database.sync import params as p
+
+
+@pytest.fixture(autouse=True)
+def _clear_client_cache():
+    """`_boto_client` caches by (servicio, profile, region, endpoint) for the whole
+    process. Without this, a client cached by one test is served to the next one
+    that stubs `_boto_session`, and the fake stops recording calls."""
+    p._clear_client_cache()
+    yield
+    p._clear_client_cache()
 
 
 def test_compare_values_equal_json():
@@ -172,8 +184,156 @@ class _FakeSession:
     def __init__(self, client):
         self._client = client
 
-    def client(self, service):
+    # `**kwargs` porque _boto_client pasa `config=` al construir el cliente real.
+    def client(self, service, **kwargs):
         return self._client
+
+
+# --- Cache de clientes -----------------------------------------------------
+#
+# Construir un cliente de boto3 cuesta ~1.3s (medido en esta maquina) y nunca
+# calienta, porque cada Session() nueva reparsea el service-model JSON. Antes se
+# pagaba una vez por parametro y por ambiente: leer 1 parametro en 3 ambientes
+# gastaba ~4.3s solo en construir clientes, antes de tocar la red. Estos tests
+# existen para que volver a construir en cada llamada no pase inadvertido.
+
+
+class _Cfg:
+    def __init__(self, profile="prof-dev", region="us-east-1", endpoint_url=None):
+        self.env = "dev"
+        self.profile = profile
+        self.region = region
+        self.endpoint_url = endpoint_url
+
+
+def _session_recorder(monkeypatch):
+    """Returns the list of (profile, region) pairs `_boto_session` was asked for."""
+    built = []
+
+    class _S:
+        def __init__(self, tag):
+            self.tag = tag
+
+        def client(self, service, **kwargs):
+            return (service, self.tag)
+
+    monkeypatch.setattr(
+        p, "_boto_session", lambda profile, region: built.append((profile, region)) or _S(len(built))
+    )
+    return built
+
+
+def test_boto_client_builds_one_client_per_key(monkeypatch):
+    built = _session_recorder(monkeypatch)
+    cfg = _Cfg()
+
+    first = p._boto_client("ssm", cfg)
+    second = p._boto_client("ssm", cfg)
+
+    assert first == second, "el cliente se reconstruyó en la segunda llamada"
+    assert len(built) == 1, f"se construyeron {len(built)} sesiones para la misma clave"
+
+
+def test_boto_client_reuses_across_parameters(monkeypatch):
+    """El caso real: un panel lee N parámetros en el mismo ambiente."""
+    built = []
+
+    class _ParamClient:
+        exceptions = type(
+            "E", (), {"ParameterNotFound": type("ParameterNotFound", (Exception,), {})}
+        )()
+
+        def get_parameter(self, Name, WithDecryption=False):
+            return {"Parameter": {"Value": "v", "Type": "String"}}
+
+    class _S:
+        def client(self, service, **kwargs):
+            return _ParamClient()
+
+    monkeypatch.setattr(
+        p, "_boto_session", lambda profile, region: built.append(1) or _S()
+    )
+    cfg = _Cfg()
+
+    for name in ("/a", "/b", "/c"):
+        assert p.read_parameter(cfg, name) == ("v", "String")
+
+    assert len(built) == 1, "tres parámetros en el mismo ambiente construyeron tres sesiones"
+
+
+def test_boto_client_caches_per_service_and_environment(monkeypatch):
+    built = _session_recorder(monkeypatch)
+
+    dev = p._boto_client("ssm", _Cfg("prof-dev", "us-east-1"))
+    qa = p._boto_client("ssm", _Cfg("prof-qa", "us-east-2"))
+    secret = p._boto_client("secretsmanager", _Cfg("prof-dev", "us-east-1"))
+
+    assert len({id(dev), id(qa), id(secret)}) == 3, "claves distintas comparten cliente"
+    assert len(built) == 3
+
+
+def test_boto_client_separates_endpoints(monkeypatch):
+    _session_recorder(monkeypatch)
+
+    aws = p._boto_client("ssm", _Cfg(endpoint_url=None))
+    local = p._boto_client("ssm", _Cfg(endpoint_url="http://localhost:4566"))
+
+    assert aws != local, "un endpoint local no puede reusar el cliente de AWS"
+
+
+def test_boto_client_localstack_implies_local_endpoint(monkeypatch):
+    built = _session_recorder(monkeypatch)
+
+    client = p._boto_client("ssm", _Cfg(profile="localstack"))
+
+    assert client[0] == "ssm"
+    assert built == [("localstack", "us-east-1")]
+
+
+def test_boto_client_rebuilds_after_the_ttl(monkeypatch):
+    """TTL y no lru_cache: un cliente con un token SSO vencido se regenera solo."""
+    built = _session_recorder(monkeypatch)
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(p.time, "monotonic", lambda: clock["t"])
+    cfg = _Cfg()
+
+    p._boto_client("ssm", cfg)
+    clock["t"] += p._CLIENT_TTL_SECONDS - 1
+    p._boto_client("ssm", cfg)
+    assert len(built) == 1, "se reconstruyó antes de vencer el TTL"
+
+    clock["t"] += 2
+    p._boto_client("ssm", cfg)
+    assert len(built) == 2, "vencido el TTL el cliente debería rehacerse"
+
+
+def test_boto_client_passes_a_bounded_timeout(monkeypatch):
+    """Los defaults de botocore son 60s: una región muerta retiene el request."""
+    seen = {}
+
+    class _S:
+        def client(self, service, **kwargs):
+            seen.update(kwargs)
+            return object()
+
+    monkeypatch.setattr(p, "_boto_session", lambda *a, **k: _S())
+    p._boto_client("ssm", _Cfg())
+
+    config = seen["config"]
+    assert config.connect_timeout <= 10
+    assert config.read_timeout <= 30
+
+
+def test_boto_client_local_env_does_not_fill_the_cache(monkeypatch):
+    """La guarda tiene que ir antes del cache: si no, un local envenena la clave."""
+    built = _session_recorder(monkeypatch)
+    local = _Cfg()
+    local.is_local = True
+
+    with pytest.raises(p.LocalEnvHasNoAws):
+        p._boto_client("ssm", local)
+
+    assert built == []
 
 
 def test_put_parameter_overwrites_with_type(monkeypatch):

@@ -65,11 +65,13 @@ class _FakeSession:
     def __init__(self, conn):
         self.conn = conn
 
-    def client(self, name):
+    # `**kwargs` porque _boto_client pasa `config=` al construir el cliente real.
+    def client(self, name, **kwargs):
         return self.conn.client(name)
 
 
 def _monkey_session(monkeypatch, conn):
+    p._clear_client_cache()
     monkeypatch.setattr(
         p, "_boto_session", lambda profile, region: _FakeSession(conn)
     )

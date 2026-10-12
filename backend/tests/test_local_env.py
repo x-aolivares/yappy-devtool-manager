@@ -17,6 +17,16 @@ from yappy_library.config import Config
 # --- Config.is_local -------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _clear_client_cache():
+    """`_boto_client` caches by (servicio, profile, region, endpoint) for the whole
+    process. Without this, a client cached by one test is served to the next one
+    that stubs `_boto_session`, and the stub silently stops being called."""
+    p._clear_client_cache()
+    yield
+    p._clear_client_cache()
+
+
 def _cfg(tmp_path, monkeypatch, body: str):
     monkeypatch.setattr(Config, "_config_dir", tmp_path)
     (tmp_path / "env.base").write_text("", encoding="utf-8")
@@ -92,7 +102,7 @@ def test_params_guard_lets_a_normal_env_through(monkeypatch):
     calls = []
 
     class _Session:
-        def client(self, service, endpoint_url=None):
+        def client(self, service, endpoint_url=None, **kwargs):
             calls.append((service, endpoint_url))
             return object()
 
