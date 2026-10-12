@@ -1,9 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { MigrateDataPage } from './migrate-data';
-import { DbService } from '../core/services/db.service';
-import { EnvironmentService } from '../core/services/environment.service';
-import { DateColumnInfo, DateColumnsResponse, TableMigrateRequest } from '../api-gen/models';
+import { DbService } from '../../core/services/db.service';
+import { EnvironmentService } from '../../core/services/environment.service';
+import { DateColumnInfo, DateColumnsResponse, TableMigrateRequest } from '../../api-gen/models';
 
 const TABLES = ['orders', 'lines', 'config'];
 

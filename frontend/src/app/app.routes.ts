@@ -3,7 +3,7 @@ import { Routes } from '@angular/router';
 import { CompilePage } from './pages/compile/compile';
 import { DeploymentsPage } from './pages/deployments/deployments';
 import { HomePage } from './pages/home/home';
-import { MigrateDataPage } from './pages/migrate-data';
+import { MigrateDataPage } from './pages/migrate-data/migrate-data';
 import { ParamsReadPage } from './pages/params-read';
 import { SchemaSyncPage } from './pages/schema-sync';
 import { SessionDetailPage } from './pages/session-detail';
