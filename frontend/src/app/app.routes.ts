@@ -10,8 +10,8 @@ import { SessionDetailPage } from './pages/session-detail/session-detail';
 import { SessionsPage } from './pages/sessions/sessions';
 import { SqlPage } from './pages/sql/sql';
 
-// `/params-diff`, `/params-create`, `/params-edit` y `/db-diff` dejaron de estar
-// enrutadas: sus páginas siguen en el repo, pero ya no se llega a ellas por URL.
+// `params-create`, `params-edit` y `db-diff` se borraron del repo: sus acciones son
+// de escritura y hoy la app solo tiene permiso de lectura sobre los parámetros.
 // `/sessions` NO se sacó, a propósito — `params-read.ts` crea una sesión y tiene
 // un link a esa vista, así que dejarla en 404 sería romper la página que sí se
 // conserva.
