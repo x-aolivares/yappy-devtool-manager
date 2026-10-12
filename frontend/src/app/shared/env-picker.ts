@@ -19,39 +19,7 @@ import { EnvironmentInfo } from '../api-gen/models';
  */
 @Component({
   selector: 'app-env-picker',
-  template: `
-    <div class="env-list" role="group" [attr.aria-label]="label()">
-      @for (e of environments() ?? []; track e.env) {
-        <button
-          type="button"
-          class="env-item"
-          [class.selected]="isSelected(e.env)"
-          [disabled]="!environments() || (atLimit() && !isSelected(e.env))"
-          [attr.aria-pressed]="isSelected(e.env)"
-          (click)="toggle(e.env)"
-        >
-          <span class="env-check" aria-hidden="true">{{ isSelected(e.env) ? '✓' : '' }}</span>
-          <span class="env-text">
-            <span class="env-name">{{ e.env }}</span>
-            @if (e.is_local) {
-              <!-- Sin región ni profile reales: mostrarlos sería inventar datos. -->
-              <span class="env-meta">local · base de datos directa</span>
-            } @else {
-              <span class="env-meta">{{ e.region || '—' }} · {{ e.profile || '—' }}</span>
-            }
-            @if (e.load_error) {
-              <span class="env-error">{{ e.load_error }}</span>
-            }
-          </span>
-          @if (roleOf(e.env); as role) {
-            <span class="env-role">{{ role }}</span>
-          }
-        </button>
-      } @empty {
-        <p class="muted">No se encontraron ambientes en config/.</p>
-      }
-    </div>
-  `,
+  templateUrl: './env-picker.html',
 })
 export class EnvPicker {
   environments = input<EnvironmentInfo[] | null>(null);
