@@ -8,7 +8,7 @@ import { awsEnvironments } from '../../core/format';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { StatusBadge } from '../../components/status-badge';
 import { CopyButton } from '../../components/copy-button/copy-button';
-import { EnvControls, ServiceOption } from '../../components/env-controls';
+import { EnvControls, ServiceOption } from '../../components/env-controls/env-controls';
 import { PaginationBar } from '../../components/pagination-bar';
 import { paginate } from '../../core/paginate';
 

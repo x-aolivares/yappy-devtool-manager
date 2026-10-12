@@ -6,7 +6,7 @@ import { toApiError } from '../../core/services/api-error';
 import { CancelSlot, isCancellation } from '../../core/cancel';
 import { awsEnvironments } from '../../core/format';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
-import { EnvControls } from '../../components/env-controls';
+import { EnvControls } from '../../components/env-controls/env-controls';
 
 @Component({
   selector: 'app-params-edit-page',

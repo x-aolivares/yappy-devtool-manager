@@ -11,7 +11,7 @@ import { SessionService } from '../../core/services/session.service';
 import { toApiError } from '../../core/services/api-error';
 import { CancelSlot, isCancellation } from '../../core/cancel';
 import { awsEnvironments, formatValue, isJsonDocument } from '../../core/format';
-import { EnvControls, PARAM_SERVICES } from '../../components/env-controls';
+import { EnvControls, PARAM_SERVICES } from '../../components/env-controls/env-controls';
 import { StatusBadge } from '../../components/status-badge';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { NoticeModal } from '../../components/notice-modal';

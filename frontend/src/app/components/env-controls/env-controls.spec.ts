@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { EnvironmentInfo } from '../api-gen/models';
+import { EnvironmentInfo } from '../../api-gen/models';
 import { EnvControls, PARAM_SERVICES } from './env-controls';
 
 const ENVS: EnvironmentInfo[] = [

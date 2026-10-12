@@ -1,6 +1,6 @@
 import { Component, computed, input, model } from '@angular/core';
-import { EnvironmentInfo } from '../api-gen/models';
-import { EnvPicker } from './env-picker';
+import { EnvironmentInfo } from '../../api-gen/models';
+import { EnvPicker } from '../env-picker';
 
 /** Una opción de un grupo de servicios (SSM, Secrets Manager, ...). */
 export interface ServiceOption {

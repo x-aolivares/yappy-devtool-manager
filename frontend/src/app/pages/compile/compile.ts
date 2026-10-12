@@ -8,7 +8,7 @@ import { objectLabel } from '../../core/format';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { StatusBadge } from '../../components/status-badge';
 import { CopyButton } from '../../components/copy-button/copy-button';
-import { EnvControls } from '../../components/env-controls';
+import { EnvControls } from '../../components/env-controls/env-controls';
 import { RegionControls } from '../../components/region-controls';
 import { SchemaSelect } from '../../components/schema-select';
 import { AutoGrowDirective } from '../../components/auto-grow/auto-grow';
