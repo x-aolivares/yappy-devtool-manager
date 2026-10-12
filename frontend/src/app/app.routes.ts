@@ -6,7 +6,7 @@ import { HomePage } from './pages/home/home';
 import { MigrateDataPage } from './pages/migrate-data/migrate-data';
 import { ParamsReadPage } from './pages/params-read/params-read';
 import { SchemaSyncPage } from './pages/schema-sync/schema-sync';
-import { SessionDetailPage } from './pages/session-detail';
+import { SessionDetailPage } from './pages/session-detail/session-detail';
 import { SessionsPage } from './pages/sessions';
 import { SqlPage } from './pages/sql';
 
