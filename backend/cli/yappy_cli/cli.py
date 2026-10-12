@@ -10,7 +10,7 @@ from pathlib import Path
 import typer
 
 from yappy_library.adapters.logging import console, die, info, success, warn
-from yappy_library.config import Config, win_to_posix
+from yappy_library.config import Config, venv_scripts_dir, win_to_posix
 from yappy_library.paths import (
     migrate_backend_resources,
     project_config_dir,
@@ -653,7 +653,7 @@ def setup():
 
     # 1. Ensure Python Scripts directory is on PATH
     bashrc = Path.home() / ".bashrc"
-    scripts_dir = Path(sys.executable).parent / "Scripts"
+    scripts_dir = venv_scripts_dir()
     scripts_posix = win_to_posix(str(scripts_dir))
     path_export = f'export PATH="$PATH:{scripts_posix}"'
 

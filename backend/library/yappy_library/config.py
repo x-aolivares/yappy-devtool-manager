@@ -10,6 +10,25 @@ from dotenv import dotenv_values
 from .paths import project_config_dir, project_root
 
 
+def venv_scripts_dir() -> Path:
+    """Directorio donde el interprete actual deja los ejecutables entry-point.
+
+    Ese directorio es, por definicion, el padre de `sys.executable`: un venv de
+    Windows guarda `Scripts/python.exe` y uno de Unix `bin/python3`, asi que en
+    los dos casos el padre ya ES la carpeta que hay que agregar al PATH.
+
+    Antes se armaba a mano como `parent / "Scripts"`, y eso rompia en Linux: la
+    carpeta se llama `bin` ahi, el directorio no existia, `setup()` caia al
+    `warn()` y no escribia nada en el `.bashrc`. La integracion de shell no se
+    instalaba nunca, sin error visible.
+
+    Con un Python de sistema esto devuelve el directorio de binarios del
+    sistema, que si existe: agregar `/usr/bin` al PATH no hace dano, y el
+    llamador igual avisa cuando el directorio no esta.
+    """
+    return Path(sys.executable).parent
+
+
 def win_to_posix(path: str) -> str:
     """Convert a Windows path to Git Bash style for display (C:\\x -> /c/x)."""
     p = path.replace("\\", "/")
