@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import copy
 import json
-import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+
+from ....adapters import aws_clients
 
 
 class ParamNotFound(ValueError):
@@ -23,77 +23,16 @@ class LocalEnvHasNoAws(ValueError):
     """Raised when AWS is asked for on an environment that is not an AWS one."""
 
 
-def _boto_session(profile: str, region: str):
-    import boto3
-
-    return boto3.session.Session(profile_name=profile, region_name=region)
-
-
-# Cache de clientes. El primer client() de una Session nueva de boto3 es caro:
-# se paga una vez por Session y no se hereda entre Sessions, porque cada una
-# tiene su propio data loader y su propio cliente. Medido en esta maquina con
-# 'base-profile' (el que usan dev/qa/uat): 365 ms el primer client('ssm') de una
-# Session nueva, y 5 ms los siguientes de la misma Session. Con el perfil
-# 'default' el primero llega a 1400 ms, o sea que el costo depende del perfil.
-#
-# Como _boto_client se llamaba una vez por parametro y por ambiente, cada pedido
-# reconstruia los clientes desde cero: 488 ms por pedido con 3 ambientes, sin
-# contribution de red. Con el cache, el primer pedido los paga y de ahi en mas
-# son 0 ms.
-#
-# TTL y no lru_cache: un cliente con un token SSO vencido puede quedar trabado
-# para siempre. Con TTL se regenera solo a los 15 minutos.
-_CLIENT_TTL_SECONDS = 900
-_client_cache: dict[tuple, tuple[float, object]] = {}
-# Un lock por clave y no uno global: cada ambiente tiene su propio profile/region,
-# asi que sus clientes se construyen EN PARALELO en vez de encolarse. El global
-# solo protege los dos diccionarios. El orden de toma siempre es
-# key_lock -> cache_lock, nunca al reves, asi que no hay deadlock.
-#
-# El cache crece con (servicio, profile, region, endpoint): un par por ambiente y
-# servicio, o sea que son unas cuantas entradas. No hace falta eviction, solo el TTL.
-_client_cache_lock = threading.Lock()
-_client_key_locks: dict[tuple, threading.Lock] = {}
-
-
-def _clear_client_cache() -> None:
-    """Empty the client cache. Used by tests and to force a credential re-resolve."""
-    with _client_cache_lock:
-        _client_cache.clear()
-        _client_key_locks.clear()
-
-
-def _botocore_config():
-    """Timeouts and retries for a tool that talks to AWS from someone's laptop.
-
-    The defaults are 60s for both, which means one unreachable region holds the
-    request for a minute. `standard` retry mode backs off exponentially instead
-    of hammering, and keepalive reuses the TCP connection across calls.
-    """
-    from botocore.config import Config as _BotoConfig
-
-    return _BotoConfig(
-        connect_timeout=5,
-        read_timeout=15,
-        retries={"max_attempts": 3, "mode": "standard"},
-        tcp_keepalive=True,
-    )
-
-
-def _create_client(service: str, profile: str, region: str, endpoint: str | None):
-    session = _boto_session(profile, region)
-    config = _botocore_config()
-    if endpoint:
-        return session.client(service, endpoint_url=endpoint, config=config)
-    return session.client(service, config=config)
-
-
 def _boto_client(service: str, cfg):
     # Every AWS call in this module goes through here, so this is the single place
     # that decides whether an environment may talk to AWS at all. A local
     # environment (DB_MODE=local) has no SSM and no Secrets Manager: without this
     # guard the inherited `base-profile` would be used and the call would hit real
     # AWS. Refusing before the session exists is the point — nothing is contacted.
+    #
+    # The guard stays HERE rather than in aws_clients: whether an environment may
+    # talk to AWS is a question about what the caller is allowed to do with it,
+    # not about how clients are built. The cache is shared, the rule is not.
     if getattr(cfg, "is_local", False):
         raise LocalEnvHasNoAws(
             f"El ambiente '{cfg.env}' es local y no es un ambiente de AWS: "
@@ -101,28 +40,7 @@ def _boto_client(service: str, cfg):
             "Usá un ambiente de AWS para esta operación, o las páginas de base de datos "
             "para trabajar contra el MySQL local."
         )
-
-    endpoint = getattr(cfg, "endpoint_url", None)
-    if endpoint is None and cfg.profile == "localstack":
-        endpoint = "http://localhost:4566"
-
-    key = (service, cfg.profile, cfg.region, endpoint)
-    with _client_cache_lock:
-        hit = _client_cache.get(key)
-        if hit is not None and time.monotonic() - hit[0] < _CLIENT_TTL_SECONDS:
-            return hit[1]
-        key_lock = _client_key_locks.setdefault(key, threading.Lock())
-
-    with key_lock:
-        # Another thread may have built it while this one waited on the key lock.
-        with _client_cache_lock:
-            hit = _client_cache.get(key)
-            if hit is not None and time.monotonic() - hit[0] < _CLIENT_TTL_SECONDS:
-                return hit[1]
-        client = _create_client(service, cfg.profile, cfg.region, endpoint)
-        with _client_cache_lock:
-            _client_cache[key] = (time.monotonic(), client)
-        return client
+    return aws_clients.client_for_cfg(service, cfg)
 
 
 def read_parameter(cfg, name: str) -> tuple[str, str]:

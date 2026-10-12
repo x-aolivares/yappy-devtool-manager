@@ -24,7 +24,9 @@ import json
 import re
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
+from ...adapters import aws_clients
 from ...config import Config
 
 BITBUCKET_API = "https://api.bitbucket.org/2.0"
@@ -156,10 +158,7 @@ def deployed_task_definition(cfg, family: str, service_name: str) -> tuple[int, 
     consola; sin ella no se puede contrastar el resultado contra lo que ve la
     persona del otro lado.
     """
-    import boto3
-
-    session = boto3.session.Session(profile_name=cfg.profile, region_name=cfg.region)
-    ecs = session.client("ecs")
+    ecs = aws_clients.client_for_cfg("ecs", cfg)
     try:
         described = ecs.describe_task_definition(taskDefinition=family)["taskDefinition"]
     except ecs.exceptions.ClientError as exc:
@@ -352,12 +351,17 @@ def _commit_subject(commit) -> str | None:
     return None
 
 
-def environment_deployment(repo: str, env: str, parameters: dict) -> dict:
+def environment_deployment(
+    repo: str, env: str, parameters: dict, cfg=None
+) -> dict:
     """La fila de un ambiente. Nunca tira: el fallo es un dato de la fila.
 
     Cada etapa suma al resultado antes de la siguiente, así un token de CircleCI
     faltante no borra la familia ni la revisión que ya se habían traído. Una tabla
     donde una fila fallida viniera vacía no sirve para comparar ambientes.
+
+    `cfg` se puede pasar ya resuelto para no leer los archivos de configuración
+    dos veces por ambiente (una acá y otra al filtrar cuáles preguntarle a ECS).
     """
     row = {
         "env": env,
@@ -377,7 +381,8 @@ def environment_deployment(repo: str, env: str, parameters: dict) -> dict:
         "message": None,
     }
     try:
-        cfg = Config.with_env(env)
+        if cfg is None:
+            cfg = Config.with_env(env)
     except Exception as exc:
         row.update(status="config_error", message=str(exc))
         return row
@@ -425,11 +430,27 @@ def environment_deployment(repo: str, env: str, parameters: dict) -> dict:
 
 def deployment_report(repo: str, envs: list[str]) -> dict:
     parameters = read_circleci_parameters(repo, Config())
+
+    def _row(env: str) -> dict:
+        # `environment_deployment` resuelve su propia Config si no se le pasa una.
+        return environment_deployment(repo, env, parameters)
+
+    # Los ambientes son independientes y cada fila ya aísla su propio fallo, así
+    # que no hay nada que serializar. Iban uno detrás del otro, y cada fila puede
+    # ser un describe_task_definition más hasta 5 páginas de pipelines de CircleCI
+    # (ver `_branch_from_revision`), o sea que el tiempo crecía con el ambiente.
+    # `map` conserva el orden pedido, que es como la tabla se dibuja.
+    if len(envs) <= 1:
+        rows = [_row(env) for env in envs]
+    else:
+        with ThreadPoolExecutor(max_workers=min(len(envs), 8)) as pool:
+            rows = list(pool.map(_row, envs))
+
     return {
         "repo": repo,
         "group_name": parameters["group_name"],
         "service_name": parameters["service_name"],
         "cluster": parameters.get("cluster"),
         "task_definition_type": parameters.get("task_definition_type"),
-        "environments": [environment_deployment(repo, env, parameters) for env in envs],
+        "environments": rows,
     }

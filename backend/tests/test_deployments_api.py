@@ -9,6 +9,9 @@ volverse una celda en blanco. Una tabla con huecos no se puede comparar.
 
 from __future__ import annotations
 
+import threading
+import time
+
 import pytest
 
 from yappy_api.routes import deployments
@@ -196,3 +199,77 @@ def test_un_filtro_vacio_es_todos_no_ninguno(monkeypatch):
     _known(monkeypatch, ["dev", "qa"])
 
     assert deployments._aws_environments([]) == ["dev", "qa"]
+
+
+# --- el recorrido de la tabla ----------------------------------------------
+#
+# Cada fila puede ser un describe_task_definition más hasta 5 páginas de
+# pipelines de CircleCI (`_branch_from_revision`), así que una fila lenta
+# multiplicaba por el número de ambientes. Estos tests fijan que se lean en
+# paralelo sin perder el orden en que se pidieron.
+
+
+@pytest.fixture
+def sin_bitbucket(monkeypatch):
+    """Sin red: el parameters.json se resuelve antes de tocar ECS o CircleCI."""
+    monkeypatch.setattr(
+        ecs_branch,
+        "read_circleci_parameters",
+        lambda repo, cfg: dict(PARAMETERS),
+    )
+
+
+def test_las_filas_se_leen_en_paralelo(sin_bitbucket, monkeypatch):
+    """Una barrera falla si las filas vuelven a ser secuenciales."""
+    _known(monkeypatch, ["dev", "qa", "uat"])
+    barrier = threading.Barrier(3, timeout=5)
+
+    def _row(repo, env, parameters, cfg=None):
+        barrier.wait()  # sólo se desbloquea si las tres llegaron juntas
+        return {"env": env, "status": "ok"}
+
+    monkeypatch.setattr(ecs_branch, "environment_deployment", _row)
+
+    report = ecs_branch.deployment_report("repo", ["dev", "qa", "uat"])
+
+    assert [r["env"] for r in report["environments"]] == ["dev", "qa", "uat"]
+
+
+def test_la_tabla_sale_en_el_orden_pedido_aunque_termine_al_reves(sin_bitbucket, monkeypatch):
+    """`pool.map` conserva el orden de `envs`, que es como se dibuja la tabla."""
+    _known(monkeypatch, ["dev", "qa", "uat"])
+
+    def _row(repo, env, parameters, cfg=None):
+        # uat tarda más que dev: termina después, pero igual va antes en la tabla.
+        if env == "uat":
+            time.sleep(0.15)
+        return {"env": env, "status": "ok"}
+
+    monkeypatch.setattr(ecs_branch, "environment_deployment", _row)
+
+    report = ecs_branch.deployment_report("repo", ["uat", "dev", "qa"])
+
+    assert [r["env"] for r in report["environments"]] == ["uat", "dev", "qa"]
+
+
+def test_la_config_se_resuelve_una_vez_por_fila(monkeypatch):
+    """`_aws_environments` ya la había resuelto para filtrar; no hay que releerla.
+
+    Leer los archivos de configuración dos veces por ambiente no era el problema
+    de velocidad, pero sí era trabajo de más que no decía por qué estaba.
+    """
+    cfg = _Cfg(env="qa")
+    calls = []
+    monkeypatch.setattr(
+        Config, "with_env", classmethod(lambda cls, env: calls.append(env) or cfg)
+    )
+    monkeypatch.setattr(
+        ecs_branch,
+        "deployed_task_definition",
+        lambda cfg, family, service: (39, "ecr/x:build.210"),
+    )
+
+    row = ecs_branch.environment_deployment("repo", "qa", PARAMETERS, cfg=cfg)
+
+    assert row["status"] == "circleci_unavailable"
+    assert calls == [], "se resolvió la config aunque ya se le pasó una"

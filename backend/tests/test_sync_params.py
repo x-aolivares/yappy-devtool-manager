@@ -2,17 +2,18 @@ import json
 
 import pytest
 
+from yappy_library.adapters import aws_clients
 from yappy_library.application.database.sync import params as p
 
 
 @pytest.fixture(autouse=True)
 def _clear_client_cache():
-    """`_boto_client` caches by (servicio, profile, region, endpoint) for the whole
-    process. Without this, a client cached by one test is served to the next one
-    that stubs `_boto_session`, and the fake stops recording calls."""
-    p._clear_client_cache()
+    """El cache de clientes vive en `aws_clients` y dura todo el proceso. Sin esto,
+    un cliente cacheado por un test se le sirve al siguiente y el fake deja de
+    contar llamadas."""
+    aws_clients.clear_cache()
     yield
-    p._clear_client_cache()
+    aws_clients.clear_cache()
 
 
 def test_compare_values_equal_json():
@@ -180,15 +181,6 @@ class _FakeClient:
         return {}
 
 
-class _FakeSession:
-    def __init__(self, client):
-        self._client = client
-
-    # `**kwargs` porque _boto_client pasa `config=` al construir el cliente real.
-    def client(self, service, **kwargs):
-        return self._client
-
-
 # --- Cache de clientes -----------------------------------------------------
 #
 # Construir un cliente de boto3 cuesta ~1.3s (medido en esta maquina) y nunca
@@ -207,19 +199,16 @@ class _Cfg:
 
 
 def _session_recorder(monkeypatch):
-    """Returns the list of (profile, region) pairs `_boto_session` was asked for."""
+    """Devuelve la lista de (profile, region) por las que se pidió un cliente."""
     built = []
+    counter = {"n": 0}
 
-    class _S:
-        def __init__(self, tag):
-            self.tag = tag
+    def _create(service, profile, region, endpoint):
+        built.append((profile, region))
+        counter["n"] += 1
+        return (service, counter["n"])
 
-        def client(self, service, **kwargs):
-            return (service, self.tag)
-
-    monkeypatch.setattr(
-        p, "_boto_session", lambda profile, region: built.append((profile, region)) or _S(len(built))
-    )
+    monkeypatch.setattr(aws_clients, "_create", _create)
     return built
 
 
@@ -246,19 +235,15 @@ def test_boto_client_reuses_across_parameters(monkeypatch):
         def get_parameter(self, Name, WithDecryption=False):
             return {"Parameter": {"Value": "v", "Type": "String"}}
 
-    class _S:
-        def client(self, service, **kwargs):
-            return _ParamClient()
-
     monkeypatch.setattr(
-        p, "_boto_session", lambda profile, region: built.append(1) or _S()
+        aws_clients, "_create", lambda *a, **k: built.append(1) or _ParamClient()
     )
     cfg = _Cfg()
 
     for name in ("/a", "/b", "/c"):
         assert p.read_parameter(cfg, name) == ("v", "String")
 
-    assert len(built) == 1, "tres parámetros en el mismo ambiente construyeron tres sesiones"
+    assert len(built) == 1, "tres parámetros en el mismo ambiente construyeron tres clientes"
 
 
 def test_boto_client_caches_per_service_and_environment(monkeypatch):
@@ -294,11 +279,11 @@ def test_boto_client_rebuilds_after_the_ttl(monkeypatch):
     """TTL y no lru_cache: un cliente con un token SSO vencido se regenera solo."""
     built = _session_recorder(monkeypatch)
     clock = {"t": 1000.0}
-    monkeypatch.setattr(p.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(aws_clients.time, "monotonic", lambda: clock["t"])
     cfg = _Cfg()
 
     p._boto_client("ssm", cfg)
-    clock["t"] += p._CLIENT_TTL_SECONDS - 1
+    clock["t"] += aws_clients.CLIENT_TTL_SECONDS - 1
     p._boto_client("ssm", cfg)
     assert len(built) == 1, "se reconstruyó antes de vencer el TTL"
 
@@ -309,19 +294,14 @@ def test_boto_client_rebuilds_after_the_ttl(monkeypatch):
 
 def test_boto_client_passes_a_bounded_timeout(monkeypatch):
     """Los defaults de botocore son 60s: una región muerta retiene el request."""
-    seen = {}
+    _session_recorder(monkeypatch)
 
-    class _S:
-        def client(self, service, **kwargs):
-            seen.update(kwargs)
-            return object()
+    config = aws_clients._botocore_config()
 
-    monkeypatch.setattr(p, "_boto_session", lambda *a, **k: _S())
-    p._boto_client("ssm", _Cfg())
-
-    config = seen["config"]
     assert config.connect_timeout <= 10
     assert config.read_timeout <= 30
+    assert config.retries["mode"] == "standard"
+    assert config.tcp_keepalive is True
 
 
 def test_boto_client_local_env_does_not_fill_the_cache(monkeypatch):
@@ -338,7 +318,9 @@ def test_boto_client_local_env_does_not_fill_the_cache(monkeypatch):
 
 def test_put_parameter_overwrites_with_type(monkeypatch):
     client = _FakeClient("ssm")
-    monkeypatch.setattr(p, "_boto_session", lambda profile, region: _FakeSession(client))
+    monkeypatch.setattr(
+        aws_clients, "_create", lambda *a, **k: client
+    )
 
     cfg = type("Cfg", (), {"profile": "prof-dev", "region": "us-east-1"})()
     result = p.put_parameter(cfg, "/x", "20", "SecureString")
@@ -353,7 +335,9 @@ def test_put_parameter_overwrites_with_type(monkeypatch):
 
 def test_update_secret_updates_and_creates_when_missing(monkeypatch):
     client = _FakeClient("secretsmanager")
-    monkeypatch.setattr(p, "_boto_session", lambda profile, region: _FakeSession(client))
+    monkeypatch.setattr(
+        aws_clients, "_create", lambda *a, **k: client
+    )
 
     def raiser(*a, **k):
         raise _FakeClient.ResourceNotFoundException("a")
@@ -373,7 +357,9 @@ def test_update_secret_updates_and_creates_when_missing(monkeypatch):
 
 def test_delete_parameter_and_secret(monkeypatch):
     client = _FakeClient("ssm")
-    monkeypatch.setattr(p, "_boto_session", lambda profile, region: _FakeSession(client))
+    monkeypatch.setattr(
+        aws_clients, "_create", lambda *a, **k: client
+    )
 
     cfg = type("Cfg", (), {"profile": "prof-dev", "region": "us-east-1"})()
     result = p.delete_parameter(cfg, "/x")
@@ -381,7 +367,9 @@ def test_delete_parameter_and_secret(monkeypatch):
     assert "eliminado" in result["message"]
 
     client2 = _FakeClient("secretsmanager")
-    monkeypatch.setattr(p, "_boto_session", lambda profile, region: _FakeSession(client2))
+    monkeypatch.setattr(
+        aws_clients, "_create", lambda *a, **k: client2
+    )
     result = p.delete_secret(cfg, "/s")
     assert client2.calls[0]["SecretId"] == "/s"
     assert client2.calls[0]["ForceDeleteWithoutRecovery"] is True

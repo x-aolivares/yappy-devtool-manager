@@ -13,6 +13,7 @@ import json
 
 import pytest
 
+from yappy_library.adapters import aws_clients
 from yappy_library.application.deployment import ecs_branch
 from yappy_library.application.deployment.ecs_branch import (
     DeploymentUnresolved,
@@ -118,19 +119,20 @@ def ecs_client(monkeypatch):
     """Engancha el cliente de ECS sin tocar boto3 de verdad."""
 
     def install(fake):
-        class _Session:
-            def client(self, service, **_):
-                assert service == "ecs"
-                return fake
-
-        import boto3
-
-        monkeypatch.setattr(
-            boto3.session, "Session", lambda **_kw: _Session(), raising=False
-        )
+        aws_clients.clear_cache()
+        monkeypatch.setattr(aws_clients, "_create", lambda *a, **k: fake)
         return fake
 
     return install
+
+
+@pytest.fixture(autouse=True)
+def _clean_client_cache():
+    """El cache de clientes es de proceso: sin limpiarlo entre tests, el cliente
+    fake de uno se le sirve al siguiente."""
+    aws_clients.clear_cache()
+    yield
+    aws_clients.clear_cache()
 
 
 def test_reads_the_service_container_and_the_revision(ecs_client):

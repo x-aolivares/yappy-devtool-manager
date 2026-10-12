@@ -10,6 +10,7 @@ parámetros armaba una sesión boto3 contra **AWS real** con esas credenciales.
 import pytest
 
 from yappy_api.routes.envs import api_envs
+from yappy_library.adapters import aws_clients
 from yappy_library.application.database.sync import params as p
 from yappy_library.config import Config
 
@@ -19,12 +20,12 @@ from yappy_library.config import Config
 
 @pytest.fixture(autouse=True)
 def _clear_client_cache():
-    """`_boto_client` caches by (servicio, profile, region, endpoint) for the whole
-    process. Without this, a client cached by one test is served to the next one
-    that stubs `_boto_session`, and the stub silently stops being called."""
-    p._clear_client_cache()
+    """El cache de clientes vive en `aws_clients` y dura todo el proceso. Sin esto,
+    un cliente cacheado por un test se le sirve al siguiente y el stub deja de
+    contar llamadas."""
+    aws_clients.clear_cache()
     yield
-    p._clear_client_cache()
+    aws_clients.clear_cache()
 
 
 def _cfg(tmp_path, monkeypatch, body: str):
@@ -72,7 +73,7 @@ class _Cfg:
 
 def test_params_guard_refuses_a_local_env(monkeypatch):
     called = []
-    monkeypatch.setattr(p, "_boto_session", lambda *a, **k: called.append(a))
+    monkeypatch.setattr(aws_clients, "_create", lambda *a, **k: called.append(a))
 
     with pytest.raises(p.LocalEnvHasNoAws) as exc:
         p._boto_client("ssm", _Cfg(local=True))
@@ -88,7 +89,7 @@ def test_params_guard_never_builds_a_session(monkeypatch):
     de que esta guarda pudiera cortarlo.
     """
     called = []
-    monkeypatch.setattr(p, "_boto_session", lambda *a, **k: called.append(a))
+    monkeypatch.setattr(aws_clients, "_create", lambda *a, **k: called.append(a))
 
     for service in ("ssm", "secretsmanager"):
         with pytest.raises(p.LocalEnvHasNoAws):
@@ -100,16 +101,17 @@ def test_params_guard_never_builds_a_session(monkeypatch):
 def test_params_guard_lets_a_normal_env_through(monkeypatch):
     """Un ambiente que no es local sigue llegando a boto3 como siempre."""
     calls = []
-
-    class _Session:
-        def client(self, service, endpoint_url=None, **kwargs):
-            calls.append((service, endpoint_url))
-            return object()
-
-    monkeypatch.setattr(p, "_boto_session", lambda *a, **k: _Session())
+    monkeypatch.setattr(
+        aws_clients,
+        "_create",
+        lambda service, profile, region, endpoint: calls.append(
+            (service, profile, region, endpoint)
+        )
+        or object(),
+    )
 
     p._boto_client("ssm", _Cfg(local=False))
-    assert calls == [("ssm", None)]
+    assert calls == [("ssm", "base-profile", "us-west-2", None)]
 
 
 # --- /api/envs -------------------------------------------------------------

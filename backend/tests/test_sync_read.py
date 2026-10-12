@@ -1,5 +1,6 @@
 import pytest
 
+from yappy_library.adapters import aws_clients
 from yappy_library.application.database.sync import params as p
 
 
@@ -61,19 +62,13 @@ class _FakeConn:
         return _FakeSecrets(self)
 
 
-class _FakeSession:
-    def __init__(self, conn):
-        self.conn = conn
-
-    # `**kwargs` porque _boto_client pasa `config=` al construir el cliente real.
-    def client(self, name, **kwargs):
-        return self.conn.client(name)
-
-
 def _monkey_session(monkeypatch, conn):
-    p._clear_client_cache()
+    # `_create` es el seam: devuelve el cliente que el código va a usar.
+    # El cache es de proceso, así que sin limpiarlo el fake de un test se le
+    # sirve al siguiente y las llamadas dejan de registrarse.
+    aws_clients.clear_cache()
     monkeypatch.setattr(
-        p, "_boto_session", lambda profile, region: _FakeSession(conn)
+        aws_clients, "_create", lambda service, *a, **k: conn.client(service)
     )
 
 
