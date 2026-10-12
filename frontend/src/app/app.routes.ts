@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 
-import { CompilePage } from './pages/compile';
+import { CompilePage } from './pages/compile/compile';
 import { DeploymentsPage } from './pages/deployments';
 import { HomePage } from './pages/home';
 import { MigrateDataPage } from './pages/migrate-data';

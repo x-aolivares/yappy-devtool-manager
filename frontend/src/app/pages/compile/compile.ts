@@ -1,18 +1,18 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
-import { CompileResponse, EnvironmentInfo, ExecuteSqlResponse } from '../api-gen/models';
-import { EnvironmentService } from '../core/services/environment.service';
-import { DbService } from '../core/services/db.service';
-import { toApiError } from '../core/services/api-error';
-import { CancelSlot, isCancellation } from '../core/cancel';
-import { objectLabel } from '../core/format';
-import { BusyModal } from '../shared/busy-modal';
-import { StatusBadge } from '../shared/status-badge';
-import { CopyButton } from '../shared/copy-button';
-import { EnvControls } from '../shared/env-controls';
-import { RegionControls } from '../shared/region-controls';
-import { SchemaSelect } from '../shared/schema-select';
-import { AutoGrowDirective } from '../shared/auto-grow';
-import { NoticeModal } from '../shared/notice-modal';
+import { CompileResponse, EnvironmentInfo, ExecuteSqlResponse } from '../../api-gen/models';
+import { EnvironmentService } from '../../core/services/environment.service';
+import { DbService } from '../../core/services/db.service';
+import { toApiError } from '../../core/services/api-error';
+import { CancelSlot, isCancellation } from '../../core/cancel';
+import { objectLabel } from '../../core/format';
+import { BusyModal } from '../../shared/busy-modal';
+import { StatusBadge } from '../../shared/status-badge';
+import { CopyButton } from '../../shared/copy-button';
+import { EnvControls } from '../../shared/env-controls';
+import { RegionControls } from '../../shared/region-controls';
+import { SchemaSelect } from '../../shared/schema-select';
+import { AutoGrowDirective } from '../../shared/auto-grow';
+import { NoticeModal } from '../../shared/notice-modal';
 
 /**
  * Compilar: ejecutar SQL contra un ambiente, tomando el SQL de donde sea.

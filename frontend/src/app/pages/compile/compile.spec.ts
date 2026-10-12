@@ -1,9 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { CompilePage } from './compile';
-import { DbService } from '../core/services/db.service';
-import { EnvironmentService } from '../core/services/environment.service';
-import { ExecuteRequest } from '../api-gen/models';
+import { DbService } from '../../core/services/db.service';
+import { EnvironmentService } from '../../core/services/environment.service';
+import { ExecuteRequest } from '../../api-gen/models';
 
 /**
  * Click en el botón de confirmar del `NoticeModal`.
