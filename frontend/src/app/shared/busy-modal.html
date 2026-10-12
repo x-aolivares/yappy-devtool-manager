@@ -1,0 +1,19 @@
+@if (open()) {
+  <div class="busy-modal__backdrop"></div>
+  <div class="busy-modal" role="status" aria-live="polite">
+    <div class="busy-modal__main">
+      <span class="spinner" aria-hidden="true"></span>
+      <span class="busy-modal__text">{{ message() }}</span>
+    </div>
+    <!-- aria-hidden a propósito: el contenedor es una región aria-live, y anunciar
+         un número que cambia cada segundo es ruido para quien lee con lector
+         de pantalla. El reloj es para el que está mirando. -->
+    <p class="busy-modal__elapsed" aria-hidden="true">{{ elapsed() }}</p>
+    @if (writes()) {
+      <p class="busy-modal__hint">{{ writeHint }}</p>
+    }
+    <button type="button" class="secondary busy-modal__cancel" (click)="cancelled.emit()">
+      {{ writes() ? writeLabel : readLabel }}
+    </button>
+  </div>
+}
