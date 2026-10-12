@@ -15,35 +15,7 @@ import { EnvControls, PARAM_SERVICES } from './env-controls';
 @Component({
   selector: 'app-region-controls',
   imports: [EnvControls],
-  template: `
-    <app-env-controls
-      [environments]="environments()"
-      [services]="withService() ? services() : []"
-      [roleLabels]="roles"
-      [envLabel]="envLabel()"
-      [hint]="hint()"
-      [max]="2"
-      [envs]="pair()"
-      (envsChange)="onPair($event)"
-      [(service)]="service"
-    />
-
-    @if (withName()) {
-      <div class="form-grid">
-        <div>
-          <label for="name">Nombre del parámetro / secreto</label>
-          <input
-            id="name"
-            type="text"
-            [value]="nameValue()"
-            (input)="nameValue.set($any($event.target).value)"
-            placeholder="p. ej. /yappy/dev/rate"
-            spellcheck="false"
-          />
-        </div>
-      </div>
-    }
-  `,
+  templateUrl: './region-controls.html',
 })
 export class RegionControls {
   environments = input<EnvironmentInfo[] | null>(null);
