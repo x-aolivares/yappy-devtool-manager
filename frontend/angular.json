@@ -13,7 +13,7 @@
         "@schematics/angular:component": {
           "style": "scss",
           "flat": false,
-          "path": "src/app/shared"
+          "path": "src/app/components"
         },
         "@schematics/angular:service": {
           "path": "src/app/core/services"

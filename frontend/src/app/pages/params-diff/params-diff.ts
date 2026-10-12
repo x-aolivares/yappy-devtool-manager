@@ -10,12 +10,12 @@ import { awsEnvironments, formatValue } from '../../core/format';
 import { serializeMerged } from '../../core/params-merge';
 import type { ChangeRow } from '../../core/params-merge';
 import { ParamsDiffResponse, UpdateSessionItemRequest } from '../../api-gen/models';
-import { BusyModal } from '../../shared/busy-modal';
-import { RegionControls } from '../../shared/region-controls';
-import { StatusBadge } from '../../shared/status-badge';
-import { CopyButton } from '../../shared/copy-button';
-import { PaginationBar } from '../../shared/pagination-bar';
-import { paginate } from '../../shared/paginate';
+import { BusyModal } from '../../components/busy-modal';
+import { RegionControls } from '../../components/region-controls';
+import { StatusBadge } from '../../components/status-badge';
+import { CopyButton } from '../../components/copy-button';
+import { PaginationBar } from '../../components/pagination-bar';
+import { paginate } from '../../core/paginate';
 
 interface DiffChange {
   path?: string;

@@ -21,7 +21,7 @@
  * de adentro no trae etiqueta propia.
  */
 import { Component, computed, inject, input } from '@angular/core';
-import { PAGE_SIZES, Pagination } from './paginate';
+import { PAGE_SIZES, Pagination } from '../core/paginate';
 
 @Component({
   selector: 'app-pagination-bar',

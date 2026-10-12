@@ -4,12 +4,12 @@ import { SessionSummaryInfo } from '../../api-gen/models';
 import { SessionService } from '../../core/services/session.service';
 import { toApiError } from '../../core/services/api-error';
 import { fmtDate } from '../../core/format';
-import { EmptyStateCard } from '../../shared/empty-state-card';
-import { NoticeModal } from '../../shared/notice-modal';
-import { PageHeader } from '../../shared/page-header';
-import { PaginationBar } from '../../shared/pagination-bar';
-import { paginate } from '../../shared/paginate';
-import { StatusBadge } from '../../shared/status-badge';
+import { EmptyStateCard } from '../../components/empty-state-card';
+import { NoticeModal } from '../../components/notice-modal';
+import { PageHeader } from '../../components/page-header';
+import { PaginationBar } from '../../components/pagination-bar';
+import { paginate } from '../../core/paginate';
+import { StatusBadge } from '../../components/status-badge';
 
 @Component({
   selector: 'app-sessions-page',

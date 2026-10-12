@@ -5,12 +5,12 @@ import { ParamsService } from '../../core/services/params.service';
 import { toApiError } from '../../core/services/api-error';
 import { CancelSlot, isCancellation } from '../../core/cancel';
 import { awsEnvironments } from '../../core/format';
-import { BusyModal } from '../../shared/busy-modal';
-import { StatusBadge } from '../../shared/status-badge';
-import { CopyButton } from '../../shared/copy-button';
-import { EnvControls, ServiceOption } from '../../shared/env-controls';
-import { PaginationBar } from '../../shared/pagination-bar';
-import { paginate } from '../../shared/paginate';
+import { BusyModal } from '../../components/busy-modal';
+import { StatusBadge } from '../../components/status-badge';
+import { CopyButton } from '../../components/copy-button';
+import { EnvControls, ServiceOption } from '../../components/env-controls';
+import { PaginationBar } from '../../components/pagination-bar';
+import { paginate } from '../../core/paginate';
 
 @Component({
   selector: 'app-params-create-page',

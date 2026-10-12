@@ -5,10 +5,10 @@ import { DbService } from '../../core/services/db.service';
 import { toApiError } from '../../core/services/api-error';
 import { CancelSlot, isCancellation } from '../../core/cancel';
 import { objectLabel } from '../../core/format';
-import { BusyModal } from '../../shared/busy-modal';
-import { StatusBadge } from '../../shared/status-badge';
-import { CopyButton } from '../../shared/copy-button';
-import { RegionControls } from '../../shared/region-controls';
+import { BusyModal } from '../../components/busy-modal';
+import { StatusBadge } from '../../components/status-badge';
+import { CopyButton } from '../../components/copy-button';
+import { RegionControls } from '../../components/region-controls';
 
 @Component({
   selector: 'app-db-diff-page',

@@ -5,14 +5,14 @@ import { DbService } from '../../core/services/db.service';
 import { toApiError } from '../../core/services/api-error';
 import { CancelSlot, isCancellation } from '../../core/cancel';
 import { objectLabel } from '../../core/format';
-import { BusyModal } from '../../shared/busy-modal';
-import { StatusBadge } from '../../shared/status-badge';
-import { CopyButton } from '../../shared/copy-button';
-import { EnvControls } from '../../shared/env-controls';
-import { RegionControls } from '../../shared/region-controls';
-import { SchemaSelect } from '../../shared/schema-select';
-import { AutoGrowDirective } from '../../shared/auto-grow';
-import { NoticeModal } from '../../shared/notice-modal';
+import { BusyModal } from '../../components/busy-modal';
+import { StatusBadge } from '../../components/status-badge';
+import { CopyButton } from '../../components/copy-button';
+import { EnvControls } from '../../components/env-controls';
+import { RegionControls } from '../../components/region-controls';
+import { SchemaSelect } from '../../components/schema-select';
+import { AutoGrowDirective } from '../../components/auto-grow';
+import { NoticeModal } from '../../components/notice-modal';
 
 /**
  * Compilar: ejecutar SQL contra un ambiente, tomando el SQL de donde sea.

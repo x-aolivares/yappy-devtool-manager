@@ -9,14 +9,14 @@ import { EnvironmentService } from '../../core/services/environment.service';
 import { DbService } from '../../core/services/db.service';
 import { toApiError } from '../../core/services/api-error';
 import { CancelSlot, isCancellation } from '../../core/cancel';
-import { StatusBadge } from '../../shared/status-badge';
-import { RegionControls } from '../../shared/region-controls';
-import { SchemaSelect } from '../../shared/schema-select';
-import { BusyModal } from '../../shared/busy-modal';
-import { NoticeModal } from '../../shared/notice-modal';
-import { PaginationBar } from '../../shared/pagination-bar';
-import { TableSearch, searchable } from '../../shared/table-search';
-import { paginate } from '../../shared/paginate';
+import { StatusBadge } from '../../components/status-badge';
+import { RegionControls } from '../../components/region-controls';
+import { SchemaSelect } from '../../components/schema-select';
+import { BusyModal } from '../../components/busy-modal';
+import { NoticeModal } from '../../components/notice-modal';
+import { PaginationBar } from '../../components/pagination-bar';
+import { TableSearch, searchable } from '../../components/table-search';
+import { paginate } from '../../core/paginate';
 
 /**
  * El estado de una tabla marcada para migrar.
