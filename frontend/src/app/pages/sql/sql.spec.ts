@@ -16,9 +16,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { SqlPage } from './sql';
-import { DbService } from '../core/services/db.service';
-import { EnvironmentService } from '../core/services/environment.service';
-import { MigrationRequest, QueryRequest } from '../api-gen/models';
+import { DbService } from '../../core/services/db.service';
+import { EnvironmentService } from '../../core/services/environment.service';
+import { MigrationRequest, QueryRequest } from '../../api-gen/models';
 
 const QUERY_OK: Record<string, any> = {
   env: 'dev',

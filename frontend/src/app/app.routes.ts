@@ -8,7 +8,7 @@ import { ParamsReadPage } from './pages/params-read/params-read';
 import { SchemaSyncPage } from './pages/schema-sync/schema-sync';
 import { SessionDetailPage } from './pages/session-detail/session-detail';
 import { SessionsPage } from './pages/sessions/sessions';
-import { SqlPage } from './pages/sql';
+import { SqlPage } from './pages/sql/sql';
 
 // `/params-diff`, `/params-create`, `/params-edit` y `/db-diff` dejaron de estar
 // enrutadas: sus páginas siguen en el repo, pero ya no se llega a ellas por URL.
