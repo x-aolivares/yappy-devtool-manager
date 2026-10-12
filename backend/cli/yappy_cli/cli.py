@@ -202,6 +202,12 @@ def _serve_web_with_watch(port: int, open_browser: bool) -> None:
 
     info(f"Backend en http://127.0.0.1:{port} y frontend en http://localhost:{DEV_PORT}")
 
+    # Mismo calentamiento que el modo normal: son el mismo backend y los mismos
+    # clientes, así que el costo no se paga dos veces por andar en watch.
+    from yappy_api.warmup import warm
+
+    warm()
+
     config = uvicorn.Config(
         api_app, host="127.0.0.1", port=port, log_level="warning"
     )

@@ -67,6 +67,14 @@ def run(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) ->
 
     url = f"http://{host}:{port}"
     info(f"Region Sync web -> {url}")
+
+    # Los clientes de AWS se calientan en un hilo aparte para que el server
+    # levante ya: el trabajo es el mismo en los dos caminos, pero bloquear el
+    # arranque agregaría su duración a cada `yappy web`.
+    from .warmup import warm
+
+    warm()
+
     if open_browser:
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
     uvicorn.run(app, host=host, port=port, log_config=log_config())
