@@ -30,64 +30,7 @@ let seq = 0;
 
 @Component({
   selector: 'app-notice-modal',
-  template: `
-    @if (open()) {
-      <div class="notice-modal__backdrop" (click)="closed.emit()"></div>
-      <div
-        class="notice-modal"
-        [class.notice-modal--danger]="tone() === 'danger'"
-        role="dialog"
-        aria-modal="true"
-        [attr.aria-labelledby]="titleId"
-        tabindex="-1"
-        #dialog
-      >
-        <div class="notice-modal__head">
-          <h2 [id]="titleId">{{ title() }}</h2>
-          <button
-            type="button"
-            class="notice-modal__x"
-            aria-label="Cerrar"
-            (click)="closed.emit()"
-          >
-            ✕
-          </button>
-        </div>
-        <div class="notice-modal__body">
-          <ng-content />
-        </div>
-        <div class="notice-modal__actions">
-          <!-- Las clases notice-modal__confirm y notice-modal__cancel no llevan
-               estilo: son el gancho para que los tests lleguen al botón correcto
-               sin depender del rótulo, que puede cambiar con el copy. En modo
-               aviso sólo hay un botón, como antes. -->
-          @if (tone() === 'aviso') {
-            <button type="button" class="notice-modal__confirm" (click)="closed.emit()">
-              {{ confirmLabel() }}
-            </button>
-          } @else {
-            <!-- Cancelar va a la izquierda y el de confirmar a la derecha: en un
-                 diálogo, la acción por defecto de la interfaz es la segura. -->
-            <button
-              type="button"
-              class="secondary notice-modal__cancel"
-              (click)="closed.emit()"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              class="notice-modal__confirm"
-              [class.notice-modal__confirm--danger]="tone() === 'danger'"
-              (click)="confirmed.emit()"
-            >
-              {{ confirmLabel() }}
-            </button>
-          }
-        </div>
-      </div>
-    }
-  `,
+  templateUrl: './notice-modal.html',
 })
 export class NoticeModal {
   readonly open = input(false);
