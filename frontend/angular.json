@@ -11,7 +11,12 @@
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
-          "style": "scss"
+          "style": "scss",
+          "flat": false,
+          "path": "src/app/shared"
+        },
+        "@schematics/angular:service": {
+          "path": "src/app/core/services"
         }
       },
       "root": "",
