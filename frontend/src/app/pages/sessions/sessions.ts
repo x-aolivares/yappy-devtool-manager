@@ -5,7 +5,7 @@ import { SessionService } from '../../core/services/session.service';
 import { toApiError } from '../../core/services/api-error';
 import { fmtDate } from '../../core/format';
 import { EmptyStateCard } from '../../components/empty-state-card/empty-state-card';
-import { NoticeModal } from '../../components/notice-modal';
+import { NoticeModal } from '../../components/notice-modal/notice-modal';
 import { PageHeader } from '../../components/page-header';
 import { PaginationBar } from '../../components/pagination-bar';
 import { paginate } from '../../core/paginate';

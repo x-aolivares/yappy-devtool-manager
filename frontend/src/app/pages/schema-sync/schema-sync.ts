@@ -10,7 +10,7 @@ import { CopyButton } from '../../components/copy-button/copy-button';
 import { RegionControls } from '../../components/region-controls';
 import { SchemaSelect } from '../../components/schema-select';
 import { AutoGrowDirective } from '../../components/auto-grow/auto-grow';
-import { NoticeModal } from '../../components/notice-modal';
+import { NoticeModal } from '../../components/notice-modal/notice-modal';
 import { PaginationBar } from '../../components/pagination-bar';
 import { TableSearch, searchable } from '../../components/table-search';
 import { paginate } from '../../core/paginate';

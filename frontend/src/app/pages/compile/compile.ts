@@ -12,7 +12,7 @@ import { EnvControls } from '../../components/env-controls/env-controls';
 import { RegionControls } from '../../components/region-controls';
 import { SchemaSelect } from '../../components/schema-select';
 import { AutoGrowDirective } from '../../components/auto-grow/auto-grow';
-import { NoticeModal } from '../../components/notice-modal';
+import { NoticeModal } from '../../components/notice-modal/notice-modal';
 
 /**
  * Compilar: ejecutar SQL contra un ambiente, tomando el SQL de donde sea.

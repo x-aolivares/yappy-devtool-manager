@@ -9,7 +9,7 @@ import { CancelSlot, isCancellation } from '../../core/cancel';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { CopyButton } from '../../components/copy-button/copy-button';
 import { EnvPicker } from '../../components/env-picker/env-picker';
-import { NoticeModal } from '../../components/notice-modal';
+import { NoticeModal } from '../../components/notice-modal/notice-modal';
 import { copyText } from '../../core/copy';
 
 /**

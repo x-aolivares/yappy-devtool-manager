@@ -13,7 +13,7 @@ import { StatusBadge } from '../../components/status-badge';
 import { RegionControls } from '../../components/region-controls';
 import { SchemaSelect } from '../../components/schema-select';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
-import { NoticeModal } from '../../components/notice-modal';
+import { NoticeModal } from '../../components/notice-modal/notice-modal';
 import { PaginationBar } from '../../components/pagination-bar';
 import { TableSearch, searchable } from '../../components/table-search';
 import { paginate } from '../../core/paginate';
