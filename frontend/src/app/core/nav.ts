@@ -34,7 +34,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     // sacar el `SessionService` en el mismo cambio.
     items: [
       {
-        link: '/params-read',
+        link: '/aws/params-read',
         label: 'Leer parámetros',
         hint: 'Lee parámetros de SSM y secretos de Secrets Manager',
       },
@@ -45,22 +45,22 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     label: 'Database',
     items: [
       {
-        link: '/sql',
+        link: '/db/sql',
         label: 'Ejecutar SQL',
         hint: 'Consulta información y migra los datos de lo consultado',
       },
       {
-        link: '/migrate-data',
+        link: '/db/migrate-data',
         label: 'Migrar datos',
         hint: 'Copia un conjunto de tablas de un ambiente a otro, con filtro por fecha por tabla',
       },
       {
-        link: '/compile',
+        link: '/db/compile',
         label: 'Compilar',
         hint: 'Compila una tabla o stored procedure de un ambiente a otro',
       },
       {
-        link: '/schema-sync',
+        link: '/db/schema-sync',
         label: 'Sincronizar schema',
         hint: 'Lleva todas las tablas y stored procedures de un esquema a otro ambiente',
       },

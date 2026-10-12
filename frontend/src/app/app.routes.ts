@@ -20,14 +20,24 @@ import { SqlPage } from './pages/sql/sql';
 // conserva.
 export const routes: Routes = [
   { path: '', pathMatch: 'full', component: HomePage },
-  { path: 'params-read', component: ParamsReadPage },
-  { path: 'params-diff', component: ParamsDiffPage },
+  {
+    path: 'aws',
+    children: [
+      { path: 'params-read', component: ParamsReadPage },
+      { path: 'params-diff', component: ParamsDiffPage },
+    ],
+  },
+  {
+    path: 'db',
+    children: [
+      { path: 'compile', component: CompilePage },
+      { path: 'schema-sync', component: SchemaSyncPage },
+      { path: 'migrate-data', component: MigrateDataPage },
+      { path: 'sql', component: SqlPage },
+    ],
+  },
   { path: 'sessions', component: SessionsPage },
   { path: 'sessions/:sessionId', component: SessionDetailPage },
-  { path: 'compile', component: CompilePage },
-  { path: 'schema-sync', component: SchemaSyncPage },
-  { path: 'migrate-data', component: MigrateDataPage },
-  { path: 'sql', component: SqlPage },
   { path: 'deployments', component: DeploymentsPage },
   { path: '**', redirectTo: '' },
 ];
