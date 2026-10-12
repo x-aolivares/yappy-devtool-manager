@@ -162,9 +162,20 @@
 
 /* ------------------------------------------------------------------ main */
 
+/* El ancho vive acá y no en `.panel`. El panel es una superficie dentro del
+   contenido, no el contenido: angostarlo ahí lo angosta dos veces —una por su
+   celda y otra por el contenedor— y parte las columnas de `.columns`, que son
+   celdas de un grid.
+
+   `main` va al 80% sin tope fijo. Antes tenía `max-width: 1120px`, que en una
+   pantalla de 2560 dejaba más de mil píxeles de aire sin usar; con un tope fijo
+   el contenido deja de crecer con la pantalla. El 80% es proporción y no ancho,
+   así que el mismo número sirve para una laptop y para un monitor.
+
+   Abajo de 48rem el 80% se come aire que hace falta y el contenido vuelve a
+   llenar: ahí no hay ancho que repartir. */
 main {
-  max-width: 1120px;
-  width: 100%;
+  width: 80%;
   margin: 0 auto;
   padding: 2rem 1.25rem;
 }
@@ -182,6 +193,7 @@ main {
   }
 
   main {
+    width: 100%;
     padding: 1.25rem 0.75rem;
   }
 }
