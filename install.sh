@@ -71,6 +71,7 @@ if command -v yappy &>/dev/null; then
     echo "Next steps (all dependency setup happens in 'yappy setup'):"
     echo "  source ~/.bashrc   # or open a new terminal"
     echo "  yappy setup        # backend + frontend deps, config, kafka"
+    echo "  yappy setup --front   # solo las deps de la web, si no tocas el backend"
 else
     echo ""
     echo "WARNING yappy.exe not found after install."

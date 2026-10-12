@@ -6,6 +6,7 @@ import subprocess
 import sys
 import webbrowser
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -186,7 +187,7 @@ def _serve_web_with_watch(port: int, open_browser: bool) -> None:
     if not (frontend / "node_modules").exists():
         die(
             "Faltan las dependencias del frontend (frontend/node_modules no existe).\n"
-            "  Ejecuta 'yappy setup' (o 'cd frontend && npm ci') y volve a intentar."
+            "  Ejecuta 'yappy setup --front' (o 'cd frontend && npm ci') y volve a intentar."
         )
 
     proxy = frontend / "proxy.conf.json"
@@ -311,7 +312,7 @@ def _build_web_frontend() -> None:
     if not (frontend / "node_modules").exists():
         die(
             "Faltan las dependencias del frontend (frontend/node_modules no existe).\n"
-            "  Ejecuta 'yappy setup' (o 'cd frontend && npm ci') y volve a intentar."
+            "  Ejecuta 'yappy setup --front' (o 'cd frontend && npm ci') y volve a intentar."
         )
     info("Compilando frontend Angular (frontend/ -> dist/browser)...")
     result = subprocess.run(
@@ -638,19 +639,8 @@ def _setup_config(config_dir: Path):
                 info(f"    -> yappy edit")
 
 
-@app.command()
-def setup():
-    """One-time project setup: shell integration, config, dependencies."""
-    project_root = get_project_root()
-    migrated_resources = migrate_backend_resources(project_root)
-    config_dir = project_config_dir(project_root)
-
-    info("=== Yappy Setup ===")
-    print()
-    if migrated_resources:
-        success(f"Backend resources moved: {', '.join(migrated_resources)}")
-        print()
-
+def _setup_shell_and_config(config_dir: Path):
+    """Shell integration + config files. Solo aplica al lado backend."""
     # 1. Ensure Python Scripts directory is on PATH
     bashrc = Path.home() / ".bashrc"
     scripts_dir = venv_scripts_dir()
@@ -696,11 +686,10 @@ def setup():
     info("Config files:")
     _setup_config(config_dir)
 
-    # 4. Dependencies
-    print()
-    info("Dependencies:")
 
-    # 4.1 pip upgrade
+def _setup_backend_dependencies(project_root: Path):
+    """pip upgrade + editable install + chequeo de herramientas externas."""
+    # pip upgrade
     pip_upgrade = subprocess.run(
         [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
         capture_output=True,
@@ -710,13 +699,10 @@ def setup():
     else:
         warn("  pip upgrade failed — continuing with the current pip")
 
-    # 4.2 Backend: editable install resolves deps from docs/requirements.txt
+    # Backend: editable install resolves deps from docs/requirements.txt
     _install_backend_deps(project_root)
 
-    # 4.3 Frontend: node_modules for the Angular app
-    _install_frontend_deps(project_root / "frontend")
-
-    # 4.4 External tools (not installed by pip)
+    # Herramientas externas (not installed by pip)
     for cmd_name in ("aws", "session-manager-plugin"):
         result = subprocess.run(
             ["where", cmd_name] if sys.platform == "win32" else ["which", cmd_name],
@@ -727,7 +713,9 @@ def setup():
         else:
             warn(f"  {cmd_name} not found — install it first")
 
-    # 5. Kafka (auto-download if missing)
+
+def _setup_external_services():
+    """Kafka (auto-download) + perfil AWS."""
     print()
     info("Kafka:")
     from yappy_library.adapters.kafka.setup import setup_kafka, setup_kafka_configs
@@ -739,7 +727,6 @@ def setup():
     else:
         warn("  Kafka needs manual download — see messages above")
 
-    # 6. AWS profile
     print()
     info("AWS profile:")
     result = subprocess.run(
@@ -751,8 +738,75 @@ def setup():
     else:
         warn(f"  Profile '{cfg.profile}' not found — configure it with 'aws configure'")
 
+
+@app.command()
+def setup(
+    # Annotated y no `x: bool = typer.Option(False, ...)`: con el default explícito
+    # el default real queda en la firma, así que `cli.setup()` llamado desde Python
+    # sigue viendo False en vez de un OptionInfo (que es truthy y rompería todo).
+    front: Annotated[
+        bool,
+        typer.Option(
+            "--front",
+            help="Solo las dependencias de la web (npm install en frontend/). "
+            "No toca shell, config, backend, Kafka ni perfil AWS.",
+        ),
+    ] = False,
+    back: Annotated[
+        bool,
+        typer.Option(
+            "--back",
+            help="Solo el backend: shell, config, deps de Python, Kafka y perfil AWS. "
+            "No toca frontend/.",
+        ),
+    ] = False,
+):
+    """One-time project setup: shell integration, config, dependencies.
+
+    Sin flags hace todo. `--front` instala solo las dependencias de la web y
+    `--back` solo las del backend; los dos son excluyentes.
+    """
+    if front and back:
+        die(
+            "--front y --back no se pueden combinar: "
+            "elegí uno, o ninguno para hacer el setup completo"
+        )
+
+    # Sin flags hace todo; con un flag, solo esa mitad. Cada flag apagado es el
+    # que decide: `--front` -> back=False -> do_back=False.
+    do_front = not back
+    do_back = not front
+    scope = "frontend" if front else ("backend" if back else "completo")
+
+    project_root = get_project_root()
+
+    info(f"=== Yappy Setup ({scope}) ===")
     print()
-    success("Setup complete. Run 'source ~/.bashrc' to load changes.")
+
+    if do_back:
+        migrated_resources = migrate_backend_resources(project_root)
+        if migrated_resources:
+            success(f"Backend resources moved: {', '.join(migrated_resources)}")
+            print()
+        _setup_shell_and_config(project_config_dir(project_root))
+
+    print()
+    info("Dependencies:")
+
+    if do_back:
+        _setup_backend_dependencies(project_root)
+
+    if do_front:
+        _install_frontend_deps(project_root / "frontend")
+
+    if do_back:
+        _setup_external_services()
+
+    print()
+    if do_back:
+        success("Setup complete. Run 'source ~/.bashrc' to load changes.")
+    else:
+        success("Frontend setup complete. Run 'yappy web' to open it.")
 
 
 @app.command()

@@ -72,6 +72,13 @@ source ~/.bashrc
 yappy setup               # Instala deps (backend + frontend), config, kafka
 ```
 
+Si solo tocás una mitad del proyecto, no hace falta el setup entero:
+
+```bash
+yappy setup --front       # Solo npm install en frontend/
+yappy setup --back        # Solo el backend (sin tocar frontend/)
+```
+
 `install.sh` es **solo bootstrap**: su único trabajo es hacer que el comando `yappy`
 exista. No instala dependencias, porque eso vive en `yappy setup`
 (`backend/cli/yappy_cli/cli.py`) y duplicar esa lógica en un script la haría divergir del
@@ -95,6 +102,10 @@ yappy update              # git pull + pip install -e .
 6. **Herramientas externas** — verifica que `aws` y `session-manager-plugin` estén instalados
 7. **Kafka** — descarga server + UI si no están
 8. **Perfil AWS** — verifica que el perfil configurado exista
+
+Los pasos 1 a 4 y 6 a 8 son del backend y el 5 es el único de la web, así que
+`--front` corre solo el 5 y `--back` corre todo menos el 5. Los dos flags a la vez
+son un error. Sin flags se hace todo, como siempre.
 
 Después del setup, editá los archivos de config con tus valores:
 
@@ -162,7 +173,9 @@ yappy version                        # Version instalada
 yappy config                         # Mostrar config actual
 yappy config dev                     # Mostrar config de un ambiente
 yappy home                           # Ir al directorio del proyecto
-yappy setup                          # Onboarding inicial
+yappy setup                          # Onboarding inicial (backend + web)
+yappy setup --front                  # Solo dependencias de la web (npm install)
+yappy setup --back                   # Solo el backend (sin tocar frontend/)
 yappy reload                         # Reinstalar paquete + recargar .bashrc
 yappy edit                           # Abrir proyecto en VS Code
 yappy py-purge                       # Limpiar cache pip

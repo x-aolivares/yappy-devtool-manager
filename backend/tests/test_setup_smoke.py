@@ -13,6 +13,8 @@ import builtins
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 import yappy_cli.cli as cli
 
 
@@ -116,3 +118,88 @@ def test_setup_is_idempotent(monkeypatch, tmp_path, capsys):
         'eval "$(yappy init bash)"'
     ), "second run duplicated the shell integration line"
     assert first.count("Python Scripts on PATH") == second.count("Python Scripts on PATH")
+
+
+# --- --front / --back ------------------------------------------------------
+#
+# Los flags parten el comando en dos mitades. El riesgo no es que una mitad
+# falle, es que la otra se cuele: un `--front` que toca el .bashrc del
+# desarrollador, o un `--back` que dispara un npm install de tres minutos, son
+# los dos bugs que hay que cazar.
+
+
+def test_setup_without_flags_does_both_halves(monkeypatch, tmp_path, capsys):
+    calls = _stub_everything(monkeypatch, tmp_path)
+
+    cli.setup(front=False, back=False)
+
+    joined = [" ".join(c) for c in calls]
+    assert any("pip install -e" in c for c in joined)
+    assert any("npm install" in c for c in joined)
+
+
+def test_setup_front_only_installs_frontend_deps(monkeypatch, tmp_path, capsys):
+    calls = _stub_everything(monkeypatch, tmp_path)
+    (tmp_path / ".bashrc").write_text("")
+
+    cli.setup(front=True, back=False)
+
+    joined = [" ".join(c) for c in calls]
+    assert any("npm install" in c for c in joined), "frontend deps missing"
+    assert not any("pip install -e" in c for c in joined), "--front touched the backend"
+
+    # Nada de shell, config, Kafka ni perfil AWS.
+    assert (tmp_path / ".bashrc").read_text() == "", "--front wrote to .bashrc"
+    out = capsys.readouterr().out
+    assert "Kafka:" not in out
+    assert "AWS profile:" not in out
+    assert "Config files:" not in out
+
+
+def test_setup_back_only_installs_backend_deps(monkeypatch, tmp_path, capsys):
+    calls = _stub_everything(monkeypatch, tmp_path)
+    (tmp_path / ".bashrc").write_text("")
+
+    cli.setup(front=False, back=True)
+
+    joined = [" ".join(c) for c in calls]
+    assert any("pip install -e" in c for c in joined), "backend deps missing"
+    assert not any("npm install" in c for c in joined), "--back ran npm install"
+
+    out = capsys.readouterr().out
+    assert "Kafka:" in out
+    assert "AWS profile:" in out
+    assert "Python Scripts on PATH" in (tmp_path / ".bashrc").read_text()
+
+
+def test_setup_front_does_not_migrate_backend_resources(monkeypatch, tmp_path):
+    """La migración de build/, config/ y data/ es del backend, no de la web."""
+    _stub_everything(monkeypatch, tmp_path)
+    migrated = []
+    monkeypatch.setattr(cli, "migrate_backend_resources", lambda root: migrated.append(root))
+
+    cli.setup(front=True, back=False)
+
+    assert migrated == []
+
+
+def test_setup_rejects_both_flags(monkeypatch, tmp_path):
+    calls = _stub_everything(monkeypatch, tmp_path)
+
+    with pytest.raises(SystemExit):
+        cli.setup(front=True, back=True)
+
+    assert calls == [], "no debe instalar nada cuando los flags se contradicen"
+
+
+def test_setup_final_message_matches_scope(monkeypatch, tmp_path, capsys):
+    """`--front` no debe prometer 'source ~/.bashrc': no toco el .bashrc."""
+    _stub_everything(monkeypatch, tmp_path)
+
+    cli.setup(front=True, back=False)
+    front_out = capsys.readouterr().out
+    assert "Frontend setup complete" in front_out
+    assert "source ~/.bashrc" not in front_out
+
+    cli.setup(front=False, back=True)
+    assert "Setup complete" in capsys.readouterr().out
