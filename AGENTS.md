@@ -77,15 +77,17 @@ no consulta el tema: consume la misma variable y hereda el valor del tema activo
 
 ### Lo que este estándar todavía no cubre
 
-El frontend tiene **11 llamadas a `confirm()` nativo en 8 archivos** (`compile.ts`,
-`migrate-data.ts`, `params-create.ts`, `params-diff.ts` ×4, `params-edit.ts`,
-`params-read.ts`, `schema-sync.ts`, `sessions.ts`). El navegador muestra un alert
-que no dice qué va a pasar ni deja recuperar nada, y dos de ellos llegan a decir
-*"No se puede deshacer"* (`params-diff.ts:862`, `sessions.ts:81`). Es el principio
-de Agency del HIG —*ofrecer perdón, que sea fácil deshacer*— y es donde la app
-más se aparta del estándar. Existe ya `shared/notice-modal.ts` con
-`role="dialog"` y foco preso, que es la pieza correcta y está sin usar para estas
-acciones. Tratarlo aparte.
+El frontend tiene **6 llamadas a `confirm()` nativo en 3 archivos**
+(`pages/params-create/params-create.ts:145`, `pages/params-diff/params-diff.ts` ×4
+—líneas 518, 549, 586 y 637—, `pages/params-edit/params-edit.ts:114`). El navegador
+muestra un alert que no dice qué va a pasar ni deja recuperar nada, y una de ellas
+llega a decir *"No se puede deshacer"*
+(`pages/params-diff/params-diff.ts:549`). Es el principio de Agency del HIG
+—*ofrecer perdón, que sea fácil deshacer*— y es donde la app más se aparta del
+estándar. Existe ya `components/notice-modal/notice-modal.ts` con `role="dialog"` y
+foco preso, que es la pieza correcta y está sin usar para estas acciones.
+`params-diff.ts:586` además confirma varias filas a la vez, algo que `confirm()` no
+puede expresar. Tratarlo aparte. Rastreado en el issue #6.
 
 ## Workflow
 
