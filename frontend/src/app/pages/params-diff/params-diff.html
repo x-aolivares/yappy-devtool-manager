@@ -60,6 +60,14 @@
     }
   </div>
 
+  <div class="panel script-block" style="margin-top:0.875rem;">
+    <div class="section-title"><strong>Vista de solo lectura</strong></div>
+    <div class="note">
+      Esta pantalla no escribe nada en AWS. Para llevar el cambio a la región destino copiá el comando
+      de abajo y ejecutalo vos, que la app hoy no tiene permiso de escritura sobre los parámetros.
+    </div>
+  </div>
+
   @switch (mode()) {
     @case ('pair') {
       @if (data()!.param_needs_write || data()!.secret_needs_write || withSecret()) {
@@ -144,15 +152,7 @@
             <pre class="script-block">{{ scriptText() }}</pre>
             <div class="actions" style="margin-top:0.625rem;">
               <app-copy-button [text]="scriptText()" label="Copiar comando" />
-              <button type="button" (click)="execPair()" [disabled]="busy()">
-                Ejecutar en {{ data()!.env_a }}
-              </button>
             </div>
-            @if (execResult()) {
-              <div class="note {{ execResult()!.isError ? 'err' : 'ok' }}">
-                {{ execResult()!.text }}
-              </div>
-            }
           </div>
         </div>
       }
@@ -230,15 +230,7 @@
           <pre class="script-block">{{ scriptText() }}</pre>
           <div class="actions" style="margin-top:0.625rem;">
             <app-copy-button [text]="scriptText()" label="Copiar comando" />
-            <button type="button" (click)="execUpdate(serialized())" [disabled]="busy()">
-              Ejecutar en {{ data()!.env_a }}
-            </button>
           </div>
-          @if (execResult()) {
-            <div class="note {{ execResult()!.isError ? 'err' : 'ok' }}">
-              {{ execResult()!.text }}
-            </div>
-          }
         </div>
       </div>
     }
@@ -271,15 +263,7 @@
           <pre class="script-block">{{ scriptText() }}</pre>
           <div class="actions" style="margin-top:0.625rem;">
             <app-copy-button [text]="scriptText()" label="Copiar comando" />
-            <button type="button" (click)="execUpdate(serialized())" [disabled]="busy()">
-              Ejecutar en {{ data()!.env_a }}
-            </button>
           </div>
-          @if (execResult()) {
-            <div class="note {{ execResult()!.isError ? 'err' : 'ok' }}">
-              {{ execResult()!.text }}
-            </div>
-          }
         </div>
       </div>
     }
@@ -292,9 +276,6 @@
           <pre>{{ preScript() }}</pre>
           <div class="actions" style="margin-top:0.625rem;">
             <app-copy-button [text]="preScript()" label="Copiar script" />
-            <button type="button" (click)="execUpdate(data()!.value_b ?? '')" [disabled]="busy()">
-              Ejecutar en {{ data()!.env_a }}
-            </button>
           </div>
         </div>
         @if (data()!.is_json) {
@@ -322,27 +303,13 @@
           <pre class="script-block">{{ scriptText() }}</pre>
           <div class="actions" style="margin-top:0.625rem;">
             <app-copy-button [text]="scriptText()" label="Copiar comando" />
-            <button type="button" (click)="execCreate()" [disabled]="busy()">
-              Crear en {{ createRegion() }}
-            </button>
-            @if (data()!.status === 'missing_in_b') {
-              <button type="button" class="secondary" (click)="execDelete()" [disabled]="busy()">
-                Solo eliminar en {{ data()!.env_a }}
-              </button>
-            }
           </div>
-          @if (execResult()) {
-            <div class="note {{ execResult()!.isError ? 'err' : 'ok' }}">
-              {{ execResult()!.text }}
-            </div>
-          }
         </div>
       </div>
     }
   }
 }
 
-<!-- El modal es sólo de la comparación: los "Ejecutar en…" escriben con la
-     tabla ya abierta, así que el modal —que aparece sobre todo— no aplica y
-     ninguna de esas operaciones se cancela desde acá. -->
+<!-- El modal es sólo de la comparación, que es la única operación en vuelo que
+     queda en la vista: se puede cortar desde acá y la pantalla vuelve como estaba. -->
 <app-busy-modal [open]="busy() && !data()" [message]="busyText()" (cancelled)="cancelBusy()" />

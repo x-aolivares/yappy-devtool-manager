@@ -4,20 +4,24 @@ import { CompilePage } from './pages/compile/compile';
 import { DeploymentsPage } from './pages/deployments/deployments';
 import { HomePage } from './pages/home/home';
 import { MigrateDataPage } from './pages/migrate-data/migrate-data';
+import { ParamsDiffPage } from './pages/params-diff/params-diff';
 import { ParamsReadPage } from './pages/params-read/params-read';
 import { SchemaSyncPage } from './pages/schema-sync/schema-sync';
 import { SessionDetailPage } from './pages/session-detail/session-detail';
 import { SessionsPage } from './pages/sessions/sessions';
 import { SqlPage } from './pages/sql/sql';
 
-// `params-create`, `params-edit` y `db-diff` se borraron del repo: sus acciones son
-// de escritura y hoy la app solo tiene permiso de lectura sobre los parámetros.
+// `/params-diff` sí está, pero en modo de solo lectura: comparar dos ambientes es
+// leer, y el comando para aplicar se copia desde la pantalla. Las páginas de
+// escritura —`params-create`, `params-edit` y `db-diff`— se borraron del repo
+// porque hoy no hay permiso para ejecutarlas.
 // `/sessions` NO se sacó, a propósito — `params-read.ts` crea una sesión y tiene
 // un link a esa vista, así que dejarla en 404 sería romper la página que sí se
 // conserva.
 export const routes: Routes = [
   { path: '', pathMatch: 'full', component: HomePage },
   { path: 'params-read', component: ParamsReadPage },
+  { path: 'params-diff', component: ParamsDiffPage },
   { path: 'sessions', component: SessionsPage },
   { path: 'sessions/:sessionId', component: SessionDetailPage },
   { path: 'compile', component: CompilePage },

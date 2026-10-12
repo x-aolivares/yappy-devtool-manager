@@ -46,7 +46,6 @@ describe('ParamsDiffPage pair mode', () => {
           useValue: {
             diff: () => mockDiff(),
             apply: () => Promise.resolve({ script: 'aws ...' }),
-            applyExecute: () => Promise.resolve({ steps: [] }),
           },
         },
         {

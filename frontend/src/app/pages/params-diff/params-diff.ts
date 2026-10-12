@@ -78,7 +78,6 @@ export class ParamsDiffPage {
   readonly busy = signal(false);
   readonly busyText = signal('');
   readonly error = signal<string | null>(null);
-  readonly execResult = signal<{ text: string; isError: boolean } | null>(null);
   readonly fmtValue = formatValue;
 
   readonly rows = signal<ChangeRow[]>([]);
@@ -227,7 +226,6 @@ export class ParamsDiffPage {
 
     this.busy.set(true);
     this.error.set(null);
-    this.execResult.set(null);
     this.busyText.set(
       `Consultando ${name} de origen ${envB} a destino ${envA}...`,
     );
@@ -496,168 +494,6 @@ export class ParamsDiffPage {
         () => {
           if (seq !== this.applySeq) return;
           this.scriptText.set('No se pudo generar el comando.');
-        },
-      );
-  }
-
-  private execSuccess(notes: string | null) {
-    const d = this.data();
-    this.sessionUpdate({
-      status: 'aplicado',
-      service: d!.pair ? 'ssm' : this.service(),
-      is_secret: !!d!.pair,
-      script: this.scriptText(),
-      notes: notes ?? this.execResult()?.text ?? null,
-    });
-    setTimeout(() => this.compare(), 700);
-  }
-
-  execUpdate(newValue: string) {
-    const d = this.data();
-    if (!d) return;
-    if (!confirm(`¿Ejecutar la actualización de ${d.name} en ${d.env_a}?`)) return;
-    this.execResult.set({ text: 'Ejecutando…', isError: false });
-    this.busy.set(true);
-    this.paramsService
-      .applyExecute({
-        env_a: d.env_a,
-        env_b: d.env_b,
-        service: d.service,
-        op: 'update',
-        target: 'a',
-        name: d.name,
-        new_value: newValue,
-        value_type: d.value_type_b || 'String',
-        confirm: true,
-      })
-      .then(
-        (body) => {
-          this.busy.set(false);
-          this.execResult.set({ text: body.message, isError: false });
-          this.execSuccess(body.message);
-        },
-        (err) => {
-          this.busy.set(false);
-          this.execResult.set({ text: toApiError(err).message, isError: true });
-        },
-      );
-  }
-
-  execDelete() {
-    const d = this.data();
-    if (!d) return;
-    if (!confirm(`¿Eliminar DEFINITIVAMENTE ${d.name} en ${d.env_a}?\nNo se puede deshacer.`)) return;
-    this.execResult.set({ text: 'Ejecutando…', isError: false });
-    this.busy.set(true);
-    this.paramsService
-      .applyExecute({
-        env_a: d.env_a,
-        env_b: d.env_b,
-        service: d.service,
-        op: 'delete',
-        target: 'a',
-        name: d.name,
-        confirm: true,
-      })
-      .then(
-        (body) => {
-          this.busy.set(false);
-          this.execResult.set({ text: body.message, isError: false });
-          this.execSuccess(body.message);
-        },
-        (err) => {
-          this.busy.set(false);
-          this.execResult.set({ text: toApiError(err).message, isError: true });
-        },
-      );
-  }
-
-  execPair() {
-    const d = this.data();
-    const ps = this.pairState();
-    if (!d || !ps) return;
-    const stepsMsg = [
-      ps.secret.include ? 'Paso 1 — actualizar el SECRETO en Secrets Manager' : '',
-      ps.param.include ? 'Paso 2 — actualizar el PARÁMETRO en SSM' : '',
-    ]
-      .filter(Boolean)
-      .join('\n');
-    if (
-      !confirm(
-        `¿Sincronizar ${d.name} en ${d.env_a}?\n${stepsMsg}\n\n` +
-        'Se ejecutan en ese orden: nunca en una sola operación.',
-      )
-    ) {
-      return;
-    }
-    this.execResult.set({ text: 'Ejecutando…', isError: false });
-    this.busy.set(true);
-    this.paramsService
-      .applyExecute({
-        env_a: d.env_a,
-        env_b: d.env_b,
-        service: d.service,
-        op: 'update',
-        target: 'a',
-        name: d.name,
-        with_secret: true,
-        write_secret: ps.secret.include,
-        write_param: ps.param.include,
-        new_value: ps.param.include ? ps.param.text : (d.value_a ?? ''),
-        value_type: d.value_type_b || 'String',
-        new_secret_value: ps.secret.include ? ps.secret.text : (d.secret_value_a ?? ''),
-        confirm: true,
-      })
-      .then(
-        (body) => {
-          this.busy.set(false);
-          const lines = (body.steps ?? []).map((s) => `✓ ${s.message}`).join('\n');
-          this.execResult.set({ text: lines, isError: false });
-          this.execSuccess(
-            (body.steps ?? []).map((s) => s.message).join(' · ') || null,
-          );
-        },
-        (err) => {
-          this.busy.set(false);
-          this.execResult.set({ text: toApiError(err).message, isError: true });
-        },
-      );
-  }
-
-  execCreate() {
-    const d = this.data();
-    if (!d) return;
-    const value = this.createValue();
-    if (value.trim() === '') {
-      this.execResult.set({ text: 'Escribí un valor para crear el parámetro.', isError: true });
-      return;
-    }
-    const region = this.createRegion();
-    const verb = d.status === 'missing_in_a' ? 'actualizar/crear' : 'crear';
-    if (!confirm(`¿${verb} ${d.name} en ${region} con el valor ingresado?`)) return;
-    this.execResult.set({ text: 'Creando…', isError: false });
-    this.busy.set(true);
-    this.paramsService
-      .applyExecute({
-        env_a: d.env_a,
-        env_b: d.env_b,
-        service: d.service,
-        op: 'update',
-        target: this.createTarget(),
-        name: d.name,
-        new_value: value,
-        value_type: d.value_type_b || 'String',
-        confirm: true,
-      })
-      .then(
-        (body) => {
-          this.busy.set(false);
-          this.execResult.set({ text: body.message, isError: false });
-          this.execSuccess(body.message);
-        },
-        (err) => {
-          this.busy.set(false);
-          this.execResult.set({ text: toApiError(err).message, isError: true });
         },
       );
   }
