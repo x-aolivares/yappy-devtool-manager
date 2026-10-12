@@ -5,7 +5,7 @@ import { DbService } from '../../core/services/db.service';
 import { toApiError } from '../../core/services/api-error';
 import { CancelSlot, isCancellation } from '../../core/cancel';
 import { objectLabel } from '../../core/format';
-import { BusyModal } from '../../components/busy-modal';
+import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { StatusBadge } from '../../components/status-badge';
 import { CopyButton } from '../../components/copy-button';
 import { RegionControls } from '../../components/region-controls';

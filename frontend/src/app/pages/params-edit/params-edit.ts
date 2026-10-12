@@ -5,7 +5,7 @@ import { ParamsService } from '../../core/services/params.service';
 import { toApiError } from '../../core/services/api-error';
 import { CancelSlot, isCancellation } from '../../core/cancel';
 import { awsEnvironments } from '../../core/format';
-import { BusyModal } from '../../components/busy-modal';
+import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { EnvControls } from '../../components/env-controls';
 
 @Component({

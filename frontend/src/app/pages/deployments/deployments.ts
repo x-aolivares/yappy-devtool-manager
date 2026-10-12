@@ -6,7 +6,7 @@ import { EnvironmentService } from '../../core/services/environment.service';
 import { toApiError } from '../../core/services/api-error';
 import { explainDeploymentFailure, FailureExplained } from '../../core/deployment-help';
 import { CancelSlot, isCancellation } from '../../core/cancel';
-import { BusyModal } from '../../components/busy-modal';
+import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { CopyButton } from '../../components/copy-button';
 import { EnvPicker } from '../../components/env-picker';
 import { NoticeModal } from '../../components/notice-modal';

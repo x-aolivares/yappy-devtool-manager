@@ -5,7 +5,7 @@ import { DbService } from '../../core/services/db.service';
 import { toApiError } from '../../core/services/api-error';
 import { CancelSlot, isCancellation } from '../../core/cancel';
 import { EnvControls } from '../../components/env-controls';
-import { BusyModal } from '../../components/busy-modal';
+import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { NoticeModal } from '../../components/notice-modal';
 import { PaginationBar } from '../../components/pagination-bar';
 import { TableSearch, searchable } from '../../components/table-search';
