@@ -1,14 +1,14 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { DiffResponse, EnvironmentInfo } from '../api-gen/models';
-import { EnvironmentService } from '../core/services/environment.service';
-import { DbService } from '../core/services/db.service';
-import { toApiError } from '../core/services/api-error';
-import { CancelSlot, isCancellation } from '../core/cancel';
-import { objectLabel } from '../core/format';
-import { BusyModal } from '../shared/busy-modal';
-import { StatusBadge } from '../shared/status-badge';
-import { CopyButton } from '../shared/copy-button';
-import { RegionControls } from '../shared/region-controls';
+import { DiffResponse, EnvironmentInfo } from '../../api-gen/models';
+import { EnvironmentService } from '../../core/services/environment.service';
+import { DbService } from '../../core/services/db.service';
+import { toApiError } from '../../core/services/api-error';
+import { CancelSlot, isCancellation } from '../../core/cancel';
+import { objectLabel } from '../../core/format';
+import { BusyModal } from '../../shared/busy-modal';
+import { StatusBadge } from '../../shared/status-badge';
+import { CopyButton } from '../../shared/copy-button';
+import { RegionControls } from '../../shared/region-controls';
 
 @Component({
   selector: 'app-db-diff-page',
