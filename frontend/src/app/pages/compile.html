@@ -1,0 +1,289 @@
+<h1>Compilar</h1>
+<p class="muted">
+  Elegí de dónde sale el SQL y a qué ambiente se compila. En los dos casos el destino queda
+  igual al origen.
+</p>
+
+<div class="panel">
+  <div class="columns">
+    <div class="field">
+      <div class="field-label">Origen del SQL</div>
+      <div class="radio-row">
+        <label>
+          <input
+            type="radio"
+            name="compile-source"
+            value="env"
+            [checked]="source() === 'env'"
+            (change)="setSource('env')"
+          />
+          Ambiente de origen
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="compile-source"
+            value="script"
+            [checked]="source() === 'script'"
+            (change)="setSource('script')"
+          />
+          Script
+        </label>
+      </div>
+    </div>
+
+    <div class="field">
+      @if (source() === 'env') {
+        <app-region-controls
+          [environments]="environments()"
+          [withService]="false"
+          envLabel="Ambientes"
+          [(envB)]="envB"
+          [(envA)]="envA"
+        />
+      } @else {
+        <app-env-controls
+          [environments]="environments()"
+          [max]="1"
+          envLabel="Ambiente"
+          [envs]="destEnvs()"
+          (envsChange)="onDestEnvChange($event)"
+        />
+        @if (envA()) {
+          <div style="margin-top:0.875rem;">
+            <label class="field-label" for="compile-script-schema">
+              Esquema (opcional)
+            </label>
+            <app-schema-select
+              controlId="compile-script-schema"
+              [env]="envA()"
+              [(value)]="schema"
+              [optional]="true"
+              emptyLabel="Sin USE — usá nombres calificados"
+            />
+          </div>
+        }
+      }
+      @if (sameEnv()) {
+        <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
+          El origen y el destino no pueden ser el mismo ambiente.
+        </p>
+      }
+    </div>
+  </div>
+
+  @if (source() === 'env') {
+    <div class="columns">
+      <div class="field">
+        <label class="field-label" for="compile-schema">
+          Esquema del origen
+        </label>
+        <app-schema-select
+          controlId="compile-schema"
+          [env]="envB()"
+          [(value)]="schema"
+          emptyLabel="Seleccione un esquema del origen"
+        />
+      </div>
+
+      <div class="field">
+        <div class="field-label">Tipo de objeto</div>
+        <div class="radio-row">
+          <label [style.opacity]="schema() ? 1 : 0.5">
+            <input
+              type="radio"
+              name="object-type"
+              value="table"
+              [disabled]="!schema()"
+              [checked]="objectType() === 'table'"
+              (change)="objectType.set('table')"
+            />
+            Tabla
+          </label>
+          <label [style.opacity]="schema() ? 1 : 0.5">
+            <input
+              type="radio"
+              name="object-type"
+              value="procedure"
+              [disabled]="!schema()"
+              [checked]="objectType() === 'procedure'"
+              (change)="objectType.set('procedure')"
+            />
+            Stored procedure
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="columns">
+      <div class="field">
+        <label class="field-label" for="compile-object">
+          Nombre del objeto
+        </label>
+        <select
+          id="compile-object"
+          [disabled]="!schema() || objectsLoading()"
+          [value]="objectName()"
+          (change)="objectName.set($any($event.target).value)"
+        >
+          <option value="" [selected]="!objectName()" disabled>
+            {{ objectPlaceholder() }}
+          </option>
+          @for (o of objects() ?? []; track o) {
+            <option [value]="o" [selected]="objectName() === o">{{ o }}</option>
+          }
+        </select>
+        @if (objectsLoading()) {
+          <p class="muted" style="margin-top:0.25rem; font-size:0.75rem;">
+            <span class="spinner"></span> Cargando {{ objectTypePlural() }} de {{ schema() }} en
+            {{ envB() }}...
+          </p>
+        } @else if (objectsError()) {
+          <p class="muted hint-error" style="margin-top:0.25rem; font-size:0.75rem;">
+            No se pudieron leer los {{ objectTypePlural() }} de {{ schema() }}: {{ objectsError() }}
+          </p>
+        }
+      </div>
+
+      <div class="field" style="display:flex; flex-direction:column; justify-content:flex-end;">
+        <div class="actions" style="justify-content:flex-end;">
+          <button type="button" [disabled]="busy() || !canGenerate()" (click)="generate()">
+            Generar
+          </button>
+        </div>
+        @if (!canGenerate() && schema() && objectName()) {
+          <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
+            Falta elegir el ambiente de destino para poder generar.
+          </p>
+        }
+      </div>
+    </div>
+  }
+</div>
+
+<div class="panel">
+  <div class="section-title section-title--plain">
+    <strong>Script a ejecutar en {{ envA() || 'el destino' }}</strong>
+    <span class="actions">
+      <app-copy-button [text]="script()" />
+      <button type="button" [disabled]="busy() || !canExecute()" (click)="run()">
+        Compilar en {{ envA() || '…' }}
+      </button>
+    </span>
+  </div>
+  @if (source() === 'env') {
+    <p class="muted" style="margin-bottom:0.5rem; font-size:0.75rem;">
+      Arranca con un <code>DROP ... IF EXISTS</code>, así que el mismo script funciona exista
+      o no exista el objeto allá.
+    </p>
+  }
+  <textarea
+    id="compile-script"
+    appAutoGrow
+    [autoGrowValue]="script()"
+    spellcheck="false"
+    rows="12"
+    [value]="script()"
+    (input)="script.set($any($event.target).value)"
+    [placeholder]="
+      source() === 'env'
+        ? 'Generá el script con el botón de arriba, o pegá acá el SQL que quieras ejecutar.'
+        : 'Pegá el SQL a compilar: un CREATE TABLE, un ALTER, un CREATE PROCEDURE...'
+    "
+  ></textarea>
+  @if (replaceNotice(); as aviso) {
+    <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
+      {{ aviso }}
+    </p>
+  }
+  @if (!canExecute() && envA()) {
+    <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
+      @if (source() === 'env') {
+        Escribí o generá un script para poder ejecutarlo. No hace falta elegir un objeto:
+        alcanza con el SQL.
+      } @else {
+        Pegá el SQL que querés compilar para habilitar el botón.
+      }
+    </p>
+  }
+</div>
+
+@if (error()) {
+  <div class="error-box">{{ error() }}</div>
+}
+
+<app-busy-modal
+  [open]="busy()"
+  [message]="busyText()"
+  [writes]="busyWrites()"
+  (cancelled)="cancelBusy()"
+/>
+
+@if (pendingRun(); as p) {
+  <app-notice-modal
+    [open]="true"
+    [title]="p.titulo"
+    tone="default"
+    confirmLabel="Ejecutar"
+    (confirmed)="confirmar()"
+    (closed)="cancelar()"
+  >
+    @for (parrafo of p.parrafos; track $index) {
+      <p>{{ parrafo }}</p>
+    }
+  </app-notice-modal>
+}
+
+@if (result()) {
+  <div class="panel">
+    <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+      <app-badge [status]="result()!.status" />
+      <span class="muted">
+        {{ objectLabel(result()!.object_type) }} {{ result()!.schema_name }}.{{
+          result()!.object_name
+        }}
+      </span>
+      <span class="muted">{{ result()!.env_b }} → {{ result()!.env_a }}</span>
+    </div>
+    @for (n of result()!.notes ?? []; track n) {
+      <div class="note">• {{ n }}</div>
+    }
+  </div>
+}
+
+@if (executed()) {
+  <div class="panel">
+    <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+      <app-badge
+        [status]="executed()!.err_count ? 'error' : 'ok'"
+        [label]="
+          executed()!.err_count
+            ? executed()!.err_count + ' error(es)'
+            : executed()!.ok_count + ' sentencia(s) OK'
+        "
+      />
+      <span class="muted">{{ executed()!.env }}</span>
+    </div>
+  </div>
+
+  @if (executed()!.results?.length) {
+    <div class="panel">
+      <div class="section-title"><strong>Sentencias ejecutadas</strong></div>
+      @for (row of executed()!.results!; track row.index) {
+        <div class="stmt-row">
+          <span>#{{ row.index }}</span>
+          <app-badge [status]="row.ok ? 'ok' : 'error'" [label]="row.ok ? 'OK' : 'Error'" />
+          <div style="flex:1; min-width:0;">
+            <pre class="stmt-preview">{{ row.sql }}</pre>
+            <div class="muted stmt-meta">
+              <span>{{ row.ms }} ms</span>
+              @if (row.error) {
+                <span style="color:var(--err);">{{ row.error }}</span>
+              }
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  }
+}
