@@ -1,16 +1,16 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { EnvironmentInfo, MultiResultInfo, ParamsMultiResponse } from '../api-gen/models';
-import { EnvironmentService } from '../core/services/environment.service';
-import { ParamsService } from '../core/services/params.service';
-import { toApiError } from '../core/services/api-error';
-import { CancelSlot, isCancellation } from '../core/cancel';
-import { awsEnvironments } from '../core/format';
-import { BusyModal } from '../shared/busy-modal';
-import { StatusBadge } from '../shared/status-badge';
-import { CopyButton } from '../shared/copy-button';
-import { EnvControls, ServiceOption } from '../shared/env-controls';
-import { PaginationBar } from '../shared/pagination-bar';
-import { paginate } from '../shared/paginate';
+import { EnvironmentInfo, MultiResultInfo, ParamsMultiResponse } from '../../api-gen/models';
+import { EnvironmentService } from '../../core/services/environment.service';
+import { ParamsService } from '../../core/services/params.service';
+import { toApiError } from '../../core/services/api-error';
+import { CancelSlot, isCancellation } from '../../core/cancel';
+import { awsEnvironments } from '../../core/format';
+import { BusyModal } from '../../shared/busy-modal';
+import { StatusBadge } from '../../shared/status-badge';
+import { CopyButton } from '../../shared/copy-button';
+import { EnvControls, ServiceOption } from '../../shared/env-controls';
+import { PaginationBar } from '../../shared/pagination-bar';
+import { paginate } from '../../shared/paginate';
 
 @Component({
   selector: 'app-params-create-page',
