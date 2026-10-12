@@ -1,0 +1,3 @@
+<button class="secondary" type="button" (click)="copy()" [disabled]="!text()">
+  {{ copied() ? '¡Copiado!' : label() }}
+</button>

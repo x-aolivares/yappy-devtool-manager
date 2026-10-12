@@ -3,11 +3,7 @@ import { copyText } from '../core/copy';
 
 @Component({
   selector: 'app-copy-button',
-  template: `
-    <button class="secondary" type="button" (click)="copy()" [disabled]="!text()">
-      {{ copied() ? '¡Copiado!' : label() }}
-    </button>
-  `,
+  templateUrl: './copy-button.html',
 })
 export class CopyButton {
   text = input('');
