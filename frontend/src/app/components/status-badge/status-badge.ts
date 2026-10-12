@@ -1,5 +1,5 @@
 import { Component, computed, input } from '@angular/core';
-import { statusLabel } from '../core/format';
+import { statusLabel } from '../../core/format';
 
 @Component({
   selector: 'app-badge',

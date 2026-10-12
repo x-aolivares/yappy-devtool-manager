@@ -9,7 +9,7 @@ import { EnvironmentService } from '../../core/services/environment.service';
 import { DbService } from '../../core/services/db.service';
 import { toApiError } from '../../core/services/api-error';
 import { CancelSlot, isCancellation } from '../../core/cancel';
-import { StatusBadge } from '../../components/status-badge';
+import { StatusBadge } from '../../components/status-badge/status-badge';
 import { RegionControls } from '../../components/region-controls/region-controls';
 import { SchemaSelect } from '../../components/schema-select/schema-select';
 import { BusyModal } from '../../components/busy-modal/busy-modal';

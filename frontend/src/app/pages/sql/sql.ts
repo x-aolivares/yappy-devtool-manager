@@ -10,7 +10,7 @@ import { NoticeModal } from '../../components/notice-modal/notice-modal';
 import { PaginationBar } from '../../components/pagination-bar/pagination-bar';
 import { TableSearch, searchable } from '../../components/table-search';
 import { paginate } from '../../core/paginate';
-import { StatusBadge } from '../../components/status-badge';
+import { StatusBadge } from '../../components/status-badge/status-badge';
 
 /**
  * Ejecutar SQL: consultar información y migrar lo consultado.
