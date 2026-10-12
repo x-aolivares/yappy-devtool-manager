@@ -1,16 +1,16 @@
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
-import { DeploymentsBranchesResponse, DeploymentEnvInfo, EnvironmentInfo } from '../api-gen/models';
-import { DeploymentService } from '../core/services/deployment.service';
-import { EnvironmentService } from '../core/services/environment.service';
-import { toApiError } from '../core/services/api-error';
-import { explainDeploymentFailure, FailureExplained } from '../core/deployment-help';
-import { CancelSlot, isCancellation } from '../core/cancel';
-import { BusyModal } from '../shared/busy-modal';
-import { CopyButton } from '../shared/copy-button';
-import { EnvPicker } from '../shared/env-picker';
-import { NoticeModal } from '../shared/notice-modal';
-import { copyText } from '../core/copy';
+import { DeploymentsBranchesResponse, DeploymentEnvInfo, EnvironmentInfo } from '../../api-gen/models';
+import { DeploymentService } from '../../core/services/deployment.service';
+import { EnvironmentService } from '../../core/services/environment.service';
+import { toApiError } from '../../core/services/api-error';
+import { explainDeploymentFailure, FailureExplained } from '../../core/deployment-help';
+import { CancelSlot, isCancellation } from '../../core/cancel';
+import { BusyModal } from '../../shared/busy-modal';
+import { CopyButton } from '../../shared/copy-button';
+import { EnvPicker } from '../../shared/env-picker';
+import { NoticeModal } from '../../shared/notice-modal';
+import { copyText } from '../../core/copy';
 
 /**
  * Qué rama está desplegada en cada ambiente, para un repo de ECS/Fargate.

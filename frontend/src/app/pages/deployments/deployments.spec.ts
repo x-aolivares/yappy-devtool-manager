@@ -9,9 +9,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
 import { DeploymentsPage } from './deployments';
-import { DeploymentService } from '../core/services/deployment.service';
-import { EnvironmentService } from '../core/services/environment.service';
-import type { DeploymentsBranchesResponse } from '../api-gen/models';
+import { DeploymentService } from '../../core/services/deployment.service';
+import { EnvironmentService } from '../../core/services/environment.service';
+import type { DeploymentsBranchesResponse } from '../../api-gen/models';
 
 const OK: DeploymentsBranchesResponse = {
   repo: 'yappy-trnxd-backend-payment-aggregator',
