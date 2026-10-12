@@ -53,19 +53,7 @@ export function searchable<T>(
  */
 @Component({
   selector: 'app-table-search',
-  template: `
-    <div class="table-search">
-      <label class="table-search__label" [for]="controlId()">{{ label() }}</label>
-      <input
-        [id]="controlId()"
-        type="search"
-        [value]="query()"
-        [placeholder]="placeholder()"
-        [attr.aria-label]="label()"
-        (input)="changed.emit($any($event.target).value)"
-      />
-    </div>
-  `,
+  templateUrl: './table-search.html',
 })
 export class TableSearch {
   readonly controlId = input.required<string>();
