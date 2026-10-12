@@ -1,6 +1,6 @@
 import { Component, effect, inject, input, model, signal } from '@angular/core';
-import { DbService } from '../core/services/db.service';
-import { toApiError } from '../core/services/api-error';
+import { DbService } from '../../core/services/db.service';
+import { toApiError } from '../../core/services/api-error';
 
 /**
  * Schema picker backed by the live database.
