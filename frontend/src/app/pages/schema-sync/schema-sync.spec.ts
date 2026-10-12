@@ -1,9 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { SchemaSyncPage } from './schema-sync';
-import { DbService } from '../core/services/db.service';
-import { EnvironmentService } from '../core/services/environment.service';
-import { ExecuteRequest, SchemaCompileRequest } from '../api-gen/models';
+import { DbService } from '../../core/services/db.service';
+import { EnvironmentService } from '../../core/services/environment.service';
+import { ExecuteRequest, SchemaCompileRequest } from '../../api-gen/models';
 
 const BASE: Record<string, any> = {
   env_b: 'dev',
