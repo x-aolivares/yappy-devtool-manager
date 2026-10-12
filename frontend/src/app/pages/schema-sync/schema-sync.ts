@@ -11,7 +11,7 @@ import { RegionControls } from '../../components/region-controls';
 import { SchemaSelect } from '../../components/schema-select';
 import { AutoGrowDirective } from '../../components/auto-grow/auto-grow';
 import { NoticeModal } from '../../components/notice-modal/notice-modal';
-import { PaginationBar } from '../../components/pagination-bar';
+import { PaginationBar } from '../../components/pagination-bar/pagination-bar';
 import { TableSearch, searchable } from '../../components/table-search';
 import { paginate } from '../../core/paginate';
 

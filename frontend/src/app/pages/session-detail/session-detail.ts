@@ -5,7 +5,7 @@ import { SessionService } from '../../core/services/session.service';
 import { toApiError } from '../../core/services/api-error';
 import { fmtDate } from '../../core/format';
 import { PageHeader } from '../../components/page-header/page-header';
-import { PaginationBar } from '../../components/pagination-bar';
+import { PaginationBar } from '../../components/pagination-bar/pagination-bar';
 import { paginate } from '../../core/paginate';
 import { StatusBadge } from '../../components/status-badge';
 

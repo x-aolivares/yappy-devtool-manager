@@ -9,7 +9,7 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { PaginationBar } from './pagination-bar';
-import { paginate } from '../core/paginate';
+import { paginate } from '../../core/paginate';
 
 @Component({
   imports: [PaginationBar],

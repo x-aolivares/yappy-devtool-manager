@@ -7,7 +7,7 @@ import { fmtDate } from '../../core/format';
 import { EmptyStateCard } from '../../components/empty-state-card/empty-state-card';
 import { NoticeModal } from '../../components/notice-modal/notice-modal';
 import { PageHeader } from '../../components/page-header/page-header';
-import { PaginationBar } from '../../components/pagination-bar';
+import { PaginationBar } from '../../components/pagination-bar/pagination-bar';
 import { paginate } from '../../core/paginate';
 import { StatusBadge } from '../../components/status-badge';
 

@@ -14,7 +14,7 @@ import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { RegionControls } from '../../components/region-controls';
 import { StatusBadge } from '../../components/status-badge';
 import { CopyButton } from '../../components/copy-button/copy-button';
-import { PaginationBar } from '../../components/pagination-bar';
+import { PaginationBar } from '../../components/pagination-bar/pagination-bar';
 import { paginate } from '../../core/paginate';
 
 interface DiffChange {
