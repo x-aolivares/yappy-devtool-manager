@@ -1,0 +1,10 @@
+/* El filtro es de la página, no de una fila: los controles del modo van en su
+   propia línea y el resumen de la ventana debajo, para que se lea como una
+   decisión única y no como algo que se completa tabla por tabla. */
+.migrate-data-window {
+  margin-top: 0.75rem;
+}
+.migrate-data-window__note {
+  margin-top: 0.5rem;
+  font-size: var(--text-xs);
+}
