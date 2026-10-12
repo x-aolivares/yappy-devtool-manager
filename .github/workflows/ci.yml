@@ -1,0 +1,80 @@
+name: CI
+
+# El gate vive acá y no solo en AGENTS.md: un documento que dice qué correr no
+# corre nada. Esta sesion se pushearon 50 commits con el gate ejecutado a mano, y
+# en un momento un test fallo y casi entra igual. Que lo corra GitHub cada vez.
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# Dos pushes seguidos a master: el primero quedo obsoleto en cuanto llego el
+# segundo. Gastar runner en los dos es tirar tiempo.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (pytest + ruff)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # El piso real del proyecto: pyproject.toml pide >=3.14 y ruff apunta
+          # a py314. Correrlo en una version anterior deja de chequear la
+          # sintica que se ejecuta en produccion.
+          python-version: '3.14'
+
+      - name: Instalar dependencias
+        # Las dependencias no estan en pyproject.toml: setuptools las lee de
+        # docs/requirements.txt, y las de desarrollo de docs/requirements-dev.txt.
+        # No hay lock file en el repo, asi que no hay cache que valga la pena.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r docs/requirements.txt -r docs/requirements-dev.txt
+
+      - name: ruff
+        # Gate de correccion, no de estilo: F821, F811 y E9. El F821 existe por
+        # un NameError que llego a produccion sin que nada lo cachara.
+        run: python -m ruff check backend backend/tests
+
+      - name: pytest
+        run: python -m pytest
+
+  frontend:
+    name: Frontend (Vitest + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Angular 22 pide Node 20.19+; 22 es la LTS que cubre sin adivinar.
+          node-version: '22'
+          # Con package-lock.json en el repo, el cache de npm es seguro y evita
+          # descargar el arbol de dependencias en cada run.
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Tests
+        # Sin --watch=false el runner se queda esperando tests de forma infinita.
+        # En local el default es interactivo; en CI tiene que terminar solo.
+        run: npx ng test --watch=false
+
+      - name: Build
+        # El build de produccion, no el de desarrollo: es el unico que pasa por
+        # los budgets de angular.json (500kB de aviso, 1MB de error), y los
+        # tests no compilan la aplicacion.
+        run: npx ng build
