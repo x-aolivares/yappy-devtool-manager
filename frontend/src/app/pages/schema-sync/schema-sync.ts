@@ -6,7 +6,7 @@ import { toApiError } from '../../core/services/api-error';
 import { CancelSlot, isCancellation } from '../../core/cancel';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { StatusBadge } from '../../components/status-badge';
-import { CopyButton } from '../../components/copy-button';
+import { CopyButton } from '../../components/copy-button/copy-button';
 import { RegionControls } from '../../components/region-controls';
 import { SchemaSelect } from '../../components/schema-select';
 import { AutoGrowDirective } from '../../components/auto-grow/auto-grow';

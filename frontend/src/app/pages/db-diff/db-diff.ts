@@ -7,7 +7,7 @@ import { CancelSlot, isCancellation } from '../../core/cancel';
 import { objectLabel } from '../../core/format';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { StatusBadge } from '../../components/status-badge';
-import { CopyButton } from '../../components/copy-button';
+import { CopyButton } from '../../components/copy-button/copy-button';
 import { RegionControls } from '../../components/region-controls';
 
 @Component({
