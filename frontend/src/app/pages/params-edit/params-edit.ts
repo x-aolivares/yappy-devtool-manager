@@ -1,12 +1,12 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { EnvironmentInfo } from '../api-gen/models';
-import { EnvironmentService } from '../core/services/environment.service';
-import { ParamsService } from '../core/services/params.service';
-import { toApiError } from '../core/services/api-error';
-import { CancelSlot, isCancellation } from '../core/cancel';
-import { awsEnvironments } from '../core/format';
-import { BusyModal } from '../shared/busy-modal';
-import { EnvControls } from '../shared/env-controls';
+import { EnvironmentInfo } from '../../api-gen/models';
+import { EnvironmentService } from '../../core/services/environment.service';
+import { ParamsService } from '../../core/services/params.service';
+import { toApiError } from '../../core/services/api-error';
+import { CancelSlot, isCancellation } from '../../core/cancel';
+import { awsEnvironments } from '../../core/format';
+import { BusyModal } from '../../shared/busy-modal';
+import { EnvControls } from '../../shared/env-controls';
 
 @Component({
   selector: 'app-params-edit-page',
