@@ -1,5 +1,5 @@
 import { Component, computed, input, model } from '@angular/core';
-import { EnvironmentInfo } from '../api-gen/models';
+import { EnvironmentInfo } from '../../api-gen/models';
 
 /**
  * Selector de ambientes como botones conmutables.

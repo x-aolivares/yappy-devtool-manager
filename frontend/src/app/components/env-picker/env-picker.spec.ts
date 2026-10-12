@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { EnvironmentInfo } from '../api-gen/models';
-import { awsEnvironments } from '../core/format';
+import { EnvironmentInfo } from '../../api-gen/models';
+import { awsEnvironments } from '../../core/format';
 import { EnvPicker } from './env-picker';
 
 const ENVS: EnvironmentInfo[] = [
