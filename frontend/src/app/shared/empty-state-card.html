@@ -1,0 +1,8 @@
+<div class="panel empty-state-card">
+  <span class="muted empty-state-card__message">{{ message() }}</span>
+  @if (buttonLabel(); as buttonLabel) {
+    <a class="primary" [routerLink]="buttonLink()" [queryParams]="buttonQueryParams()" class="empty-state-card__action">
+      {{ buttonLabel }}
+    </a>
+  }
+</div>
