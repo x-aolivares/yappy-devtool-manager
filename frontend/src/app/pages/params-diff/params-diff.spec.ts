@@ -1,9 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ParamsDiffPage } from './params-diff';
-import { ParamsService } from '../core/services/params.service';
-import { EnvironmentService } from '../core/services/environment.service';
-import { SessionService } from '../core/services/session.service';
+import { ParamsService } from '../../core/services/params.service';
+import { EnvironmentService } from '../../core/services/environment.service';
+import { SessionService } from '../../core/services/session.service';
 
 // jshint ignore:start
 const PAIR: Record<string, any> = {

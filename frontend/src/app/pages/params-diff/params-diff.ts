@@ -1,21 +1,21 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { EnvironmentInfo } from '../api-gen/models';
-import { EnvironmentService } from '../core/services/environment.service';
-import { ParamsService } from '../core/services/params.service';
-import { SessionService } from '../core/services/session.service';
-import { toApiError } from '../core/services/api-error';
-import { CancelSlot, isCancellation } from '../core/cancel';
-import { awsEnvironments, formatValue } from '../core/format';
-import { serializeMerged } from '../core/params-merge';
-import type { ChangeRow } from '../core/params-merge';
-import { ParamsDiffResponse, UpdateSessionItemRequest } from '../api-gen/models';
-import { BusyModal } from '../shared/busy-modal';
-import { RegionControls } from '../shared/region-controls';
-import { StatusBadge } from '../shared/status-badge';
-import { CopyButton } from '../shared/copy-button';
-import { PaginationBar } from '../shared/pagination-bar';
-import { paginate } from '../shared/paginate';
+import { EnvironmentInfo } from '../../api-gen/models';
+import { EnvironmentService } from '../../core/services/environment.service';
+import { ParamsService } from '../../core/services/params.service';
+import { SessionService } from '../../core/services/session.service';
+import { toApiError } from '../../core/services/api-error';
+import { CancelSlot, isCancellation } from '../../core/cancel';
+import { awsEnvironments, formatValue } from '../../core/format';
+import { serializeMerged } from '../../core/params-merge';
+import type { ChangeRow } from '../../core/params-merge';
+import { ParamsDiffResponse, UpdateSessionItemRequest } from '../../api-gen/models';
+import { BusyModal } from '../../shared/busy-modal';
+import { RegionControls } from '../../shared/region-controls';
+import { StatusBadge } from '../../shared/status-badge';
+import { CopyButton } from '../../shared/copy-button';
+import { PaginationBar } from '../../shared/pagination-bar';
+import { paginate } from '../../shared/paginate';
 
 interface DiffChange {
   path?: string;
