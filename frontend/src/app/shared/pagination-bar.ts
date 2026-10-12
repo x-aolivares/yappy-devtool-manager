@@ -25,48 +25,7 @@ import { PAGE_SIZES, Pagination } from './paginate';
 
 @Component({
   selector: 'app-pagination-bar',
-  template: `
-    @if (show()) {
-      <div class="table-pagination">
-        <span class="muted table-pagination__count">{{ p().rangeLabel() }}</span>
-
-        <div class="actions table-pagination__controls">
-          @if (showNav()) {
-            @if (p().pageLabel(); as label) {
-              <span class="muted">{{ label }}</span>
-            }
-          }
-
-          <label class="table-pagination__size">
-            <span class="muted">Filas</span>
-            <select
-              [value]="p().pageSize()"
-              [attr.aria-label]="'Filas por página'"
-              (change)="onSize($any($event.target).value)"
-            >
-              @for (n of sizes; track n) {
-                <option [value]="n" [selected]="p().pageSize() === n">{{ n }}</option>
-              }
-            </select>
-          </label>
-
-          @if (showNav()) {
-            <button type="button" class="secondary" [disabled]="!p().canPrev()" (click)="p().prev()">
-              Anterior
-            </button>
-            <button
-              type="button"
-              class="secondary"
-              [disabled]="!p().canNext()"
-              (click)="p().next()"
-            >
-              Siguiente
-            </button>
-          }
-        </div>
-      </div>
-    }
-  `,
+  templateUrl: './pagination-bar.html',
 })
 export class PaginationBar {
   /** La lista que se pagina. Genérica para que el tipo no se pierda al pasarla. */
