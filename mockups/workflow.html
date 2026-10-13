@@ -597,7 +597,11 @@
         box-shadow: none;
       }
 
-      button.secondary {
+      /* Fuera del bloque `button` a propósito, igual que en `styles.scss`: el
+         selector atado a `button` dejaba fuera a `<a class="secondary">`, que es
+         lo que es "Abrir ↗". Una acción que abre algo tiene que verse igual
+         vientre de un `<button>` o de un enlace. */
+      .secondary {
         background: var(--sys-elevated);
         color: var(--accent);
         border: 0.0625rem solid var(--accent);
@@ -605,18 +609,21 @@
         font-weight: 500;
       }
 
-      button.secondary:hover:not(:disabled) {
+      .secondary:hover:not(:disabled) {
         background: var(--sys-selected-bg);
       }
 
       /* El secundario tiene borde de acento, así que el anillo de acento se
          fundiría con el del foco. El `outline` vuelve para estos. */
-      button.secondary:focus-visible {
+      .secondary:focus-visible {
         outline: 0.125rem solid var(--accent);
         outline-offset: 0.125rem;
         box-shadow: none;
       }
 
+      /* Control sin caja: sin fondo ni borde, es texto con subrayado. Por eso
+         `min-height: 0` y no el alto de control — darle 40px convertiría cada
+         "logs" y cada "Abrir" en un botón fantasma del tamaño de "Parar". */
       button.linkish {
         background: none;
         border: none;
@@ -645,7 +652,10 @@
         color: var(--text);
         border: 0.0625rem solid var(--border);
         border-radius: var(--sys-radius-md);
-        padding: 0.5rem 0.75rem;
+        /* Mismo pad horizontal que `button`: si el select y el botón que tiene
+           al lado miden distinto, la fila se ve inclinada aunque el alto sea el
+           mismo. */
+        padding: 0 var(--sys-control-pad-x);
         min-height: var(--sys-control-h);
         font-size: var(--text-sm);
         font-family: inherit;
@@ -928,42 +938,43 @@
 
       .port-input {
         width: 100%;
-        max-width: 14rem;
+        max-width: 16rem;
         background: var(--sys-elevated);
         color: var(--text);
         border: 0.0625rem solid var(--border);
         border-radius: var(--sys-radius-md);
-        padding: 0.375rem 0.625rem;
+        padding: 0 var(--sys-control-pad-x);
         font-size: var(--text-sm);
         font-family: inherit;
-        min-height: 2rem;
+        min-height: var(--sys-control-h);
       }
 
       .port-input::placeholder {
         color: var(--muted);
       }
 
-      /* Link de apertura. Es un <a> de verdad y no un button: navega, no
+      /* Link de apertura. Es un `<a>` de verdad y no un button: navega, no
          ejecuta. target=_blank con rel=noopener, que es lo que corresponde al
-         abrir una pestaña nueva. */
+         abrir una pestaña nueva.
+
+         Toma la caja de `.secondary` —fondo, borde, radio, alto y pad— y sólo
+         aporta lo del enlace: no se subraya nunca, porque ya con el borde de
+         acento se lee como control. Antes era texto pelado y convivía con un
+         botón de 40px en la misma fila. */
       .open-link {
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         gap: 0.25rem;
-        color: var(--accent);
-        font-size: var(--text-sm);
-        font-weight: 600;
         text-decoration: none;
-      }
-
-      .open-link:hover {
-        text-decoration: underline;
-      }
-
-      .open-link:focus-visible {
-        outline: 0.125rem solid var(--accent);
-        outline-offset: 0.125rem;
-        border-radius: var(--sys-radius-sm);
+        font-weight: 500;
+        /* `.secondary` sólo trae fondo, color, borde y peso. El alto, el pad y
+           el radio venían de `button`, y un `<a>` no hereda de un `<button>`:
+           sin esto "Abrir" quedaba con borde de acento y esquinas rectas. */
+        min-height: var(--sys-control-h);
+        padding: 0 var(--sys-control-pad-x);
+        border-radius: var(--sys-radius-md);
+        font-size: var(--text-sm);
       }
 
       .res-actions .open-link {
@@ -1100,13 +1111,13 @@
       }
 
       .add-form input {
-        width: 7rem;
+        width: 8rem;
         background: var(--sys-elevated);
         color: var(--text);
         border: 0.0625rem solid var(--border);
         border-radius: var(--sys-radius-md);
-        padding: 0.375rem 0.625rem;
-        min-height: 2rem;
+        padding: 0 var(--sys-control-pad-x);
+        min-height: var(--sys-control-h);
         font-family: var(--sys-mono);
         font-size: var(--text-sm);
       }
@@ -1266,10 +1277,13 @@
         gap: 0.5rem;
       }
 
+      /* El filtro de logs comparte el alto y el pad de los demás controles. Con
+         fuente de 12px al lado de controles de 14 la fila se veía despareja, y
+         además es un `<select>` del panel de logs, no una etiqueta de tabla. */
       .log-filter select {
-        min-height: 2rem;
-        padding: 0.25rem 0.5rem;
-        font-size: var(--text-xs);
+        min-height: var(--sys-control-h);
+        padding: 0 var(--sys-control-pad-x);
+        font-size: var(--text-sm);
       }
 
       .table-foot {
@@ -1935,7 +1949,7 @@
             : "";
         const openLink =
           r.state === "up" && r.browserUrl
-            ? `<a class="secondary" href="${r.browserUrl(envSel())}" target="_blank" rel="noopener">Abrir ↗</a>`
+            ? `<a class="secondary open-link" href="${r.browserUrl(envSel())}" target="_blank" rel="noopener">Abrir ↗</a>`
             : "";
 
         const conflict = cardConflict(r);
@@ -1980,7 +1994,7 @@
             const swagger = `https://localhost:${p.port}/swagger-ui/index.html`;
             const openLink =
               p.state === "up"
-                ? `<a class="secondary" href="${swagger}" target="_blank" rel="noopener">Abrir ↗</a>`
+                ? `<a class="secondary open-link" href="${swagger}" target="_blank" rel="noopener">Abrir ↗</a>`
                 : "";
             const act =
               p.state === "down"
