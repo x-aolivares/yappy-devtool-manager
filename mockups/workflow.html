@@ -1047,6 +1047,231 @@
         white-space: nowrap;
       }
 
+      /* --- estado 'cayó' -----------------------------------------------------
+         Distinto de 'error': `error` es que el readiness check falló al
+         levantar; `dead` es que estaba arriba y el proceso murió. No es lo mismo
+         para quien lee ni lo que hay que hacer — no se reintenta, se levanta de
+         nuevo — y va en ámbar porque no fue un error de la operación, pasó algo
+         afuera. */
+      .res[data-state="dead"] {
+        border-color: var(--sys-warning-border);
+      }
+
+      .res[data-state="dead"] .dot {
+        background: var(--sys-warning);
+      }
+
+      .state[data-state="dead"] {
+        color: var(--warn);
+      }
+
+      .badge.dead {
+        color: var(--warn);
+        background: var(--warn-bg);
+        border-color: var(--sys-warning-border);
+      }
+
+      /* --- conflicto de puerto local ----------------------------------------
+         Dos túneles no pueden escuchar en el mismo puerto local. El que se
+         levanta después falla al bindear, y el mensaje del session-manager no
+         lo dice de forma que se entienda. Avisarlo antes es la diferencia entre
+         "no puedo levantar esto" y "esto anda raro". */
+      .res[data-conflict="true"],
+      .port-table tr[data-conflict="true"] {
+        border-color: var(--sys-danger-border);
+        background: var(--sys-danger-bg);
+      }
+
+      .conflict-note {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        margin: 0.3125rem 0 0;
+        font-size: var(--text-xxs);
+        color: var(--sys-danger-text);
+      }
+
+      /* --- alta de puerto ---------------------------------------------------- */
+      .add-form {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+
+      .add-form input {
+        width: 7rem;
+        background: var(--sys-elevated);
+        color: var(--text);
+        border: 0.0625rem solid var(--border);
+        border-radius: var(--sys-radius-md);
+        padding: 0.375rem 0.625rem;
+        min-height: 2rem;
+        font-family: var(--sys-mono);
+        font-size: var(--text-sm);
+      }
+
+      .add-form input[aria-invalid="true"] {
+        border-color: var(--sys-danger);
+        box-shadow: 0 0 0 0.1875rem var(--sys-focus-ring);
+      }
+
+      .add-form .err {
+        font-size: var(--text-xxs);
+        color: var(--sys-danger-text);
+      }
+
+      /* --- modal de confirmación --------------------------------------------
+         Réplica de `components/notice-modal/notice-modal.ts`, que ya existe en
+         la app y está sin usar para acciones como esta. Copia la estructura y
+         los nombres de clase; los estilos van en CSS plano acá. */
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 90;
+        background: rgb(0 0 0 / 0.32);
+        /* El desenfoque es lo que hace que un modal se lea como una capa por
+           encima de la app y no como una caja flotando sobre ella. */
+        backdrop-filter: blur(0.5rem) saturate(180%);
+        animation: sys-fade-in var(--sys-dur) var(--sys-ease);
+      }
+
+      .modal {
+        position: fixed;
+        inset: 0;
+        z-index: 91;
+        margin: auto;
+        height: fit-content;
+        max-width: 30rem;
+        display: flex;
+        flex-direction: column;
+        background: var(--panel);
+        border: 0.0625rem solid var(--border);
+        border-radius: var(--sys-radius-lg);
+        box-shadow: var(--sys-shadow-lg);
+        overflow: hidden;
+        animation: sys-modal-in var(--sys-dur) var(--sys-ease);
+      }
+
+      @keyframes sys-modal-in {
+        from {
+          opacity: 0;
+          transform: scale(0.96);
+        }
+
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+
+      @keyframes sys-fade-in {
+        from {
+          opacity: 0;
+        }
+
+        to {
+          opacity: 1;
+        }
+      }
+
+      .modal__head {
+        padding: 0.875rem 1rem 0.75rem;
+        border-bottom: 0.0625rem solid var(--border);
+      }
+
+      .modal__head h2 {
+        margin: 0;
+        font-size: var(--text-base);
+        font-weight: 700;
+        line-height: 1.3;
+      }
+
+      .modal--danger .modal__head h2 {
+        color: var(--sys-danger-text);
+      }
+
+      .modal__body {
+        padding: 1rem;
+        overflow-y: auto;
+      }
+
+      .modal__body p {
+        margin: 0 0 0.75rem;
+      }
+
+      .modal__body ul {
+        margin: 0;
+        padding-left: 1.125rem;
+      }
+
+      .modal__body li + li {
+        margin-top: 0.5rem;
+      }
+
+      .modal__actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        padding: 0.75rem 1rem 1rem;
+        border-top: 0.0625rem solid var(--border);
+      }
+
+      /* El botón destructivo va teñido, no sólido: la superficie de error del
+         tema y el rótulo con su tinta. Un rojo macizo necesitaría además un
+         color de texto que no está entre los tokens de semántica. */
+      button.confirm-danger {
+        background: var(--sys-danger-bg);
+        border-color: var(--sys-danger-border);
+        color: var(--sys-danger-text);
+        box-shadow: none;
+      }
+
+      button.confirm-danger:hover:not(:disabled) {
+        background: var(--sys-danger-bg);
+        border-color: var(--sys-danger-text);
+      }
+
+      button.confirm-danger:focus-visible {
+        outline: 0.125rem solid var(--accent);
+        outline-offset: 0.125rem;
+        box-shadow: none;
+      }
+
+      /* --- barra de simulación ---------------------------------------------
+         Los dos estados que no aparecen en uso normal —el fallo del readiness
+         check y la muerte de un proceso— sólo salen por un botón. Sin esto el
+         mockup describe el riesgo y no lo muestra. */
+      .sim-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+        padding: 0.625rem 0.875rem;
+        background: var(--sys-surface);
+        border: 0.0625rem dashed var(--border);
+        border-radius: var(--sys-radius-md);
+        font-size: var(--text-xs);
+        color: var(--muted);
+      }
+
+      .sim-bar strong {
+        color: var(--text);
+      }
+
+      .log-filter {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .log-filter select {
+        min-height: 2rem;
+        padding: 0.25rem 0.5rem;
+        font-size: var(--text-xs);
+      }
+
       .table-foot {
         display: flex;
         align-items: center;
@@ -1208,16 +1433,27 @@
                el nombre entero. -->
           <datalist id="service-names"></datalist>
 
-          <div class="table-foot">
+          <div class="table-foot add-form">
+            <!-- aqui hay que meter un style para que los sizes concuerden -->
+            <input
+              id="new-port"
+              type="number"
+              min="1"
+              max="65535"
+              placeholder="puerto"
+              aria-label="Puerto a agregar al catálogo"
+            />
+            <!-- aqui hay que meter un style para que los sizes concuerden -->
             <button type="button" class="secondary" id="add-port">
-              Agregar puerto
+              Agregar
             </button>
             <button type="button" class="secondary" id="start-all-ports">
               Levantar todos
             </button>
-            <button type="button" class="linkish" id="reset-catalog">
+            <button type="button" class="secondary" id="reset-catalog">
               Restaurar los de fábrica
             </button>
+            <span class="err" id="add-port-err"></span>
           </div>
 
           <div class="callout warn">
@@ -1274,13 +1510,42 @@
           </div>
         </div>
 
+        <!-- Los dos estados que no se ven salvo que los provoque uno: el fallo
+             del readiness check y la muerte de un proceso que estaba arriba.
+             Sin esta barra el mockup los describe y no los muestra. -->
+        <div class="sim-bar">
+          <strong>Simular:</strong>
+          <button type="button" class="secondary" id="sim-fail">
+            fallo del readiness check
+          </button>
+          <button type="button" class="secondary" id="sim-dead">
+            muerte de un proceso arriba
+          </button>
+          <span id="sim-note"></span>
+        </div>
+
         <section class="panel log-panel" id="log-panel" hidden>
           <div class="section-title">
             <h2>Logs</h2>
-            <span class="hint" id="log-title">—</span>
+            <div class="log-filter">
+              <label class="visually-hidden" for="log-scope">Filtrar logs por</label>
+              <select id="log-scope">
+                <option value="">Todos los recursos</option>
+              </select>
+            </div>
           </div>
           <pre class="log" id="log"></pre>
         </section>
+
+        <!-- Región de estado para lectores de pantalla. Todo en esta pantalla
+             cambia asíncronamente: un túnel termina de levantar y no hay ningún
+             cambio de foco ni de texto visible que lo anuncie. Sin esto, quien no
+             ve el punto de color no se entera de que el túnel quedó arriba. -->
+        <div id="live" role="status" aria-live="polite" class="visually-hidden"></div>
+
+        <!-- Modal de confirmación. Réplica de notice-modal, que ya existe en la
+             app y está sin usar para acciones destructivas como ésta. -->
+        <div id="modal-root"></div>
 
         <p class="mock-note">
           <strong>Mockup.</strong> No hay backend: el estado vive en
@@ -1528,18 +1793,48 @@
         ],
       };
 
-      const logs = [];
+      /* Los logs son datos, no un string acumulado: sin eso no se pueden
+         filtrar por recurso, que es lo único que los hace útiles con ocho
+         recursos en pantalla. */
+      let logs = [];
+      let logScope = "";
+
+      function announce(msg) {
+        document.getElementById("live").textContent = msg;
+      }
 
       function pushLog(who, line) {
         const ts = new Date().toLocaleTimeString("es-AR", { hour12: false });
-        logs.push(`${ts}  [${who}]  ${line}`);
+        logs.push({ ts, who, line });
         renderLog();
       }
 
       function renderLog() {
         const el = document.getElementById("log");
-        el.textContent = logs.slice(-60).join("\n");
+        const rows = logScope ? logs.filter((l) => l.who === logScope) : logs;
+        el.textContent = rows
+          .slice(-60)
+          .map((l) => `${l.ts}  [${l.who}]  ${l.line}`)
+          .join("\n");
         el.scrollTop = el.scrollHeight;
+      }
+
+      /* El selector de logs se arma con lo que realmente escribió alguna línea,
+         más lo que está en pantalla. Un recurso que nuncalevantó no aparece
+         como opción: filtrar por él daría una pantalla vacía sin explicación. */
+      function renderLogScopes() {
+        const sel = document.getElementById("log-scope");
+        const current = sel.value;
+        const names = [...new Set(logs.map((l) => l.who))]
+          .concat([...new Set(Object.values(RES).map((r) => r.name))])
+          .concat(Object.keys(catalog).flatMap((c) => portList(c).map((p) => `:${p.port}`)))
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b, "es"));
+        sel.innerHTML =
+          '<option value="">Todos los recursos</option>' +
+          names.map((n) => `<option value="${n}">${n}</option>`).join("");
+        sel.value = names.includes(current) ? current : "";
+        logScope = sel.value;
       }
 
       const envSel = () => document.getElementById("env").value;
@@ -1556,6 +1851,29 @@
       const localOf = (r) =>
         typeof r.localPort === "function" ? r.localPort(envSel()) : r.localPort;
 
+      /* ------------------------------------------------------- conflictos ---
+         El puerto local es el recurso escaso: dos túneles no pueden escuchar en
+         el mismo. Se chequea entre TODOS los clusters, no sólo dentro del que
+         se está mirando, porque un 8402 de `cap` choca con un 8402 de `cap2`
+         aunque no se cambie de pestaña. */
+      function portOwner(port, exceptCluster) {
+        for (const c of Object.keys(runtime)) {
+          if (exceptCluster !== null && c === exceptCluster) continue;
+          const live = runtime[c][port];
+          if (live && live.state === "up") return `${c}:${port}`;
+        }
+        return null;
+      }
+
+      /* Una card no pertenece a un cluster: cuenta cualquier dueño. Kafka local
+         no va al NLB, así que no compite por un puerto de cluster. */
+      function cardConflict(r) {
+        const local = localOf(r);
+        if (!local || r.group === "kafka") return null;
+        return portOwner(local, null);
+      }
+
+
       /* ----------------------------------------------------------- cards --- */
 
       function metaText(r) {
@@ -1567,6 +1885,9 @@
           const since = r.since ? ` · ${r.since}` : "";
           return `<span class="mono">${r.detail}</span>${pid}${since}`;
         }
+        if (r.state === "dead") {
+          return `<span class="mono">el proceso ${r.pid} terminó</span> · hace ${r.diedAt || "un rato"}`;
+        }
         return r.detail;
       }
 
@@ -1576,14 +1897,12 @@
             ? '<span class="badge ok">arriba</span>'
             : r.state === "starting"
               ? '<span class="badge warn">levantando</span>'
-              : r.state === "error"
-                ? '<span class="badge warn">error</span>'
-                : "";
-        const foreign = r.foreign
-          ? ' <span class="foreign-tag">ajeno</span>'
-          : "";
-        // Kafdrop y databricks también remapean el puerto local. Mostrar el
-        // remoto solo haría creer que el link apunta al lugar equivocado.
+              : r.state === "dead"
+                ? '<span class="badge dead">cayó</span>'
+                : r.state === "error"
+                  ? '<span class="badge warn">error</span>'
+                  : "";
+        const foreign = r.foreign ? ' <span class="foreign-tag">ajeno</span>' : "";
         const local = localOf(r);
         const ports =
           local && local !== r.port
@@ -1592,12 +1911,16 @@
               ? `<span class="port">:${r.port}</span>`
               : "";
 
+        /* `dead` no ofrece "Reintentar": el proceso ya no existe, no hay a qué
+           reintentar. Y "Cerrar" tampoco, que tampoco hay nada que cerrar.
+           Lo que hay es levantarlo de nuevo. */
         let control;
         if (r.state === "down") {
-          control =
-            '<button class="secondary" data-act="start">Levantar</button>';
+          control = '<button class="secondary" data-act="start">Levantar</button>';
         } else if (r.state === "starting") {
           control = '<button data-act="start" disabled>Levantando…</button>';
+        } else if (r.state === "dead") {
+          control = '<button class="secondary" data-act="start">Levantar de nuevo</button>';
         } else if (r.state === "error") {
           control =
             '<button class="secondary" data-act="start">Reintentar</button>' +
@@ -1608,71 +1931,72 @@
 
         const logsBtn =
           r.state === "up" || r.state === "starting"
-            ? '<button class="linkish" data-act="logs">logs</button>'
+            ? '<button class="secondary" data-act="logs">Ver logs</button>'
             : "";
-
-        // El link sólo existe arriba. Abajo no hay nada que abrir, y un link a un
-        // puerto muerto abre una pestaña de error que parece un bug de la web.
         const openLink =
           r.state === "up" && r.browserUrl
-            ? `<a class="open-link" href="${r.browserUrl(envSel())}" target="_blank" rel="noopener">Abrir ↗</a>`
+            ? `<a class="secondary" href="${r.browserUrl(envSel())}" target="_blank" rel="noopener">Abrir ↗</a>`
             : "";
 
+        const conflict = cardConflict(r);
         return `
-          <article class="res" data-state="${r.state}" data-foreign="${!!r.foreign}">
+          <article class="res" data-state="${r.state}" data-foreign="${!!r.foreign}" data-conflict="${!!conflict}">
             <header class="res-head">
               <span class="dot" aria-hidden="true"></span>
               <h3>${r.name}${foreign}</h3>
               ${ports}${badge}
             </header>
             <p class="res-meta">${metaText(r)}</p>
+            ${conflict ? conflictNote(conflict) : ""}
             <div class="res-actions">${openLink}${control}${logsBtn}</div>
           </article>`;
       }
 
-      /* ---------------------------------------------------- tabla de puertos
-         El puerto remoto no siempre es el local, así que la columna muestra los
-         dos cuando difieren (el bastion mapea 9091 a 3000). */
+      /* ---------------------------------------------------- tabla de puertos --- */
+
       function portRows() {
         const list = portList(clusterSel());
         if (!list.length) {
           return `<tr><td colspan="5" class="empty-result">
             El cluster <code>${clusterSel()}</code> no tiene puertos cargados.
-            Usá <em>Agregar puerto</em> para guardar el primero.
+            Agregá el primero con el campo de abajo.
           </td></tr>`;
         }
         return list
           .map((p, i) => {
             const label = `<input class="port-input" list="service-names" placeholder="nombre del servicio" value="${p.label || ""}" />`;
+            const owner = portOwner(p.port, clusterSel());
             const st =
               p.state === "up"
                 ? `<span class="state" data-state="up"><span class="dot"></span>arriba · <span class="mono">${p.since}</span></span>`
                 : p.state === "starting"
                   ? `<span class="state" data-state="starting"><span class="dot"></span>levantando…</span>`
-                  : p.state === "error"
-                    ? `<span class="state" data-state="error"><span class="dot"></span>error</span>`
-                    : `<span class="state" data-state="down"><span class="dot"></span>abajo</span>`;
-            // El tunnel de cluster abre el swagger: `ssm/tunnel.py:64` y `:80`
-            // usan `https://localhost:{port}/swagger-ui/index.html`. El puerto
-            // local es el mismo que el remoto porque `local_port=port`.
+                  : p.state === "dead"
+                    ? `<span class="state" data-state="dead"><span class="dot"></span>cayó · <span class="mono">${p.diedAt || "hace un rato"}</span></span>`
+                    : p.state === "error"
+                      ? `<span class="state" data-state="error"><span class="dot"></span>no levantó</span>`
+                      : `<span class="state" data-state="down"><span class="dot"></span>abajo</span>`;
+
             const swagger = `https://localhost:${p.port}/swagger-ui/index.html`;
             const openLink =
               p.state === "up"
-                ? `<a class="open-link" href="${swagger}" target="_blank" rel="noopener">Abrir ↗</a>`
+                ? `<a class="secondary" href="${swagger}" target="_blank" rel="noopener">Abrir ↗</a>`
                 : "";
             const act =
               p.state === "down"
                 ? `<button class="secondary" data-port-act="start" data-i="${i}">Levantar</button>`
                 : p.state === "starting"
                   ? `<button data-port-act="start" data-i="${i}" disabled>Levantando…</button>`
-                  : p.state === "error"
-                    ? `<button class="secondary" data-port-act="start" data-i="${i}">Reintentar</button>
-                       <button class="danger" data-port-act="stop" data-i="${i}">Cerrar</button>`
-                    : `<button class="danger" data-port-act="stop" data-i="${i}">Parar</button>`;
+                  : p.state === "dead"
+                    ? `<button class="secondary" data-port-act="start" data-i="${i}">Levantar de nuevo</button>`
+                    : p.state === "error"
+                      ? `<button class="secondary" data-port-act="start" data-i="${i}">Reintentar</button>
+                         <button class="danger" data-port-act="stop" data-i="${i}">Cerrar</button>`
+                      : `<button class="danger" data-port-act="stop" data-i="${i}">Parar</button>`;
 
-            return `<tr>
+            return `<tr data-conflict="${!!owner}">
               <td class="col-port">${p.port}</td>
-              <td>${label}</td>
+              <td>${label}${owner ? conflictNote(owner) : ""}</td>
               <td class="col-state">${st}</td>
               <td class="col-actions">${openLink} ${act}</td>
               <td class="col-del">
@@ -1684,6 +2008,12 @@
           .join("");
       }
 
+      function conflictNote(who) {
+        return `<p class="conflict-note">⚠ el puerto local ${who.split(":")[1]} ya lo está usando el cluster ${who.split(":")[0]}</p>`;
+      }
+
+      /* ------------------------------------------------------------ render --- */
+
       function render() {
         for (const [gridId, group] of [
           ["grid-kafka", "kafka"],
@@ -1692,13 +2022,14 @@
         ]) {
           document.getElementById(gridId).innerHTML = Object.values(RES)
             .filter((r) => r.group === group)
-            .map(cardHtml)
+            .map((r) => cardHtml(r))
             .join("");
         }
 
         document.getElementById("cluster-host").textContent = remoteHost();
         document.getElementById("port-rows").innerHTML = portRows();
         renderServiceNames();
+        renderLogScopes();
 
         const all = Object.values(RES);
         const ports = portList(clusterSel());
@@ -1713,21 +2044,30 @@
         const busy =
           all.filter((r) => r.state === "starting").length +
           ports.filter((p) => p.state === "starting").length;
+        const broken =
+          all.filter((r) => r.state === "error" || r.state === "dead").length +
+          ports.filter((p) => p.state === "error" || p.state === "dead").length;
         const foreign = all.filter((r) => r.foreign && r.state === "up").length;
         document.getElementById("summary").innerHTML =
           `<strong>${up}</strong> arriba` +
           (busy ? ` · ${busy} levantando` : "") +
-          (foreign
-            ? ` · <strong>${foreign}</strong> levantado fuera de la web`
-            : "");
+          (broken ? ` · <strong>${broken}</strong> con problemas` : "") +
+          (foreign ? ` · <strong>${foreign}</strong> levantado fuera de la web` : "");
       }
 
       /* --------------------------------------------------------- arranque --- */
 
+      /* Bandera para el botón de simular fallo: el próximo arranque en vez de
+         pasar, se queda trabado en `error`. */
+      let nextStartFails = false;
+
       function startRes(key) {
         const r = RES[key];
         r.state = "starting";
+        r.__fail = nextStartFails;
+        nextStartFails = false;
         render();
+        announce(`${r.name}: levantando`);
         const cmd =
           r.group === "kafka"
             ? `run kafka ${key.replace("kafka", "").toLowerCase()}`
@@ -1738,17 +2078,29 @@
         lines.forEach((line, i) =>
           setTimeout(
             () => pushLog(r.name, line.replace("{port}", r.port)),
-            (i + 1) * (r.boot / (lines.length + 1)),
-          ),
+            (i + 1) * (r.boot / (lines.length + 1))
+          )
         );
 
         setTimeout(() => {
-          r.state = "up";
-          r.pid = Math.floor(10000 + Math.random() * 50000);
-          r.since = "recién";
-          r.foreign = false;
-          if (r.group === "named") r.detail = "Puerto abierto y respondiendo";
-          pushLog(r.name, "Ready.");
+          if (r.__fail) {
+            r.state = "error";
+            r.detail = "El puerto local bindeó pero el canal de datos no respondió.";
+            pushLog(
+              r.name,
+              "ERROR: session-manager-plugin bound the port but the data channel never opened"
+            );
+            announce(`${r.name}: no levantó`);
+          } else {
+            r.state = "up";
+            r.pid = Math.floor(10000 + Math.random() * 50000);
+            r.since = "recién";
+            r.foreign = false;
+            r.diedAt = undefined;
+            if (r.group === "named") r.detail = "Puerto abierto y respondiendo";
+            pushLog(r.name, "Ready.");
+            announce(`${r.name}: arriba`);
+          }
           render();
         }, r.boot);
       }
@@ -1757,28 +2109,47 @@
         const cluster = clusterSel();
         const p = portList(cluster)[i];
         if (!p) return;
-        setRuntime(cluster, p.port, { state: "starting" });
+        const owner = portOwner(p.port, cluster);
+        if (owner) {
+          pushLog(`:${p.port}`, `ERROR: el puerto local ya lo está usando ${owner}`);
+          announce(`:${p.port}: no se puede levantar, el puerto está ocupado`);
+          return;
+        }
+        setRuntime(cluster, p.port, { state: "starting", __fail: nextStartFails });
+        nextStartFails = false;
         render();
-        pushLog(
-          `:${p.port}`,
-          `yappy run tunnel ${p.port} ${envSel()} ${clusterSel()}`,
-        );
+        announce(`:${p.port}: levantando`);
+        pushLog(`:${p.port}`, `yappy run tunnel ${p.port} ${envSel()} ${cluster}`);
 
         const lines = BOOT_LOG.tunnel;
         lines.forEach((line, k) =>
           setTimeout(
             () => pushLog(`:${p.port}`, line.replace("{port}", p.port)),
-            (k + 1) * (2500 / (lines.length + 1)),
-          ),
+            (k + 1) * (2500 / (lines.length + 1))
+          )
         );
 
         setTimeout(() => {
-          setRuntime(cluster, p.port, {
-            state: "up",
-            pid: Math.floor(10000 + Math.random() * 50000),
-            since: "recién",
-          });
-          pushLog(`:${p.port}`, "Ready.");
+          const fails = runtime[cluster][p.port].__fail;
+          if (fails) {
+            setRuntime(cluster, p.port, {
+              state: "error",
+              pid: undefined,
+              since: undefined,
+              detail: "Puerto abierto pero sin canal de datos.",
+            });
+            pushLog(`:${p.port}`, "ERROR: data channel never opened");
+            announce(`:${p.port}: no levantó`);
+          } else {
+            setRuntime(cluster, p.port, {
+              state: "up",
+              pid: Math.floor(10000 + Math.random() * 50000),
+              since: "recién",
+              diedAt: undefined,
+            });
+            pushLog(`:${p.port}`, "Ready.");
+            announce(`:${p.port}: arriba`);
+          }
           render();
         }, 2500);
       }
@@ -1789,6 +2160,8 @@
         r.state = "down";
         r.pid = undefined;
         r.since = undefined;
+        r.diedAt = undefined;
+        announce(`${r.name}: abajo`);
         render();
       }
 
@@ -1801,7 +2174,44 @@
           state: "down",
           pid: undefined,
           since: undefined,
+          diedAt: undefined,
         });
+        announce(`:${p.port}: abajo`);
+        render();
+      }
+
+      /* Un túnel que se cae no es lo mismo que uno que no levantó: el proceso
+         existió y se fue solo. En la pantalla real sale de
+         `os.kill(pid, 0)` devolviendo False en `get_tracked_processes`. */
+      function killOne() {
+        const upPorts = Object.keys(runtime).flatMap((c) =>
+          portList(c)
+            .filter((p) => p.state === "up")
+            .map((p) => ({ c, port: p.port }))
+        );
+        const upRes = Object.keys(RES).filter((k) => RES[k].state === "up");
+
+        if (!upPorts.length && !upRes.length) {
+          document.getElementById("sim-note").textContent =
+            "no hay nada arriba para tirar abajo";
+          return;
+        }
+        if (upPorts.length) {
+          const pick = upPorts[Math.floor(Math.random() * upPorts.length)];
+          setRuntime(pick.c, pick.port, {
+            state: "dead",
+            diedAt: "un rato",
+          });
+          pushLog(`:${pick.port}`, "ERROR: the aws process exited (code 1)");
+          announce(`:${pick.port}: se cayó`);
+        } else {
+          const key = upRes[Math.floor(Math.random() * upRes.length)];
+          RES[key].state = "dead";
+          RES[key].diedAt = "un rato";
+          pushLog(RES[key].name, "ERROR: the process exited unexpectedly");
+          announce(`${RES[key].name}: se cayó`);
+        }
+        document.getElementById("sim-note").textContent = "";
         render();
       }
 
@@ -1826,20 +2236,111 @@
         render();
       }
 
-      /* Autocompletado: todos los nombres guardados en cualquier cluster, para
-         que escribir "core-" sugiera uno que ya usaste. */
-      function renderServiceNames() {
-        const names = [
-          ...new Set(
-            Object.values(catalog)
-              .flat()
-              .map((e) => e.label)
-              .filter(Boolean),
-          ),
-        ];
-        document.getElementById("service-names").innerHTML = names
-          .map((n) => `<option value="${n}"></option>`)
-          .join("");
+      /* ------------------------------------------------------------ modal --- */
+
+      /* Réplica del notice-modal de la app. Se resuelve por promesa para que el
+         que llama siga derecho: `if (await confirmStopAll()) …`. El foco queda
+         preso dentro del modal mientras está abierto, y Escape lo cierra. */
+      function confirmModal({ title, body, list, confirmLabel, danger }) {
+        return new Promise((resolve) => {
+          const root = document.getElementById("modal-root");
+          const prevFocus = document.activeElement;
+
+          const backdrop = document.createElement("div");
+          backdrop.className = "modal-backdrop";
+          const dialog = document.createElement("div");
+          dialog.className = `modal${danger ? " modal--danger" : ""}`;
+          dialog.setAttribute("role", "dialog");
+          dialog.setAttribute("aria-modal", "true");
+          dialog.setAttribute("aria-label", title);
+          dialog.innerHTML = `
+            <div class="modal__head"><h2>${title}</h2></div>
+            <div class="modal__body">
+              ${body.map((p) => `<p>${p}</p>`).join("")}
+              ${list ? `<ul>${list.map((i) => `<li>${i}</li>`).join("")}</ul>` : ""}
+            </div>
+            <div class="modal__actions">
+              <button type="button" class="secondary" data-x="no">Cancelar</button>
+              <button type="button" class="${danger ? "confirm-danger" : ""}" data-x="yes">${confirmLabel}</button>
+            </div>`;
+
+          const close = (answer) => {
+            document.removeEventListener("keydown", onKey);
+            root.innerHTML = "";
+            if (prevFocus && prevFocus.focus) prevFocus.focus();
+            resolve(answer);
+          };
+          const onKey = (ev) => {
+            if (ev.key === "Escape") {
+              ev.preventDefault();
+              close(false);
+              return;
+            }
+            /* El foco queda preso dentro del modal mientras está abierto: si se
+               escapara al fondo, el Tab llevaría a controles que están detrás
+               del backdrop. */
+            if (ev.key === "Tab") {
+              const focusables = dialog.querySelectorAll("button");
+              if (!focusables.length) return;
+              const first = focusables[0];
+              const last = focusables[focusables.length - 1];
+              if (ev.shiftKey && document.activeElement === first) {
+                ev.preventDefault();
+                last.focus();
+              } else if (!ev.shiftKey && document.activeElement === last) {
+                ev.preventDefault();
+                first.focus();
+              }
+            }
+          };
+
+          dialog.addEventListener("click", (ev) => {
+            const btn = ev.target.closest("button[data-x]");
+            if (btn) close(btn.dataset.x === "yes");
+          });
+          backdrop.addEventListener("click", () => close(false));
+          document.addEventListener("keydown", onKey);
+
+          root.append(backdrop, dialog);
+          dialog.querySelector("button[data-x='no']").focus();
+        });
+      }
+
+      async function stopAll() {
+        const foreign = Object.values(RES).filter((r) => r.foreign && r.state === "up");
+        const ok = await confirmModal({
+          title: "Parar todo",
+          danger: true,
+          confirmLabel: "Parar todo",
+          body: [
+            "Se van a cerrar los túneles y los servicios locales de esta pantalla.",
+          ],
+          list: [
+            ...(foreign.length
+              ? [
+                  `<strong>${foreign.length} proceso${foreign.length > 1 ? "s" : ""} ajeno${foreign.length > 1 ? "s" : ""}</strong> — ${foreign
+                    .map((r) => r.name)
+                    .join(", ")}. No los levantó la web, pero el comando los mata igual.`,
+                ]
+              : []),
+            "Esto no se puede deshacer. Los procesos quedan sin trackear y hay que volver a levantarlos a mano.",
+          ],
+        });
+        if (!ok) {
+          announce("Cancelado");
+          return;
+        }
+
+        Object.keys(RES).forEach((k) => {
+          if (RES[k].state === "up" || RES[k].state === "starting") stopRes(k);
+        });
+        Object.keys(runtime).forEach((cluster) => {
+          Object.keys(runtime[cluster]).forEach((port) => {
+            if (runtime[cluster][port].state === "up") runtime[cluster][port] = { state: "down" };
+          });
+        });
+        announce("Todo parado");
+        render();
       }
 
       /* ---------------------------------------------------------- eventos --- */
@@ -1868,47 +2369,73 @@
         if (btn.dataset.act === "start") startRes(keyOf(entry));
         if (btn.dataset.act === "stop") stopRes(keyOf(entry));
         if (btn.dataset.act === "logs") {
-          document.getElementById("log-title").textContent = entry.name;
+          logScope = entry.name;
+          document.getElementById("log-scope").value = entry.name;
           document.getElementById("log-panel").hidden = false;
           renderLog();
-          document
-            .getElementById("log-panel")
-            .scrollIntoView({ behavior: "smooth" });
+          document.getElementById("log-panel").scrollIntoView({ behavior: "smooth" });
         }
       });
 
-      // El nombre del servicio es texto del usuario: se lee al cambiar y no se
-      // re-renderiza la tabla, porque `render()` reconstruye el input y perdería
-      // el foco mientras se escribe.
+      /* El nombre del servicio es texto del usuario: se lee al cambiar y no se
+         re-renderiza la tabla, porque `render()` reconstruye el input y perdería
+         el foco mientras se escribe. */
       document.addEventListener("input", (ev) => {
         if (!ev.target.classList.contains("port-input")) return;
-        const rows = document
-          .getElementById("port-rows")
-          .querySelectorAll("tr");
+        const rows = document.getElementById("port-rows").querySelectorAll("tr");
         const i = [...rows].indexOf(ev.target.closest("tr"));
         const cluster = clusterSel();
         if (catalog[cluster][i]) {
           catalog[cluster][i].label = ev.target.value;
-          // Se guarda en cada tecla, no al salir del campo: el blur no dispara si
-          // el usuario cierra la pestaña con el input enfocado.
+          /* Se guarda en cada tecla, no al salir del campo: el blur no dispara
+             si el usuario cierra la pestaña con el input enfocado. */
           saveCatalog(cluster);
         }
       });
 
       document.getElementById("env").addEventListener("change", render);
-      document
-        .querySelectorAll('input[name="cluster"]')
-        .forEach((radio) => radio.addEventListener("change", render));
+      document.querySelectorAll('input[name="cluster"]').forEach((radio) =>
+        radio.addEventListener("change", render)
+      );
 
-      document.getElementById("add-port").addEventListener("click", () => {
+      /* --- alta de puerto, con validación -----------------------------------
+         Antes el botón autogeneraba el siguiente puerto libre. Era cómodo pero
+         no dejaba elegir, y no rechazaba nada: un puerto inválido entraba igual
+         al catálogo y sólo fallaba mucho más tarde, al levantar. */
+      function addPort() {
+        const input = document.getElementById("new-port");
+        const err = document.getElementById("add-port-err");
         const cluster = clusterSel();
-        const base = CLUSTERS[cluster].ports;
-        const used = catalog[cluster].map((e) => e.port);
-        let next = base.length ? Math.max(...base, ...used) + 1 : 8402;
-        while (used.includes(next)) next++;
-        catalog[cluster].push({ port: next, label: "" });
+        const raw = input.value.trim();
+
+        const fail = (msg) => {
+          err.textContent = msg;
+          input.setAttribute("aria-invalid", "true");
+          announce(`No se agregó el puerto: ${msg}`);
+        };
+
+        err.textContent = "";
+        input.removeAttribute("aria-invalid");
+
+        if (!raw) return fail("Falta el número de puerto.");
+        const port = Number(raw);
+        if (!Number.isInteger(port) || port < 1 || port > 65535) {
+          return fail("Tiene que ser un puerto entre 1 y 65535.");
+        }
+        if (catalog[cluster].some((e) => e.port === port)) {
+          return fail(`El ${port} ya está en el catálogo de ${cluster}.`);
+        }
+
+        catalog[cluster].push({ port, label: "" });
         saveCatalog(cluster);
+        input.value = "";
+        announce(`Puerto ${port} agregado a ${cluster}`);
         render();
+      }
+
+      document.getElementById("add-port").addEventListener("click", addPort);
+      document.getElementById("new-port").addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") addPort();
       });
 
       document.getElementById("reset-catalog").addEventListener("click", () => {
@@ -1919,38 +2446,47 @@
         render();
       });
 
-      document
-        .getElementById("start-all-ports")
-        .addEventListener("click", () => {
-          const cluster = clusterSel();
-          // Por índice del catálogo, no por búsqueda de puerto: `startPort` toma la
-          // posición en el catálogo y no en la lista combinada.
-          catalog[cluster].forEach((entry, i) => {
-            if (portList(cluster)[i].state === "down") startPort(i);
-          });
+      document.getElementById("start-all-ports").addEventListener("click", () => {
+        const cluster = clusterSel();
+        /* Por índice del catálogo, no por búsqueda de puerto: `startPort` toma
+           la posición en el catálogo y no en la lista combinada. La lista se
+           recorre hacia atrás para que agregar al principio no corra el
+           índice de los que faltan. */
+        catalog[cluster].forEach((entry, i) => {
+          if (portList(cluster)[i].state === "down") startPort(i);
         });
-
-      document.getElementById("stop-all").addEventListener("click", () => {
-        Object.keys(RES).forEach((k) => {
-          if (RES[k].state === "up") stopRes(k);
-        });
-        // "Parar todo" NO vacía el catálogo: para los procesos, no para la
-        // configuración de qué servicios levanto.
-        Object.keys(runtime).forEach((cluster) => {
-          Object.keys(runtime[cluster]).forEach((port) => {
-            if (runtime[cluster][port].state === "up") {
-              runtime[cluster][port] = { state: "down" };
-            }
-          });
-        });
-        render();
       });
+
+      document.getElementById("stop-all").addEventListener("click", stopAll);
 
       document.getElementById("logs-toggle").addEventListener("click", () => {
         const panel = document.getElementById("log-panel");
         panel.hidden = !panel.hidden;
         if (!panel.hidden) renderLog();
       });
+
+      document.getElementById("log-scope").addEventListener("change", (ev) => {
+        logScope = ev.target.value;
+        renderLog();
+      });
+
+      document.getElementById("sim-fail").addEventListener("click", () => {
+        nextStartFails = true;
+        document.getElementById("sim-note").textContent =
+          "el próximo arranque va a fallar el readiness check";
+        announce("Listo: el próximo arranque va a fallar");
+      });
+
+      document.getElementById("sim-dead").addEventListener("click", killOne);
+
+      /* Autocompletado: todos los nombres guardados en cualquier cluster, para
+         que escribir "core-" sugiera uno que ya usaste. */
+      function renderServiceNames() {
+        const names = [...new Set(Object.values(catalog).flat().map((e) => e.label).filter(Boolean))];
+        document.getElementById("service-names").innerHTML = names
+          .map((n) => `<option value="${n}"></option>`)
+          .join("");
+      }
 
       const themeBtn = document.getElementById("theme");
       themeBtn.addEventListener("click", () => {
