@@ -532,13 +532,50 @@ describe('WorkflowResourcesPage', () => {
     it('el error del poll dice qué pasó', async () => {
       const { comp } = await montar();
 
-      expect(comp.readError(new Error('boom'))).toBe('boom');
+      expect(comp.describePollFailureForTest(new Error('boom'))).toBe('boom');
       // Sin conexión es el caso que más se da: el server se apagó o el túnel de
       // la sesión se cayó. Un "status 0" a secas no dice nada.
-      expect(comp.readError(new HttpErrorResponse({ status: 0 }))).toContain('No se pudo conectar');
+      expect(comp.describePollFailureForTest(new HttpErrorResponse({ status: 0 }))).toContain(
+        'No se pudo conectar',
+      );
       expect(
-        comp.readError(new HttpErrorResponse({ status: 500, error: { detail: 'se rompió' } })),
+        comp.describePollFailureForTest(
+          new HttpErrorResponse({ status: 500, error: { detail: 'se rompió' } }),
+        ),
       ).toBe('se rompió');
+    });
+
+    it('la caja no aparece si el poll trajo datos', async () => {
+      const { comp, fixture } = await montar();
+
+      // La vuelta terminó bien: el `error()` del `resource()` es `undefined`.
+      comp.settleFailureForTest(undefined);
+      fixture.detectChanges();
+
+      expect(comp.readError()).toBe('');
+      expect(fixture.nativeElement.querySelector('.error-box')).toBeNull();
+    });
+
+    it('la caja se va sola cuando el servidor vuelve', async () => {
+      // El bug: leer `state.error()` del `resource()` dejaba la caja pegada para
+      // siempre. Apagar el server con Ctrl+C deja el poll golpeando un backend
+      // muerto, cada tick falla, y el último error sobrevive a la recuperación —
+      // diciendo que no se puede leer algo que hace un rato se está leyendo.
+      const { comp, fixture } = await montar();
+
+      // El server está caído: el poll falla.
+      comp.settleFailureForTest(new HttpErrorResponse({ status: 0 }));
+      fixture.detectChanges();
+
+      expect(comp.readError()).toContain('No se pudo conectar');
+      expect(fixture.nativeElement.querySelector('.error-box')).not.toBeNull();
+
+      // El server volvió y el poll trajo datos otra vez.
+      comp.settleFailureForTest(undefined);
+      fixture.detectChanges();
+
+      expect(comp.readError()).toBe('');
+      expect(fixture.nativeElement.querySelector('.error-box')).toBeNull();
     });
   });
 });

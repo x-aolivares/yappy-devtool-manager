@@ -100,6 +100,13 @@ export class WorkflowResourcesPage {
   /** El `aria-live`. Es la parte accesible más importante de la pantalla. */
   readonly announcement = signal('');
 
+  /**
+   * El error del poll, o `''` cuando la última vuelta trajo datos.
+   *
+   * Estado propio y no `state.error()` del `resource()`: ver `showFailure`.
+   */
+  readonly readError = signal('');
+
   private readonly labelTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
   /**
@@ -242,21 +249,50 @@ export class WorkflowResourcesPage {
   /**
    * El poll.
    *
-   * Un `setInterval` con `setTimeout` encadenado en vez de `setInterval`: cada
-   * tick espera a que el anterior termine, así dos polls lentos no se acumulan.
-   * Con `visibilityState` sube el intervalo cuando nadie está mirando — el
-   * supervisor sigue escribiendo el tracker igual, sólo se lee menos.
+   * Un `setTimeout` encadenado en vez de `setInterval`: cada tick espera a que el
+   * anterior termine, así dos polls lentos no se acumulan. Con `visibilityState`
+   * sube el intervalo cuando nadie está mirando — el supervisor sigue escribiendo
+   * el tracker igual, sólo se lee menos.
    */
   private pollTimer(): void {
     const tick = () => {
+      // `reload()` devuelve un booleano y no una promesa: el fallo no se puede
+      // capturar en el `catch`. El `resource()` lo expone por `error()` después
+      // de la vuelta, así que se lee en el microtask siguiente — cuando la
+      // promise ya se resolvió o rechazó.
       this.state.reload();
       this.pollLog();
+      queueMicrotask(() => this.settleFailure(this.state.error()));
+
       const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
       const timer = setTimeout(tick, hidden ? POLL_HIDDEN_MS : POLL_MS);
       this.destroyRef.onDestroy(() => clearTimeout(timer));
     };
     const first = setTimeout(tick, POLL_MS);
     this.destroyRef.onDestroy(() => clearTimeout(first));
+  }
+
+  /**
+   * El error que se ve arriba de la pantalla.
+   *
+   * Es un estado propio y no `state.error()` del `resource()`, por una razón que
+   * sólo aparece cuando se apaga el server: el poll de 1,5s sigue corriendo contra
+   * un backend muerto, así que cada tick falla, y el último fallo queda clavado
+   * para siempre aunque el backend vuelva y el poll siga trayendo datos. La caja
+   * roja sobrevive a la recuperación y dice que no se puede leer algo que hace un
+   * rato se está leyendo.
+   *
+   * `settleFailure` recibe el error de la vuelta en vez de leerlo del signal: el
+   * `resource()` lo expone como `error()` pero no deja escribirlo, y un test no
+   * puede fabricarlo sin andarle los signals por debajo.
+   */
+  private settleFailure(failed: unknown): void {
+    if (failed) {
+      this.readError.set(describePollFailure(failed));
+      return;
+    }
+    // Volvieron los datos: la caja se va sola.
+    this.readError.set('');
   }
 
   /**
@@ -564,20 +600,18 @@ export class WorkflowResourcesPage {
   }
 
   /**
-   * El texto de un error del poll.
+   * Expuesto para tests: la caja desaparece cuando la vuelta trae datos.
    *
-   * El `error-box` va arriba de todo y es lo único que hay entre una caída del
-   * backend y una pantalla que sigue mostrando la última foto buena. Dice qué
-   * pasó, no sólo que pasó algo.
+   * No se prueba por el `reload()` del `resource()` porque en un test el recurso
+   * resuelve de inmediato y no hay tick que capturar. Lo que importa es la regla:
+   * un error sin recuperación se muestra, y con recuperación se va.
    */
-  readError(err: unknown): string {
-    if (err instanceof HttpErrorResponse) {
-      const body = err.error as { detail?: string } | null;
-      if (body?.detail) return body.detail;
-      if (err.status === 0) return 'No se pudo conectar con el servidor.';
-      return `El servidor respondió ${err.status}.`;
-    }
-    return toApiError(err).message;
+  settleFailureForTest(failed: unknown): void {
+    this.settleFailure(failed);
+  }
+
+  describePollFailureForTest(err: unknown): string {
+    return describePollFailure(err);
   }
 
   dismissNotice(): void {
@@ -591,6 +625,23 @@ export class WorkflowResourcesPage {
   trackPort(_index: number, row: WorkflowPortInfo): number {
     return row.port;
   }
+}
+
+/**
+ * El texto de un error del poll.
+ *
+ * El `error-box` va arriba de todo y es lo único que hay entre una caída del
+ * backend y una pantalla que sigue mostrando la última foto buena. Dice qué
+ * pasó, no sólo que pasó algo.
+ */
+function describePollFailure(err: unknown): string {
+  if (err instanceof HttpErrorResponse) {
+    const body = err.error as { detail?: string } | null;
+    if (body?.detail) return body.detail;
+    if (err.status === 0) return 'No se pudo conectar con el servidor.';
+    return `El servidor respondió ${err.status}.`;
+  }
+  return toApiError(err).message;
 }
 
 const EMPTY_STATE: WorkflowStateResponse = {

@@ -585,6 +585,24 @@ encadenado, y no `setInterval`, porque dos ticks lentos con `setInterval` se
 acumulan. Con la pestaña oculta el intervalo sube (10s contra 1,5s): nadie está
 mirando, y el backend sigue escribiendo el tracker igual.
 
+### Un error de poll es del momento, no un dato
+
+`state.error()` del `resource()` **no se limpia**. Con el poll corriendo, apagar el
+server significa que cada tick falla, y el último error queda pegado aunque el
+backend vuelva y el poll siga trayendo datos: la caja roja sobrevive a la
+recuperación.
+
+La caja de error es estado propio entonces, y se decide en cada vuelta: si trajo
+datos, se va; si falló, se queda.
+
+```ts
+this.state.reload();
+queueMicrotask(() => this.settleFailure(this.state.error()));
+```
+
+El microtask es porque `reload()` devuelve un booleano, no una promesa: no hay
+`catch`, y al momento de llamarlo todavía no se sabe si la vuelta terminó bien.
+
 ### El `aria-live` no es un accesorio
 
 ```html

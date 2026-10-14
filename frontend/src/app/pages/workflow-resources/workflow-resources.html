@@ -31,8 +31,13 @@
 -->
 <div class="visually-hidden" role="status" aria-live="polite">{{ announcement() }}</div>
 
-@if (state.error(); as err) {
-  <div class="error-box">No se pudo leer el estado: {{ readError(err) }}</div>
+<!--
+  La caja de error se saca y se pone sola con el poll: si el backend volvió y el
+  poll trae datos, desaparece. Antes se quedaba pegada indefinidamente porque el
+  `error()` del resource() no se limpia solo —ver `showFailure` en el .ts.
+-->
+@if (readError()) {
+  <div class="error-box">No se pudo leer el estado: {{ readError() }}</div>
 }
 
 <!-- Kafka local -->
