@@ -173,6 +173,37 @@ def track_process_state_and_supervisor(pid: int, state: str, supervisor: int) ->
     _forget(path.name)
 
 
+def _mtime(path: Path) -> float:
+    """Timestamp de escritura, para ordenar. 0 si el archivo ya no está."""
+    try:
+        return path.stat().st_mtime_ns
+    except OSError:
+        return 0
+
+
+def prune_dead_on_port(port: int) -> list[int]:
+    """Forget the tracked processes on ``port`` that are no longer running.
+
+    A process that falls over on its own leaves its entry behind forever — nobody
+    untracks it, because `untrack_process` only runs on a clean stop. Without this
+    the registry grows without bound and every `start` on that port adds another
+    ghost on top of the previous one: `ensure_port_free` only looks at live
+    entries, sees the port free, and starts another.
+
+    Called right before a start, not during a snapshot, so that `dead` stays
+    visible for as long as the developer is looking at it. The moment they ask
+    for a new one on that port, the ghosts go.
+    """
+    forgotten = []
+    for entry in get_tracked_processes():
+        if entry.get("local_port") == port and not entry.get("alive"):
+            pid = entry.get("pid")
+            if pid:
+                untrack_process(pid)
+                forgotten.append(pid)
+    return forgotten
+
+
 def get_tracked_processes(
     resource: str | None = None,
     target: str | None = None,
@@ -189,7 +220,12 @@ def get_tracked_processes(
     if not _TRACKER_DIR.exists():
         return results
 
-    paths = sorted(_TRACKER_DIR.glob("*.json"), reverse=True)
+    # "Newest first" por mtime, no por nombre de archivo. Ordenar por nombre es
+    # ordenar pids **como texto**: "9999.json" queda antes que "33940.json", que
+    # es al revés de lo que quiere decir. Con dos entradas del mismo puerto eso
+    # hace que cuál de las dos sea "la dueña" dependa de la cantidad de dígitos
+    # del pid, y el conflicto de una fila parpadea entre polls.
+    paths = sorted(_TRACKER_DIR.glob("*.json"), key=_mtime, reverse=True)
     seen = {p.name for p in paths}
     with _cache_lock:
         for name in [n for n in _parsed_cache if n not in seen]:

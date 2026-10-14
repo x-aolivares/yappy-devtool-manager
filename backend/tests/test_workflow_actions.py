@@ -128,6 +128,38 @@ def test_a_dead_holder_does_not_block_the_start(tracker):
     ensure_port_free(8403, cluster="cap")
 
 
+def test_a_start_limpia_los_fantasmas_del_puerto(tracker):
+    """Un proceso que se cae deja su entrada atrás para siempre.
+
+    `ensure_port_free` sólo mira las vivas, así que el puerto parece libre y cada
+    intento apila otro fantasma encima. El registro crece sin límite y el
+    conflicto de una fila termina parpadeando."""
+    for pid in (100, 200, 300):
+        _track(tracker, pid, alive=False, local_port=8402, cluster="cap")
+
+    ensure_port_free(8402, cluster="cap")
+
+    assert process_tracker.get_tracked_processes() == []
+
+
+def test_limpiar_un_puerto_no_toca_los_otros(tracker):
+    _track(tracker, 100, alive=False, local_port=8402, cluster="cap")
+    _track(tracker, os.getpid(), local_port=8403, cluster="cap")
+
+    ensure_port_free(8402, cluster="cap")
+
+    assert [e["local_port"] for e in process_tracker.get_tracked_processes()] == [8403]
+
+
+def test_limpiar_no_toca_procesos_vivos_de_otro_puerto(tracker):
+    pid = os.getpid()
+    _track(tracker, pid, local_port=8402, cluster="cap")
+
+    ensure_port_free(8403, cluster="cap")
+
+    assert [e["pid"] for e in process_tracker.get_tracked_processes()] == [pid]
+
+
 def test_the_refusal_names_the_other_holder(tracker):
     """The screen shows this string; "already in use" without a subject would
     send the developer looking in the wrong place."""

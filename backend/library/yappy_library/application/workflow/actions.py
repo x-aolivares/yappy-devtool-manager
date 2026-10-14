@@ -72,13 +72,18 @@ def _describe(entry: dict) -> str:
 
 
 def ensure_port_free(port: int, cluster: str = "") -> None:
-    """Refuse when somebody else's live tunnel already holds ``port``.
+    """Forget the ghosts on ``port``, then refuse if somebody live holds it.
 
     ``cluster`` is the cluster of the row trying to start. The test is the same
     one the snapshot uses — ownership is ``(cluster, port)``, not ``port`` — so
     "this row is already up" and "another cluster has it" stay distinguishable
     here too.
+
+    The pruning comes first because the check below only sees live entries: a
+    process that fell over leaves its entry behind, the port reads as free, and
+    each start stacks another ghost on the same port.
     """
+    process_tracker.prune_dead_on_port(port)
     holders = _alive_holders().get(port, [])
     if _owner(holders, cluster) is not None:
         return

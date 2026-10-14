@@ -163,3 +163,33 @@ def test_unreadable_file_is_skipped_not_fatal(tracker):
     entries = process_tracker.get_tracked_processes()
 
     assert [e["local_port"] for e in entries] == [8402]
+
+
+def test_el_orden_es_por_escritura_y_no_por_nombre(tracker):
+    """"Newest first" ordenado por nombre de archivo es ordenar pids como texto:
+    "9999.json" queda antes que "33940.json", que es al revés. Con dos entradas
+    del mismo puerto, eso hace que cuál sea "la dueña" dependa de la cantidad de
+    dígitos del pid."""
+    import time as _time
+
+    for pid in (9999, 33940):
+        _write(tracker, pid, {**_legacy_entry(pid), "local_port": 8402})
+        # mtime distintos y deterministas: el sistema de archivos puede tener
+        # resolución gruesa y dos escrituras en el mismo tick se empardarían.
+        _time.sleep(0.01)
+
+    order = [e["pid"] for e in process_tracker.get_tracked_processes()]
+
+    # 33940 se escribió después, así que va primero aunque su nombre sea mayor.
+    assert order == [33940, 9999]
+
+
+def test_prune_dead_on_port_solo_toca_ese_puerto(tracker):
+    pid_vivo = os.getpid()
+    _write(tracker, pid_vivo, {**_legacy_entry(pid_vivo), "local_port": 8403})
+    _write(tracker, 4242, {**_legacy_entry(4242), "local_port": 8402})
+
+    forgotten = process_tracker.prune_dead_on_port(8402)
+
+    assert forgotten == [4242]
+    assert [e["pid"] for e in process_tracker.get_tracked_processes()] == [pid_vivo]
