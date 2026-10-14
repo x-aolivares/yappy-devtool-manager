@@ -656,6 +656,25 @@ class WorkflowActionResponse(BaseModel):
     pid: int | None = None
     port: int | None = None
     state: str | None = None
+
+
+class WorkflowStopResponse(BaseModel):
+    """Parar un proceso. Distinto de "parar todo" a propósito.
+
+    Uno pregunta "¿lo maté?" y contesta un booleano; el otro pregunta "¿qué
+    mataste?" y contesta una lista. Meterlos en un mismo modelo obligaba a que uno
+    de los dos mintiera, y como los tests llamaban los handlers directo —que no
+    pasa por la validación de respuesta de FastAPI— el desajuste no se vio hasta
+    que la pantalla lo pidió y le llegó un 500.
+    """
+
+    ok: bool = True
+    pid: int
+    stopped: bool = Field(..., description="False when the pid was no longer tracked.")
+
+
+class WorkflowStopAllResponse(BaseModel):
+    ok: bool = True
     stopped: list[int] = []
     refused: list[dict] = []
 

@@ -7,13 +7,13 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { WorkflowActionResponse } from '../../models/workflow-action-response';
+import { WorkflowStopAllResponse } from '../../models/workflow-stop-all-response';
 
 export interface StopAllWorkflowProcesses$Params {
   allow_foreign?: boolean;
 }
 
-export function stopAllWorkflowProcesses(http: HttpClient, rootUrl: string, params?: StopAllWorkflowProcesses$Params, context?: HttpContext): Observable<StrictHttpResponse<WorkflowActionResponse>> {
+export function stopAllWorkflowProcesses(http: HttpClient, rootUrl: string, params?: StopAllWorkflowProcesses$Params, context?: HttpContext): Observable<StrictHttpResponse<WorkflowStopAllResponse>> {
   const rb = new RequestBuilder(rootUrl, stopAllWorkflowProcesses.PATH, 'post');
   if (params) {
     rb.query('allow_foreign', params.allow_foreign, {});
@@ -24,7 +24,7 @@ export function stopAllWorkflowProcesses(http: HttpClient, rootUrl: string, para
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<WorkflowActionResponse>;
+      return r as StrictHttpResponse<WorkflowStopAllResponse>;
     })
   );
 }

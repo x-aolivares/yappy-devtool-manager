@@ -61,5 +61,7 @@ export type { WorkflowResourceInfo } from './models/workflow-resource-info';
 export type { WorkflowStartPortRequest } from './models/workflow-start-port-request';
 export type { WorkflowStartResourceRequest } from './models/workflow-start-resource-request';
 export type { WorkflowStateResponse } from './models/workflow-state-response';
+export type { WorkflowStopAllResponse } from './models/workflow-stop-all-response';
 export type { WorkflowStopRequest } from './models/workflow-stop-request';
+export type { WorkflowStopResponse } from './models/workflow-stop-response';
 export type { WorkflowUnattributedInfo } from './models/workflow-unattributed-info';

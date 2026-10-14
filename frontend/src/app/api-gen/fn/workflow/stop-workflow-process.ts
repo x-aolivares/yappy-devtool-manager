@@ -7,14 +7,14 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { WorkflowActionResponse } from '../../models/workflow-action-response';
 import { WorkflowStopRequest } from '../../models/workflow-stop-request';
+import { WorkflowStopResponse } from '../../models/workflow-stop-response';
 
 export interface StopWorkflowProcess$Params {
       body: WorkflowStopRequest
 }
 
-export function stopWorkflowProcess(http: HttpClient, rootUrl: string, params: StopWorkflowProcess$Params, context?: HttpContext): Observable<StrictHttpResponse<WorkflowActionResponse>> {
+export function stopWorkflowProcess(http: HttpClient, rootUrl: string, params: StopWorkflowProcess$Params, context?: HttpContext): Observable<StrictHttpResponse<WorkflowStopResponse>> {
   const rb = new RequestBuilder(rootUrl, stopWorkflowProcess.PATH, 'post');
   if (params) {
     rb.body(params.body, 'application/json');
@@ -25,7 +25,7 @@ export function stopWorkflowProcess(http: HttpClient, rootUrl: string, params: S
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<WorkflowActionResponse>;
+      return r as StrictHttpResponse<WorkflowStopResponse>;
     })
   );
 }

@@ -5,9 +5,5 @@ export interface WorkflowActionResponse {
   ok?: boolean;
   pid?: (number | null);
   port?: (number | null);
-  refused?: Array<{
-[key: string]: any;
-}>;
   state?: (string | null);
-  stopped?: Array<number>;
 }

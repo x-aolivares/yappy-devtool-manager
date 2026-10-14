@@ -32,7 +32,9 @@ from ..schemas import (
     WorkflowStartPortRequest,
     WorkflowStartResourceRequest,
     WorkflowStateResponse,
+    WorkflowStopAllResponse,
     WorkflowStopRequest,
+    WorkflowStopResponse,
 )
 
 router = APIRouter(tags=["workflow"])
@@ -167,7 +169,7 @@ def api_workflow_port_start(req: WorkflowStartPortRequest, env: str = "dev", clu
 @router.post(
     "/api/workflow/stop",
     operation_id="stop_workflow_process",
-    response_model=WorkflowActionResponse,
+    response_model=WorkflowStopResponse,
 )
 def api_workflow_stop(req: WorkflowStopRequest):
     try:
@@ -180,7 +182,7 @@ def api_workflow_stop(req: WorkflowStopRequest):
 @router.post(
     "/api/workflow/stop-all",
     operation_id="stop_all_workflow_processes",
-    response_model=WorkflowActionResponse,
+    response_model=WorkflowStopAllResponse,
 )
 def api_workflow_stop_all(allow_foreign: bool = False):
     return {"ok": True, **actions.stop_all(allow_foreign=allow_foreign)}

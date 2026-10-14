@@ -1317,7 +1317,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkflowActionResponse"
+                  "$ref": "#/components/schemas/WorkflowStopResponse"
                 }
               }
             }
@@ -1360,7 +1360,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkflowActionResponse"
+                  "$ref": "#/components/schemas/WorkflowStopAllResponse"
                 }
               }
             }
@@ -4282,23 +4282,6 @@
               }
             ],
             "title": "State"
-          },
-          "stopped": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Stopped",
-            "default": []
-          },
-          "refused": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array",
-            "title": "Refused",
-            "default": []
           }
         },
         "type": "object",
@@ -4664,6 +4647,34 @@
         ],
         "title": "WorkflowStateResponse"
       },
+      "WorkflowStopAllResponse": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          },
+          "stopped": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Stopped",
+            "default": []
+          },
+          "refused": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Refused",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "WorkflowStopAllResponse"
+      },
       "WorkflowStopRequest": {
         "properties": {
           "pid": {
@@ -4683,6 +4694,31 @@
           "pid"
         ],
         "title": "WorkflowStopRequest"
+      },
+      "WorkflowStopResponse": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          },
+          "pid": {
+            "type": "integer",
+            "title": "Pid"
+          },
+          "stopped": {
+            "type": "boolean",
+            "title": "Stopped",
+            "description": "False when the pid was no longer tracked."
+          }
+        },
+        "type": "object",
+        "required": [
+          "pid",
+          "stopped"
+        ],
+        "title": "WorkflowStopResponse",
+        "description": "Parar un proceso. Distinto de \"parar todo\" a propósito.\n\nUno pregunta \"¿lo maté?\" y contesta un booleano; el otro pregunta \"¿qué\nmataste?\" y contrea una lista. Meterlos en un mismo modelo obligaba a que uno\nde los dos mintiera, y como los tests llaman los handlers directo —que no pasa\npor la validación de respuesta— el desajuste llegó a la pantalla como un 500."
       },
       "WorkflowUnattributedInfo": {
         "properties": {
