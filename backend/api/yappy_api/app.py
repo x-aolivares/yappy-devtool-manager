@@ -46,6 +46,11 @@ def _serve_unavailable(app: FastAPI) -> None:
 
 
 def _create_app() -> FastAPI:
+    # Esta app no registra hooks de startup ni de shutdown, y eso es una
+    # restricción, no una casualidad: `run.py` levanta uvicorn con
+    # `lifespan="off"` para que el Ctrl+C no cierre cada sesión con veinte líneas
+    # de stack trace. Agregar un hook acá lo haría correr en silencio — nunca.
+    # Ver `tests/test_web_shutdown.py`, que falla si aparece uno.
     app = FastAPI(
         title="Yappy Region Sync",
         description="Diff de DB (tablas/SP) y de parámetros SSM/Secrets entre regiones de origen y destino",

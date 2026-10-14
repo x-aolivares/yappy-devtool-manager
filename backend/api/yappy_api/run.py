@@ -77,7 +77,25 @@ def run(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) ->
 
     if open_browser:
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
-    uvicorn.run(app, host=host, port=port, log_config=log_config())
+    # `lifespan="off"` y no un try/except alrededor del arranque.
+    #
+    # El protocolo lifespan de uvicorn levanta una tarea que se queda esperando
+    # en `receive()`. Cuando el Ctrl+C cae con un request en vuelo, uvicorn entra
+    # en shutdown graceful y **cancela esa tarea**; su `await receive()` levanta
+    # `CancelledError`, que es un `BaseException`, y uvicorn lo toma como "el
+    # protocolo lifespan falló" y lo loguea con `exc_info`
+    # (`uvicorn/lifespan/on.py`). De ahí salían veinte líneas de stack trace al
+    # final de cada `yappy web`.
+    #
+    # Un `except KeyboardInterrupt` alrededor de `uvicorn.run` no lo arregla:
+    # `uvicorn.run` ya tiene el suyo (`uvicorn/main.py`) y traga la excepción
+    # antes de que llegue acá. El traceback se loguea adentro, no se propaga.
+    #
+    # Esta app no usa el protocolo: no hay startup hooks, ni shutdown hooks, ni
+    # context manager de lifespan. El calentamiento de clientes se dispara acá
+    # mismo, antes de que uvicorn levante nada. Hay un test que falla si alguien
+    # agrega uno — con `lifespan="off"` se ignoraría en silencio.
+    uvicorn.run(app, host=host, port=port, log_config=log_config(), lifespan="off")
 
 
 if __name__ == "__main__":
