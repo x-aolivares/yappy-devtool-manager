@@ -12,6 +12,7 @@ export interface WorkflowResourceInfo {
   log_file?: string;
   name: string;
   pid?: (number | null);
+  remote_port?: (number | null);
   since?: (number | null);
 
   /**

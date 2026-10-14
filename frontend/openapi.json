@@ -4484,6 +4484,17 @@
             "title": "State",
             "description": "down | starting | up | error | dead. `down` means nothing is tracked for that port at all. `dead` means something was tracked and the process is gone."
           },
+          "remote_port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remote Port"
+          },
           "local_port": {
             "anyOf": [
               {

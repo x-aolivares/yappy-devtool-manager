@@ -61,6 +61,7 @@ def _resource_info(row) -> dict:
         "name": row.name,
         "detail": row.detail,
         "state": row.state,
+        "remote_port": row.remote_port,
         "local_port": row.local_port,
         "pid": row.pid,
         "since": row.since,

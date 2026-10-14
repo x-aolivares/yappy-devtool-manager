@@ -117,6 +117,7 @@ def snapshot(cfg: Config, cluster: str) -> WorkflowSnapshot:
                 name=definition.name,
                 detail=definition.detail,
                 state=state,
+                remote_port=definition.remote_port,
                 local_port=definition.local_port,
                 pid=pid,
                 since=since,

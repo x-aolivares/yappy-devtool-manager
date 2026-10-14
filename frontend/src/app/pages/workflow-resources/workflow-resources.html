@@ -1,0 +1,435 @@
+<div class="page-head">
+  <div>
+    <h1>Workflow</h1>
+    <p class="muted">
+      Recursos locales y túneles SSM. El estado sale del tracker
+      (<code>~/.yappy/tracker</code>), así que también aparecen los que levantaste desde la terminal.
+    </p>
+  </div>
+
+  <div class="page-head__controls">
+    <div class="field">
+      <label class="field-label" for="wf-env">Ambiente</label>
+      <select
+        id="wf-env"
+        [value]="env()"
+        (change)="env.set($any($event.target).value)"
+      >
+        @for (e of envList().length ? envList() : [{ env: env() }]; track e.env) {
+          <option [value]="e.env">{{ e.env }}</option>
+        }
+      </select>
+    </div>
+  </div>
+</div>
+
+<!--
+  El `aria-live` va antes de todo lo que anuncia y siempre en el DOM: si se
+  insertara junto al contenido que cambia, el lector de pantalla lo anunciaría
+  como si fuera texto nuevo. Sin esto, quien no ve el punto de color no se
+  entera de que el túnel quedó arriba.
+-->
+<div class="visually-hidden" role="status" aria-live="polite">{{ announcement() }}</div>
+
+@if (state.error(); as err) {
+  <div class="error-box">No se pudo leer el estado: {{ readError(err) }}</div>
+}
+
+<!-- Kafka local -->
+<section class="panel">
+  <div class="section-title section-title--plain">
+    <strong>Kafka local</strong>
+    <span class="muted">KRaft · <code>yappy run kafka</code></span>
+  </div>
+  <div class="res-grid">
+    @for (row of kafka(); track trackRow($index, row)) {
+      <article
+        class="res-card"
+        [class.res-card--foreign]="row.foreign && row.state !== 'down'"
+        [class.res-card--conflict]="row.conflict"
+      >
+        <header class="res-card__head">
+          <span class="state-dot" [attr.data-state]="row.state" aria-hidden="true"></span>
+          <h3 class="res-card__name">
+            {{ row.name }}
+            @if (row.foreign && row.state !== 'down') {
+              <span class="foreign-tag">ajeno</span>
+            }
+          </h3>
+          <span class="res-card__port">:{{ row.local_port }}</span>
+        </header>
+        <span class="badge" [class]="'badge ' + badgeClass(row.state)">{{ badge(row.state) }}</span>
+        <p class="res-card__meta">{{ meta(row) }}</p>
+        @if (row.conflict) {
+          <p class="callout err">El puerto local {{ row.local_port }} ya lo está usando {{ row.conflict }}.</p>
+        }
+        <div class="res-card__actions">
+          @if (canOpenRow(row.state) && row.browser_url) {
+            <a class="secondary open-link" [href]="row.browser_url" target="_blank" rel="noopener">Abrir ↗</a>
+          }
+          @if (row.state === 'up') {
+            <button type="button" class="danger-tinted" (click)="stopOne(row)" [disabled]="busy()">Parar</button>
+          }
+          @if (row.state === 'starting') {
+            <button type="button" disabled>Levantando…</button>
+          }
+          @if (canStartRow(row.state)) {
+            <button type="button" class="secondary" (click)="startResource(row)" [disabled]="busy()">
+              {{ startText(row.state) }}
+            </button>
+          }
+          @if (canShowLogsRow(row.state) && row.pid) {
+            <button type="button" class="secondary" (click)="showLogs(row)">Ver logs</button>
+          }
+        </div>
+      </article>
+    }
+  </div>
+</section>
+
+<!-- Túneles de cluster -->
+<section class="panel">
+  <div class="section-title section-title--plain">
+    <strong>Túneles de cluster</strong>
+    <span class="muted">port-forwarding · <code>yappy run tunnel</code></span>
+  </div>
+
+  <div class="columns">
+    <div class="field">
+      <div class="field-label">Cluster</div>
+      <div class="radio-row" role="radiogroup" aria-label="Cluster">
+        @for (c of clusters; track c) {
+          <label>
+            <input
+              type="radio"
+              name="wf-cluster"
+              [value]="c"
+              [checked]="cluster() === c"
+              (change)="cluster.set(c)"
+            />
+            {{ c }}
+          </label>
+        }
+      </div>
+    </div>
+  </div>
+
+  @if (remoteHost()) {
+    <p class="cluster-context"><span>Se resuelve a</span> <code>{{ remoteHost() }}</code></p>
+  }
+
+  <div class="cat-bar">
+    <span>{{ catalogSummary() }}</span>
+    <span class="cat-bar__saved"><span class="cat-bar__dot"></span> se guarda solo</span>
+  </div>
+
+  <div class="table-scroll">
+    <table class="port-table">
+      <thead>
+        <tr>
+          <th scope="col">Puerto</th>
+          <th scope="col">Servicio</th>
+          <th scope="col">Estado</th>
+          <th scope="col"></th>
+          <th scope="col"><span class="visually-hidden">Quitar</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of ports(); track trackPort($index, row)) {
+          <tr [attr.data-conflict]="!!row.conflict">
+            <td class="port-table__number">{{ row.port }}</td>
+            <td>
+              <input
+                class="port-input"
+                list="wf-service-names"
+                placeholder="nombre del servicio"
+                [value]="row.label"
+                (input)="writeLabel(row, $any($event.target).value)"
+              />
+              @if (row.conflict) {
+                <p class="callout err">El puerto local {{ row.port }} ya lo está usando {{ row.conflict }}.</p>
+              }
+            </td>
+            <td>
+              <span class="state-dot" [attr.data-state]="row.state" aria-hidden="true"></span>
+              <span class="badge" [class]="'badge ' + badgeClass(row.state)">{{ badge(row.state) }}</span>
+              <span class="muted">{{ meta(row) }}</span>
+            </td>
+            <td class="port-table__actions">
+              @if (canOpenRow(row.state) && row.browser_url) {
+                <a class="secondary open-link" [href]="row.browser_url" target="_blank" rel="noopener">Abrir ↗</a>
+              }
+              @if (row.state === 'up') {
+                <button type="button" class="danger-tinted" (click)="stopOne(row)" [disabled]="busy()">Parar</button>
+              }
+              @if (row.state === 'starting') {
+                <button type="button" disabled>Levantando…</button>
+              }
+              @if (canStartRow(row.state)) {
+                <button type="button" class="secondary" (click)="startPort(row)" [disabled]="busy()">
+                  {{ startText(row.state) }}
+                </button>
+              }
+              @if (canShowLogsRow(row.state) && row.pid) {
+                <button type="button" class="secondary" (click)="showLogs(row)">Ver logs</button>
+              }
+            </td>
+            <td>
+              <button
+                type="button"
+                class="del-btn"
+                (click)="removePort(row)"
+                [disabled]="busy()"
+                [title]="'Quitar ' + (row.label || row.port) + ' del catálogo'"
+              >
+                &times;
+              </button>
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="5" class="muted">
+              El cluster <code>{{ cluster() }}</code> no tiene puertos cargados. Agregá el primero con el campo de abajo.
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <datalist id="wf-service-names">
+    @for (row of ports(); track trackPort($index, row)) {
+      @if (row.label) {
+        <option [value]="row.label"></option>
+      }
+    }
+  </datalist>
+
+  <div class="add-form">
+    <input
+      #newPort
+      class="add-form__input"
+      type="number"
+      min="1"
+      max="65535"
+      placeholder="puerto"
+      aria-label="Puerto a agregar al catálogo"
+      aria-describedby="wf-add-err"
+      [attr.aria-invalid]="!!addPortError()"
+      [value]="addPortValue()"
+      (input)="addPortValue.set($any($event.target).value)"
+      (keydown)="onAddPortKey($event)"
+    />
+    <button type="button" class="secondary" (click)="addPort()" [disabled]="busy()">Agregar</button>
+    <button
+      type="button"
+      class="secondary"
+      (click)="startAllDown()"
+      [disabled]="busy() || !hasDown()"
+    >
+      Levantar todos
+    </button>
+  </div>
+  @if (addPortError()) {
+    <p id="wf-add-err" class="muted hint-error">{{ addPortError() }}</p>
+  }
+
+  <p class="callout warn">
+    <strong>El túnel no levanta cuando el puerto bindea.</strong>
+    <code>session-manager-plugin</code> abre el puerto local apenas arranca y puede seguir aceptando
+    conexiones que no producen un byte. Por eso la fila queda en <em>levantando…</em> hasta un
+    readiness check de verdad, y no sólo hasta que el proceso existe.
+  </p>
+</section>
+
+<!-- Servicios con destino propio -->
+<section class="panel">
+  <div class="section-title section-title--plain">
+    <strong>Servicios con destino propio</strong>
+    <span class="muted">no dependen del cluster</span>
+  </div>
+  <div class="res-grid">
+    @for (row of named(); track trackRow($index, row)) {
+      <article
+        class="res-card"
+        [class.res-card--foreign]="row.foreign && row.state !== 'down'"
+        [class.res-card--conflict]="row.conflict"
+      >
+        <header class="res-card__head">
+          <span class="state-dot" [attr.data-state]="row.state" aria-hidden="true"></span>
+          <h3 class="res-card__name">
+            {{ row.name }}
+            @if (row.foreign && row.state !== 'down') {
+              <span class="foreign-tag">ajeno</span>
+            }
+          </h3>
+          @if (row.remote_port) {
+            <span class="res-card__port">:{{ row.remote_port }} → :{{ row.local_port }}</span>
+          } @else {
+            <span class="res-card__port">:{{ row.local_port }}</span>
+          }
+        </header>
+        <span class="badge" [class]="'badge ' + badgeClass(row.state)">{{ badge(row.state) }}</span>
+        <p class="res-card__meta">{{ meta(row) }}</p>
+        @if (row.conflict) {
+          <p class="callout err">El puerto local {{ row.local_port }} ya lo está usando {{ row.conflict }}.</p>
+        }
+        <div class="res-card__actions">
+          @if (canOpenRow(row.state) && row.browser_url) {
+            <a class="secondary open-link" [href]="row.browser_url" target="_blank" rel="noopener">Abrir ↗</a>
+          }
+          @if (row.state === 'up') {
+            <button type="button" class="danger-tinted" (click)="stopOne(row)" [disabled]="busy()">Parar</button>
+          }
+          @if (row.state === 'starting') {
+            <button type="button" disabled>Levantando…</button>
+          }
+          @if (canStartRow(row.state)) {
+            <button type="button" class="secondary" (click)="startResource(row)" [disabled]="busy()">
+              {{ startText(row.state) }}
+            </button>
+          }
+          @if (canShowLogsRow(row.state) && row.pid) {
+            <button type="button" class="secondary" (click)="showLogs(row)">Ver logs</button>
+          }
+        </div>
+      </article>
+    }
+  </div>
+
+  <p class="callout err">
+    <strong><code>yappy stop tunnel</code> mata todas las sesiones SSM.</strong>
+    Incluye las que levantaste desde la terminal y las de otro proyecto. Por eso las ajenas van con
+    borde punteado y la etiqueta <em>ajeno</em>: la lista no las mezcla con las que arrancó la web.
+  </p>
+</section>
+
+<!-- Base de datos -->
+<section class="panel">
+  <div class="section-title section-title--plain">
+    <strong>Base de datos</strong>
+    <span class="muted">Aurora · <code>yappy run db</code></span>
+  </div>
+  <div class="res-grid">
+    @for (row of db(); track trackRow($index, row)) {
+      <article
+        class="res-card"
+        [class.res-card--foreign]="row.foreign && row.state !== 'down'"
+        [class.res-card--conflict]="row.conflict"
+      >
+        <header class="res-card__head">
+          <span class="state-dot" [attr.data-state]="row.state" aria-hidden="true"></span>
+          <h3 class="res-card__name">
+            {{ row.name }}
+            @if (row.foreign && row.state !== 'down') {
+              <span class="foreign-tag">ajeno</span>
+            }
+          </h3>
+          <span class="res-card__port">:{{ row.local_port }}</span>
+        </header>
+        <span class="badge" [class]="'badge ' + badgeClass(row.state)">{{ badge(row.state) }}</span>
+        <p class="res-card__meta">{{ meta(row) }}</p>
+        @if (row.conflict) {
+          <p class="callout err">El puerto local {{ row.local_port }} ya lo está usando {{ row.conflict }}.</p>
+        }
+        <div class="res-card__actions">
+          @if (row.state === 'up') {
+            <button type="button" class="danger-tinted" (click)="stopOne(row)" [disabled]="busy()">Parar</button>
+          }
+          @if (row.state === 'starting') {
+            <button type="button" disabled>Levantando…</button>
+          }
+          @if (canStartRow(row.state)) {
+            <button type="button" class="secondary" (click)="startResource(row)" [disabled]="busy()">
+              {{ startText(row.state) }}
+            </button>
+          }
+          @if (canShowLogsRow(row.state) && row.pid) {
+            <button type="button" class="secondary" (click)="showLogs(row)">Ver logs</button>
+          }
+        </div>
+      </article>
+    }
+  </div>
+</section>
+
+<!--
+  Túneles que el tracker conoce y ninguna fila puede ubicar. Casi siempre son
+  de antes del campo `local_port`: se muestran aparte en vez de dibujarse en
+  alguna fila por parecido.
+-->
+@if (unattributed().length) {
+  <section class="panel">
+    <div class="section-title"><strong>Sin puerto conocido</strong></div>
+    <p class="muted">
+      Trackeados antes de que el registro guardara el puerto. Bajalos y volvé a levantarlos una vez.
+    </p>
+    @for (row of unattributed(); track row.pid) {
+      <p class="res-card__meta">{{ row.resource }} · pid {{ row.pid }} @if (row.env) { ({{ row.env }}) }</p>
+    }
+  </section>
+}
+
+<!-- Resumen -->
+<div class="summary-bar">
+  <p class="summary-bar__text">{{ summary() }}</p>
+  <div class="summary-bar__actions">
+    <button
+      type="button"
+      class="secondary"
+      (click)="showFirstLog()"
+      [disabled]="!firstLogPid()"
+    >
+      Ver logs
+    </button>
+    <button
+      type="button"
+      class="danger-tinted"
+      (click)="askStopAll()"
+      [disabled]="!anythingAlive()"
+    >
+      Parar todo
+    </button>
+  </div>
+</div>
+
+<!-- Logs -->
+<section class="panel log-panel" [hidden]="!logScope()">
+  <div class="section-title section-title--plain">
+    <strong>Logs</strong>
+    <button type="button" class="secondary" (click)="closeLogs()">Cerrar</button>
+  </div>
+  @if (logScope()) {
+    @if (logText()) {
+      <pre class="log-view">{{ logText() }}</pre>
+    } @else if (logLoaded()) {
+      <p class="muted">Sin contenido todavía.</p>
+    } @else {
+      <p class="muted">Buscando logs…</p>
+    }
+  }
+</section>
+
+@if (busy()) {
+  <!--
+    Escribe: arrancar o parar un túnel no se puede deshacer cortando el request.
+    El backend seguiría escribiendo aunque el navegador abandone la conexión, así
+    que el rótulo no promete una cancelación que no existe.
+  -->
+  <app-busy-modal [open]="busy()" message="Trabajando…" [writes]="true" (cancelled)="dismissNotice()" />
+}
+
+@if (notice(); as n) {
+  <app-notice-modal
+    [open]="true"
+    [title]="n.title"
+    [tone]="n.tone"
+    confirmLabel="Parar todo"
+    (confirmed)="confirmStopAll()"
+    (closed)="cancelStopAll()"
+  >
+    @for (paragraph of n.paragraphs; track $index) {
+      <p>{{ paragraph }}</p>
+    }
+  </app-notice-modal>
+}

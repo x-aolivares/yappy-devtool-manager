@@ -2054,6 +2054,351 @@ details {
   }
 }
 
+// ============================================================
+// Recursos (página "Workflow / Recursos")
+// ============================================================
+
+/* La tarjeta de un recurso: nombre, puerto, estado y acciones.
+
+   El punto de color es lo único que cambia asíncronamente en toda la pantalla, y
+   para quien no lo ve no hay ningún otro aviso de que el túnel quedó arriba. Por
+   eso el `aria-live` de la página es obligatorio y no un accesorio: el punto es
+   la información, la etiqueta es el refuerzo. */
+.res-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.875rem;
+  background: var(--panel);
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--sys-radius-md);
+  transition: border-color var(--sys-dur) var(--sys-ease);
+}
+
+/* Ajeno: lo levantó otro proceso. El borde punteado dice "no lo arrancó esta
+   pantalla" antes de que nadie lea la etiqueta. */
+.res-card--foreign {
+  border-style: dashed;
+}
+
+.res-card--conflict {
+  border-color: var(--sys-danger-border);
+  background: var(--err-bg);
+}
+
+.res-card__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.res-card__name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Puerto en monoespaciada con cifras tabulares: la columna de números tiene que
+   alinearse entre tarjetas o comparar dos puertos a ojo se vuelve adivinar. */
+.res-card__port {
+  font-family: var(--sys-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.res-card__meta {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  margin: 0;
+  min-height: 1.125rem;
+}
+
+.res-card__actions {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+/* El punto de estado. Cinco appearances, todas del juego de tokens: el color
+   literal de cada estado está en su badge, no acá. */
+.state-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  flex: none;
+  background: var(--border);
+
+  &[data-state='up'] {
+    background: var(--sys-success);
+  }
+
+  &[data-state='starting'] {
+    background: var(--sys-warning);
+    animation: sys-pulse 1.2s var(--sys-ease) infinite;
+  }
+
+  &[data-state='dead'] {
+    background: var(--sys-warning);
+  }
+
+  &[data-state='error'] {
+    background: var(--sys-danger);
+  }
+}
+
+@keyframes sys-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Etiqueta del recurso ajeno. En versalitas y del tamaño mínimo: es una
+   aclaración, no un título. */
+.foreign-tag {
+  font-size: var(--text-xxs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--sys-radius-pill);
+  padding: 0 0.3125rem;
+  margin-left: 0.375rem;
+  white-space: nowrap;
+}
+
+/* El nombre del servicio se edita en la fila. Es un input pelado: el nombre
+   está a la vista, no necesita etiqueta. */
+.port-input {
+  width: 100%;
+  font-size: var(--text-sm);
+  border: 0.0625rem solid transparent;
+  border-radius: var(--sys-radius-sm);
+  padding: 0.125rem 0.25rem;
+  background: transparent;
+
+  &:hover {
+    border-color: var(--border);
+  }
+
+  &:focus-visible {
+    border-color: var(--accent);
+    outline: none;
+    box-shadow: 0 0 0 0.1875rem var(--sys-focus-ring);
+  }
+
+  &::placeholder {
+    color: var(--muted);
+  }
+}
+
+.port-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+
+  th,
+  td {
+    padding: 0.375rem 0.5rem;
+    text-align: left;
+    border-bottom: 0.0625rem solid var(--border);
+    vertical-align: middle;
+  }
+
+  th {
+    font-weight: 600;
+    color: var(--muted);
+    font-size: var(--text-xs);
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  tr[data-conflict='true'] {
+    background: var(--err-bg);
+  }
+}
+
+.port-table__number {
+  font-family: var(--sys-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.port-table__actions {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* Botón de borrar la fila del catálogo. Sin texto: el `title` y el
+   visually-hidden dan la misma información a los dos. */
+.del-btn {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: var(--text-lg);
+  line-height: 1;
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--sys-radius-sm);
+
+  &:hover {
+    color: var(--err);
+    background: var(--sys-hover-bg);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 0.1875rem var(--sys-focus-ring);
+  }
+}
+
+/* El contador de puertos y el aviso de que se guarda solo. */
+.cat-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  margin-bottom: 0.625rem;
+}
+
+.cat-bar__saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  margin-left: auto;
+}
+
+.cat-bar__dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: var(--sys-success);
+}
+
+/* La fila de agregar puerto: input angosto + botones de la altura de control. */
+.add-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 0.0625rem solid var(--border);
+}
+
+.add-form__input {
+  width: 8rem;
+  font-family: var(--sys-mono);
+  min-height: var(--sys-control-h);
+}
+
+.add-form__input[aria-invalid='true'] {
+  border-color: var(--err);
+  box-shadow: 0 0 0 0.1875rem var(--err-bg);
+}
+
+/* El log. Alto tope y scroll propio: un log sin tope empuja el resto de la
+   pantalla y el developer pierde de vista las filas que importan. */
+.log-view {
+  margin: 0;
+  font-family: var(--sys-mono);
+  font-size: var(--text-xs);
+  background: var(--code-bg);
+  border-radius: var(--sys-radius-md);
+  padding: 0.75rem;
+  max-height: 16rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* La barra de resumen: contadores a la izquierda, acciones a la derecha. */
+.summary-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  padding: 0.75rem 1rem;
+  background: var(--panel);
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--sys-radius-lg);
+  box-shadow: var(--sys-shadow-sm);
+}
+
+.summary-bar__text {
+  flex: 1;
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+.summary-bar__actions {
+  display: flex;
+  gap: 0.625rem;
+}
+
+/* Botón teñido, no macizo. No hay token de texto sobre rojo lleno, y un literal
+   ahí se ve bien en un tema y cortado en el otro. */
+button.danger-tinted {
+  color: var(--err);
+  background: var(--err-bg);
+  border-color: var(--sys-danger-border);
+  font-weight: 500;
+
+  &:hover {
+    background: var(--sys-danger-border);
+  }
+
+  /* Su borde ya es del color de acento, así que el anillo de acento no se
+     distinguiría del control. El `outline` es la excepción consciente. */
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+}
+
+/* El aviso de que el puerto bindea antes de que el canal de datos exista. Y el
+   de que `yappy stop tunnel` mata sesiones de otros proyectos. */
+.callout {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--sys-radius-md);
+  border: 0.0625rem solid;
+  margin-top: 0.75rem;
+
+  &.warn {
+    color: var(--warn);
+    background: var(--warn-bg);
+    border-color: var(--sys-warning-border);
+  }
+
+  &.err {
+    color: var(--err);
+    background: var(--err-bg);
+    border-color: var(--sys-danger-border);
+  }
+
+  strong {
+    font-weight: 600;
+  }
+}
+
 /* Las animaciones nuevas —el modal que escala, el fade del backdrop, la
    compresión de los botones y el levantamiento de las tarjetas— tienen que caer
    acá también, no sólo las transiciones. Una animación de entrada es la que más
@@ -2086,5 +2431,13 @@ details {
 
   .spinner {
     animation: none;
+  }
+
+  /* El pulso del punto de estado es la animación más difícil de esquivar de la
+     app: está siempre encendido y es lo que dice que algo cambió. Sin movimiento
+     queda un punto atenuado, que sigue distinguiendo `starting` de `down`. */
+  .state-dot {
+    animation: none !important;
+    opacity: 0.6;
   }
 }

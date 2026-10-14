@@ -1,0 +1,82 @@
+/* Layout de la pantalla Workflow/Recursos.
+ *
+ * Los primitivos —`.res-card`, `.state-dot`, `.port-table`, `.log-view`,
+ * `.callout`, `.summary-bar`— son globales en `styles.scss`: los usan la tarjeta,
+ * la fila de la tabla y la barra de resumen, y un estilo scoped no llega a los
+ * tres. Acá sólo está la disposición de esta página, que es lo que le es propio.
+ */
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+
+  h1 {
+    font-size: var(--text-lg);
+    margin: 0 0 0.25rem;
+  }
+
+  p {
+    margin: 0;
+    font-size: var(--text-sm);
+    max-width: 46rem;
+  }
+}
+
+.page-head__controls {
+  flex: none;
+}
+
+/* La grilla de tarjetas. `auto-fill` con mínimo de 19rem: por debajo de eso una
+   tarjeta quedaría con el nombre partido en tres líneas y el puerto desalineado
+   con el de al lado. */
+.res-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: 0.75rem;
+}
+
+.cluster-context {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  margin: 0.75rem 0 0.5rem;
+
+  code {
+    font-family: var(--sys-mono);
+    color: var(--text);
+  }
+}
+
+/* El texto de "Se resuelve a" y el host: el host pesa más porque es el dato. */
+.cluster-host {
+  font-family: var(--sys-mono);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 0.0625rem;
+  height: 0.0625rem;
+  padding: 0;
+  margin: -0.0625rem;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* En pantalla angosta la grilla de dos columnas del header se apila, y el
+   select no se queda con el ancho de un solo dígito al lado del título. */
+@media (max-width: 40rem) {
+  .page-head {
+    align-items: stretch;
+  }
+
+  .page-head__controls select {
+    width: 100%;
+  }
+}

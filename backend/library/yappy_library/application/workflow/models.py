@@ -101,6 +101,8 @@ class ResourceRow:
     name: str
     detail: str
     state: str = STATE_DOWN
+    remote_port: int | None = None
+    """Where the traffic goes. A local resource has none: it listens here."""
     local_port: int | None = None
     pid: int | None = None
     since: float | None = None

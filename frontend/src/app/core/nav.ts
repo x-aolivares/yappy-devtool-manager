@@ -67,6 +67,17 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     ],
   },
   {
+    id: 'workflow',
+    label: 'Workflow',
+    items: [
+      {
+        link: '/workflow/resources',
+        label: 'Recursos',
+        hint: 'Levanta y para túneles SSM, Kafka local y el túnel de base de datos',
+      },
+    ],
+  },
+  {
     // La primera herramienta de la sección. Sigue siendo la única de Bitbucket
     // propiamente dicha: lee de la API de Bitbucket, pero lo que responde es
     // "qué hay desplegado", que es un dato de ECS y CircleCI.

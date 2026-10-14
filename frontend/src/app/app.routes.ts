@@ -10,6 +10,7 @@ import { SchemaSyncPage } from './pages/schema-sync/schema-sync';
 import { SessionDetailPage } from './pages/session-detail/session-detail';
 import { SessionsPage } from './pages/sessions/sessions';
 import { SqlPage } from './pages/sql/sql';
+import { WorkflowResourcesPage } from './pages/workflow-resources/workflow-resources';
 
 // `/params-diff` sí está, pero en modo de solo lectura: comparar dos ambientes es
 // leer, y el comando para aplicar se copia desde la pantalla. Las páginas de
@@ -36,6 +37,7 @@ export const routes: Routes = [
       { path: 'sql', component: SqlPage },
     ],
   },
+  { path: 'workflow/resources', component: WorkflowResourcesPage },
   { path: 'sessions', component: SessionsPage },
   { path: 'sessions/:sessionId', component: SessionDetailPage },
   { path: 'deployments', component: DeploymentsPage },

@@ -572,6 +572,8 @@ class WorkflowResourceInfo(BaseModel):
         description="down | starting | up | error | dead. `down` means nothing is tracked "
         "for that port at all. `dead` means something was tracked and the process is gone.",
     )
+    remote_port: int | None = None
+    """Where the traffic goes. Local ones have none: Kafka local listens here."""
     local_port: int | None = None
     pid: int | None = None
     since: float | None = None
