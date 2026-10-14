@@ -77,7 +77,7 @@ def _recv_exactly(sock: socket.socket, size: int) -> bytes:
     return b"".join(chunks)
 
 
-def _mysql_greeting(port: int, timeout: float) -> bool:
+def mysql_greeting(port: int, timeout: float) -> bool:
     """True when ``port`` answers with a MySQL server greeting.
 
     A successful TCP connect is *not* proof that a tunnel works:
@@ -87,6 +87,9 @@ def _mysql_greeting(port: int, timeout: float) -> bool:
     that never produce a single byte, nor a FIN. Waiting on the greeting is
     what separates "the tunnel is up" from "the port is merely listening", and
     it is the difference between an error and an indefinite hang.
+
+    Public because the Workflow/Recursos screen runs the same probe to decide
+    whether a tunnel it just opened is actually up.
     """
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=timeout) as sock:
@@ -104,7 +107,7 @@ def _wait_for_port(port: int, timeout: float = 30.0) -> None:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break
-        if _mysql_greeting(port, timeout=min(5.0, max(0.5, remaining))):
+        if mysql_greeting(port, timeout=min(5.0, max(0.5, remaining))):
             return
         time.sleep(0.5)
     raise SyncError(
@@ -190,7 +193,7 @@ def connect(cfg: Config) -> Iterator[pymysql.connections.Connection]:
         # process per request — one per click, none of them ever cleaned up,
         # since the cleanup only runs when the request finishes. It also hid the
         # failure, because the tunnel is started quietly.
-        if not _mysql_greeting(local_port, timeout=1.0):
+        if not mysql_greeting(local_port, timeout=1.0):
             proc = base.ssm_tunnel(
                 instance=instance,
                 port=int(remote_port),

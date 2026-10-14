@@ -10,7 +10,7 @@ del saludo de MySQL queda bloqueada para siempre.
 
 Estos tests fijan las tres propiedades que evitan la regresión:
 
-1. `_mysql_greeting` distingue "el túnel habla MySQL" de "el puerto escucha".
+1. `mysql_greeting` distingue "el túnel habla MySQL" de "el puerto escucha".
 2. `_wait_for_port` convierte un túnel muerto en un `SyncError` con mensaje.
 3. `connect` reusa un túnel sano en vez de spawnear uno que no puede tomar el
    puerto local.
@@ -24,7 +24,7 @@ import types
 import pytest
 
 from yappy_library.adapters.database import connection as conn_mod
-from yappy_library.adapters.database.connection import SyncError, _mysql_greeting, _wait_for_port
+from yappy_library.adapters.database.connection import SyncError, mysql_greeting, _wait_for_port
 
 
 def _greeting_bytes() -> bytes:
@@ -84,24 +84,24 @@ def listener():
         srv.close()
 
 
-# --- _mysql_greeting --------------------------------------------------------
+# --- mysql_greeting --------------------------------------------------------
 
 
 def test_a_mysql_greeting_is_recognized(listener):
     srv = listener(_greeting_bytes())
-    assert _mysql_greeting(srv.port, timeout=2.0) is True
+    assert mysql_greeting(srv.port, timeout=2.0) is True
 
 
 def test_a_port_that_answers_nothing_is_not_a_tunnel(listener):
     """El caso exacto del bug: el puerto acepta y no entrega ni un byte."""
     srv = listener(None)
-    assert _mysql_greeting(srv.port, timeout=1.0) is False
+    assert mysql_greeting(srv.port, timeout=1.0) is False
     assert srv.connections == 1, "el probe tiene que intentar conectarse"
 
 
 def test_a_port_that_answers_something_else_is_not_a_tunnel(listener):
     srv = listener(b"SSH-2.0-OpenSSH_8.7\r\n")
-    assert _mysql_greeting(srv.port, timeout=2.0) is False
+    assert mysql_greeting(srv.port, timeout=2.0) is False
 
 
 def test_a_closed_port_is_not_a_tunnel():
@@ -110,7 +110,7 @@ def test_a_closed_port_is_not_a_tunnel():
     dead_port = probe.getsockname()[1]
     probe.close()
 
-    assert _mysql_greeting(dead_port, timeout=1.0) is False
+    assert mysql_greeting(dead_port, timeout=1.0) is False
 
 
 # --- _wait_for_port ---------------------------------------------------------
@@ -125,7 +125,7 @@ def test_wait_retries_until_the_tunnel_answers(monkeypatch):
         attempts["n"] += 1
         return attempts["n"] >= 3
 
-    monkeypatch.setattr(conn_mod, "_mysql_greeting", _ready_on_third_probe)
+    monkeypatch.setattr(conn_mod, "mysql_greeting", _ready_on_third_probe)
     monkeypatch.setattr(conn_mod.time, "sleep", lambda _s: None)
 
     _wait_for_port(8101, timeout=5.0)
@@ -197,7 +197,7 @@ def _patch_connect_deps(monkeypatch, *, greeting: bool, spawns: list) -> None:
     monkeypatch.setattr(conn_mod, "_local_env_values", lambda: {})
     monkeypatch.setattr(conn_mod, "generate_token", lambda cfg: "token")
     monkeypatch.setattr(conn_mod, "_open", lambda *a, **kw: _FakeConn())
-    monkeypatch.setattr(conn_mod, "_mysql_greeting", lambda port, timeout: greeting)
+    monkeypatch.setattr(conn_mod, "mysql_greeting", lambda port, timeout: greeting)
     monkeypatch.setattr(conn_mod, "_wait_for_port", lambda port, timeout=30.0: None)
 
     class _Base:
