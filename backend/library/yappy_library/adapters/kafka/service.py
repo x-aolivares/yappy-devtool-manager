@@ -99,7 +99,8 @@ class KafkaService:
         self._log_dir = Path(self._cfg.kafka_path) / "temp-logs"
 
     def _spawn_detached(
-        self, cmd: list[str], target: str, local_port: int | None = None
+        self, cmd: list[str], target: str, local_port: int | None = None,
+        owner: str = "cli",
     ) -> subprocess.Popen:
         """Spawn a background process with output captured to a real log file.
 
@@ -129,11 +130,12 @@ class KafkaService:
             target=target,
             log_file=str(log_path),
             local_port=local_port,
+            owner=owner,
         )
         self._procs.append(proc)
         return proc
 
-    def _start_server(self, detach: bool) -> subprocess.Popen | None:
+    def _start_server(self, detach: bool, owner: str = "cli") -> subprocess.Popen | None:
         props = self._kafka_core / "config" / "kraft" / "server.properties"
         libs_dir = self._kafka_core / "libs"
         if not props.exists():
@@ -161,7 +163,7 @@ class KafkaService:
         ]
 
         if detach:
-            proc = self._spawn_detached(cmd, "server", _broker_port(props))
+            proc = self._spawn_detached(cmd, "server", _broker_port(props), owner)
             success("Kafka server started (background)")
             time.sleep(2)
             return proc
@@ -172,7 +174,7 @@ class KafkaService:
             success("Kafka server stopped (Ctrl+C)")
         return None
 
-    def _start_ui(self, detach: bool) -> subprocess.Popen | None:
+    def _start_ui(self, detach: bool, owner: str = "cli") -> subprocess.Popen | None:
         ui_jar = self._kafka_ui / "main.jar"
         if not ui_jar.exists():
             die(f"Kafdrop UI jar not found: {ui_jar}")
@@ -188,7 +190,7 @@ class KafkaService:
             cmd.append(f"--spring.config.additional-location=file:{ui_config}")
 
         if detach:
-            proc = self._spawn_detached(cmd, "ui", KAFDROP_UI_PORT)
+            proc = self._spawn_detached(cmd, "ui", KAFDROP_UI_PORT, owner)
             success("Kafdrop UI started (background)")
             time.sleep(2)
             # Open browser
@@ -211,12 +213,14 @@ class KafkaService:
             success("Kafdrop UI stopped (Ctrl+C)")
         return None
 
-    def up(self, target: str, detach: bool = False) -> subprocess.Popen | None:
+    def up(
+        self, target: str, detach: bool = False, owner: str = "cli"
+    ) -> subprocess.Popen | None:
         _ensure_windows()
         if target == "server":
-            return self._start_server(detach)
+            return self._start_server(detach, owner)
         if target == "ui":
-            return self._start_ui(detach)
+            return self._start_ui(detach, owner)
         if target == "clean":
             self.clean()
             return None

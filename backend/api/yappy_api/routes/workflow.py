@@ -121,6 +121,7 @@ def api_workflow_state(env: str = "dev", cluster: str = "cap"):
         "cluster": snap.cluster,
         "remote_host": snap.remote_host,
         "generated_at": snap.generated_at,
+        "catalog_configured": snap.catalog_configured,
         "resources": [_resource_info(r) for r in snap.resources],
         "ports": [_port_info(p) for p in snap.ports],
         "unattributed": [_unattributed_info(e) for e in snap.unattributed],

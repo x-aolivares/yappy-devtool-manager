@@ -14,7 +14,7 @@ import time
 
 from yappy_library.adapters.process_tracker import get_tracked_processes
 from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES
-from yappy_library.application.workflow.catalog import entries_for
+from yappy_library.application.workflow.catalog import entries_for, is_configured
 from yappy_library.application.workflow.models import (
     STATE_DOWN,
     PortRow,
@@ -160,6 +160,7 @@ def snapshot(cfg: Config, cluster: str) -> WorkflowSnapshot:
         cluster=cluster,
         remote_host=remote_host_for(cfg, cluster),
         generated_at=time.time(),
+        catalog_configured=is_configured(cfg),
         resources=resources,
         ports=ports,
         unattributed=unattributed,

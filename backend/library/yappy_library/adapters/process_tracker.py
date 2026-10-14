@@ -94,6 +94,7 @@ def track_process(
     label: str = "",
     owner: str = OWNER_CLI,
     state: str = STATE_UP,
+    supervisor: int | None = None,
 ):
     """Register ``pid`` so it can be found, attributed and stopped later.
 
@@ -115,6 +116,7 @@ def track_process(
         "label": label,
         "owner": owner,
         "state": state,
+        "supervisor": supervisor,
     }
     path = _TRACKER_DIR / f"{pid}.json"
     path.write_text(json.dumps(entry, indent=2))
@@ -134,6 +136,36 @@ def update_process_state(pid: int, state: str) -> None:
     except (OSError, json.JSONDecodeError):
         return
     data["state"] = state
+    try:
+        path.write_text(json.dumps(data, indent=2))
+    except OSError:
+        return
+    _forget(path.name)
+
+
+def _process_alive(pid) -> bool:
+    if not pid:
+        return False
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ProcessLookupError, TypeError, ValueError):
+        return False
+
+
+def track_process_state_and_supervisor(pid: int, state: str, supervisor: int) -> None:
+    """Move a tracked process to ``state`` and name who will resolve it.
+
+    Same read-modify-write as :func:`update_process_state`, so a CLI tunnel and
+    the web cannot clobber each other's fields.
+    """
+    path = _TRACKER_DIR / f"{pid}.json"
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return
+    data["state"] = state
+    data["supervisor"] = supervisor
     try:
         path.write_text(json.dumps(data, indent=2))
     except OSError:
@@ -189,6 +221,14 @@ def get_tracked_processes(
         else:
             entry["alive"] = False
 
+        # The process that was going to resolve `starting` into `up` or `error`.
+        # If it is gone, nobody ever will: a web server that shut down mid-start
+        # leaves the entry behind, and without this the row says "levantando…"
+        # forever even though the Kafka broker is happily serving.
+        supervisor = entry.get("supervisor")
+        if supervisor is not None:
+            entry["supervisor_alive"] = _process_alive(supervisor)
+
         # Files written before these fields existed. They predate the web UI
         # entirely, so `cli` is the honest owner and the process did start.
         entry.setdefault("owner", OWNER_CLI)
@@ -199,6 +239,8 @@ def get_tracked_processes(
         entry.setdefault("remote_host", "")
         entry.setdefault("cluster", "")
         entry.setdefault("log_file", "")
+        entry.setdefault("supervisor", None)
+        entry.setdefault("supervisor_alive", True)
 
         results.append(entry)
 

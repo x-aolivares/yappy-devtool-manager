@@ -183,6 +183,39 @@ def test_a_dead_tunnel_is_dead_not_down(tracker):
     assert snapshot(cfg, "cap").ports[0].state == STATE_DEAD
 
 
+def test_a_start_whose_supervisor_died_is_not_starting_forever(tracker):
+    """The server shutting down mid-start left a row saying *levantando…* with the
+    Kafka broker happily serving behind it. `starting` es una promesa de que
+    alguien va a resolverla; si ese proceso ya no existe, se rompio."""
+    _track(
+        tracker,
+        os.getpid(),
+        local_port=8402,
+        cluster="cap",
+        owner="web",
+        state="starting",
+        supervisor=2147480000,  # un pid que no existe
+    )
+    cfg = FakeConfig(CLUSTER_PORTS="cap=8402:core")
+
+    assert snapshot(cfg, "cap").ports[0].state == STATE_DEAD
+
+
+def test_a_start_with_a_live_supervisor_is_still_starting(tracker):
+    _track(
+        tracker,
+        os.getpid(),
+        local_port=8402,
+        cluster="cap",
+        owner="web",
+        state="starting",
+        supervisor=os.getpid(),
+    )
+    cfg = FakeConfig(CLUSTER_PORTS="cap=8402:core")
+
+    assert snapshot(cfg, "cap").ports[0].state == "starting"
+
+
 def test_a_port_held_by_another_cluster_conflicts(tracker):
     pid = os.getpid()
     _track(tracker, pid, local_port=8403, cluster="cap2", owner="web")

@@ -189,7 +189,13 @@
         } @empty {
           <tr>
             <td colspan="5" class="muted">
-              El cluster <code>{{ cluster() }}</code> no tiene puertos cargados. Agregá el primero con el campo de abajo.
+              @if (catalogConfigured()) {
+                El cluster <code>{{ cluster() }}</code> no tiene puertos cargados. Agregá el primero
+                con el campo de abajo.
+              } @else {
+                No hay <code>CLUSTER_PORTS</code> en <code>env.base</code>, así que todavía no hay
+                un catálogo. Agregá el primero con el campo de abajo y se escribe solo.
+              }
             </td>
           </tr>
         }

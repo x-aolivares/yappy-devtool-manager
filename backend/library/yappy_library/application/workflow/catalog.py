@@ -77,6 +77,17 @@ def entries_for(cfg, cluster: str) -> list[PortEntry]:
     return catalog_for(cfg).get(cluster, [])
 
 
+def is_configured(cfg) -> bool:
+    """Whether ``CLUSTER_PORTS`` is set at all.
+
+    "Este cluster no tiene puertos" y "nadie configuró el catálogo" se ven igual
+    en pantalla si no se distinguen, y se arreglan distinto: el primero se
+    resuelve con el campo de agregar, el segundo editando `env.base`. La pantalla
+    lo pregunta acá en vez de deducirlo del largo de la lista.
+    """
+    return bool((cfg.get(CONFIG_KEY) or "").strip())
+
+
 def format_catalog(catalog: dict[str, list[PortEntry]]) -> str:
     """Render a catalog back into a ``CLUSTER_PORTS`` value.
 

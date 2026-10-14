@@ -5,6 +5,11 @@ import { WorkflowPortInfo } from '../models/workflow-port-info';
 import { WorkflowResourceInfo } from '../models/workflow-resource-info';
 import { WorkflowUnattributedInfo } from '../models/workflow-unattributed-info';
 export interface WorkflowStateResponse {
+
+  /**
+   * False when `CLUSTER_PORTS` is not set. The empty table means different things depending on this: nobody configured the catalog is an edit to `env.base`, while this cluster has no ports is a click on the field below.
+   */
+  catalog_configured?: boolean;
   cluster: string;
   env: string;
   generated_at: number;

@@ -25,14 +25,24 @@ ALL_STATES = (STATE_DOWN, STATE_STARTING, STATE_UP, STATE_ERROR, STATE_DEAD)
 def state_of(entry: dict) -> str:
     """The state of a tracked process, from its record plus its liveness.
 
-    Liveness wins. A process recorded as ``up`` that is no longer there reads as
-    ``dead`` whether it fell over on its own or a failed start took it down, and
-    a process recorded as ``starting`` that is gone never became ``up`` — which
-    is the truth the user needs, and not the one a stale record would give.
+    Three signals, in this order. Liveness wins: a process recorded as ``up``
+    that is no longer there reads as ``dead`` whether it fell over on its own or a
+    failed start took it down. A process recorded as ``starting`` that is gone
+    never became ``up`` — which is the truth the user needs, and not the one a
+    stale record would give.
+
+    Then the supervisor. ``starting`` is a promise that someone is going to
+    resolve it with a probe; if that process is gone, the promise is broken. A
+    server that shut down mid-start left the row reading *starting* forever, with
+    the Kafka broker happily serving behind it. Without this check the screen
+    lies for an unbounded amount of time.
     """
     if not entry.get("alive"):
         return STATE_DEAD
-    return entry.get("state") or STATE_UP
+    state = entry.get("state") or STATE_UP
+    if state == STATE_STARTING and not entry.get("supervisor_alive", True):
+        return STATE_DEAD
+    return state
 
 
 def is_foreign(entry: dict) -> bool:
@@ -142,6 +152,10 @@ class WorkflowSnapshot:
     cluster: str
     remote_host: str
     generated_at: float
+    #: False when `CLUSTER_PORTS` is not set. The empty table means different
+    #: things depending on this: "nadie configuró el catálogo" is an edit to
+    #: `env.base`, while "este cluster no tiene puertos" is a click.
+    catalog_configured: bool = True
     resources: list[ResourceRow] = field(default_factory=list)
     ports: list[PortRow] = field(default_factory=list)
     #: Tracked tunnels that predate the port field, or that forward somewhere the

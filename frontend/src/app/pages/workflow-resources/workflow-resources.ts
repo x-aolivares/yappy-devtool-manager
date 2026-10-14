@@ -121,6 +121,10 @@ export class WorkflowResourcesPage {
   });
 
   readonly remoteHost = computed<string>(() => this.state.value().remote_host);
+  /** False cuando `CLUSTER_PORTS` no está seteado: el vacío se arregla distinto. */
+  readonly catalogConfigured = computed<boolean>(
+    () => this.state.value().catalog_configured ?? false,
+  );
   readonly resources = computed<WorkflowResourceInfo[]>(() => this.state.value().resources);
   readonly ports = computed<WorkflowPortInfo[]>(() => this.state.value().ports);
   readonly unattributed = computed<WorkflowUnattributedInfo[]>(
@@ -593,6 +597,7 @@ const EMPTY_STATE: WorkflowStateResponse = {
   cluster: '',
   env: '',
   generated_at: 0,
+  catalog_configured: false,
   ports: [],
   remote_host: '',
   resources: [],

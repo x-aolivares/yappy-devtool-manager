@@ -68,11 +68,11 @@ class Supervisor:
                 self.pid, process_tracker.STATE_UP if ok else process_tracker.STATE_ERROR
             )
             if ok:
-                log_info(f"{self.label or self.port} responds en localhost:{self.port}")
+                log_info(f"{self.label or self.port} responds on localhost:{self.port}")
             else:
                 log_error(
-                    f"{self.label or self.port} abrió el puerto {self.port} pero no respondió "
-                    f"en {timeout:g}s. El log está en ~/.yappy/logs/tunnel-{self.port}.log"
+                    f"{self.label or self.port} opened port {self.port} but did not respond "
+                    f"in {timeout:g}s. The log is in ~/.yappy/logs/tunnel-{self.port}.log"
                 )
         except Exception as exc:  # noqa: BLE001 - a supervisor must not kill the server
             log_error(f"No se pudo verificar {self.label or self.port}: {exc}")

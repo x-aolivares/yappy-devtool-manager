@@ -617,6 +617,12 @@ class WorkflowStateResponse(BaseModel):
     cluster: str
     remote_host: str
     generated_at: float
+    catalog_configured: bool = Field(
+        True,
+        description="False when `CLUSTER_PORTS` is not set. The empty table means different "
+        "things depending on this: nobody configured the catalog is an edit to `env.base`, "
+        "while this cluster has no ports is a click on the field below.",
+    )
     resources: list[WorkflowResourceInfo]
     ports: list[WorkflowPortInfo]
     unattributed: list[WorkflowUnattributedInfo] = []

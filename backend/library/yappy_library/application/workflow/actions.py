@@ -18,6 +18,7 @@ Two rules the screen depends on:
 
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 
@@ -167,7 +168,7 @@ def _start_kafka(definition) -> subprocess.Popen:
     from yappy_library.adapters.kafka.service import KafkaService
 
     target = "server" if definition.key == "kafka-server" else "ui"
-    proc = KafkaService(Config()).up(target, detach=True)
+    proc = KafkaService(Config()).up(target, detach=True, owner=process_tracker.OWNER_WEB)
     if proc is None:
         raise StartRefused("Kafka no devolvió un proceso")
     return proc
@@ -225,8 +226,14 @@ def _hand_off(proc: subprocess.Popen, port: int, probe: str, label: str) -> dict
     The state is written before the supervisor exists so a snapshot taken in the
     gap reads "coming up" rather than "down" — and "down" would invite a second
     click on a port that is already being opened.
+
+    ``supervisor`` is this process. If the server shuts down before the probe
+    finishes, the entry says so and the row reads `dead` instead of waiting
+    forever for a verdict that will never come.
     """
-    process_tracker.update_process_state(proc.pid, process_tracker.STATE_STARTING)
+    process_tracker.track_process_state_and_supervisor(
+        proc.pid, process_tracker.STATE_STARTING, os.getpid()
+    )
     supervise(proc.pid, port, probe, label=label)
     return {"pid": proc.pid, "port": port, "state": process_tracker.STATE_STARTING, "label": label}
 
