@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import subprocess
-import time
 
+from yappy_library.adapters.database.connection import SyncError, _wait_for_port
 from yappy_library.adapters.database.credentials import generate_token, write_local_env
 from yappy_library.adapters.logging import die, info, success, warn
 from yappy_library.adapters.processes import BaseCommand, _aws_cmd
 from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES
 from yappy_library.config import Config
 from yappy_library.domain.models import DBResult, PFResult
+
+#: How long to wait for MySQL to answer on the freshly opened tunnel. The same
+#: bound `connect()` uses for an on-demand tunnel.
+DB_TUNNEL_READY_TIMEOUT = 30.0
 
 
 class ForwarderNamespace:
@@ -118,12 +122,31 @@ class Session:
             label="db",
         )
         self._procs.append(proc)
-        time.sleep(3)
 
-        if proc.poll() is None:
-            info(f"Database tunnel ready on localhost:{cfg.db_port}")
-        else:
+        # A fixed sleep is not a readiness check. It answers a question nobody
+        # asked — "did three seconds pass?" — and on a cold instance the answer
+        # is no: the token lives fifteen minutes and the data channel needs a
+        # moment longer than that. What the caller wants to know is whether the
+        # tunnel carries bytes, which is what the greeting answers.
+        try:
+            _wait_for_port(cfg.db_port, timeout=DB_TUNNEL_READY_TIMEOUT)
+            ready = True
+        except SyncError:
+            # The tunnel opened its port and MySQL never answered. That is not
+            # fatal here — `database()` hands back a port and a token, and the
+            # caller decides what to do. It is fatal to *pretend* it is ready.
+            ready = False
+
+        if proc.poll() is not None:
             warn(f"Database tunnel exited (code {proc.returncode})")
+        elif not ready:
+            warn(
+                f"El túnel abrió el puerto {cfg.db_port} pero MySQL no respondió en "
+                f"{DB_TUNNEL_READY_TIMEOUT:g}s. Revisá el log del túnel antes de correr "
+                f"cualquier cosa contra la base."
+            )
+        else:
+            info(f"Database tunnel ready on localhost:{cfg.db_port}")
 
         return DBResult(port=cfg.db_port, password=token)
 
