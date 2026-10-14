@@ -149,10 +149,13 @@ def test_serve_detach_creates_log_file_and_tracks(monkeypatch, tmp_path, capsys)
 
     log_file = tmp_path / ".yappy" / "logs" / "db-tunnel.log"
     assert log_file.exists()
-    assert tracked == [{
-        "pid": 777, "resource": "service", "target": "DB tunnel",
-        "log_file": str(log_file),
-    }]
+    assert len(tracked) == 1
+    entry = tracked[0]
+    assert entry["pid"] == 777
+    assert entry["resource"] == "service"
+    assert entry["target"] == "DB tunnel"
+    assert entry["log_file"] == str(log_file)
+    assert entry["local_port"] == 8100
     out = capsys.readouterr().out
     assert "PID 777" in out
 

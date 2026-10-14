@@ -1,7 +1,7 @@
 import subprocess
 
 import typer
-from yappy_library.adapters.processes import BaseCommand
+from yappy_library.adapters.processes import BaseCommand, tunnel_log_path
 from yappy_library.adapters.logging import die, info, success
 from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES
 from yappy_library.config import Config
@@ -51,6 +51,9 @@ def connect(
                 profile=cfg.profile,
                 remote_host=remote_host,
                 quiet=detach,
+                env=env,
+                cluster=cluster,
+                log_file=tunnel_log_path(port),
             )
         except Exception as e:
             die(f"Failed to start tunnel: {e}")
@@ -103,6 +106,8 @@ def producer(
             region=cfg.require("AWS_REGION"),
             profile=cfg.profile,
             quiet=detach,
+            env=env,
+            log_file=tunnel_log_path(3000),
         )
     except Exception as e:
         die(f"Failed to start producer tunnel: {e}")
@@ -138,6 +143,8 @@ def kafdrop(
             region=cfg.require("AWS_REGION"),
             profile=cfg.profile,
             quiet=detach,
+            env=env,
+            log_file=tunnel_log_path(local_port),
         )
     except Exception as e:
         die(f"Failed to start Kafdrop tunnel: {e}")
@@ -179,6 +186,8 @@ def databricks(
             profile=cfg.profile,
             remote_host=remote_host,
             quiet=detach,
+            env=env,
+            log_file=tunnel_log_path(local_port),
         )
     except Exception as e:
         die(f"Failed to start Databricks tunnel: {e}")

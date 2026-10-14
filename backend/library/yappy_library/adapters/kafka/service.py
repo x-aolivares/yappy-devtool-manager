@@ -67,6 +67,29 @@ def _kill_ui_process():
         warn("jps no encontrado, no se pudieron buscar procesos Java")
 
 
+#: Port the bundled Kafdrop listens on. It is passed on the command line a few
+#: lines below, so tracking it needs the same value rather than a second guess.
+KAFDROP_UI_PORT = 8080
+
+
+def _broker_port(props: Path) -> int:
+    """The port the broker listens on, read from its own configuration.
+
+    Hardcoding 9092 here would put a second source of truth next to the one
+    ``setup_kafka_configs`` writes into ``server.properties``. Falling back to
+    9092 keeps a missing or unreadable file from being fatal — the caller is
+    recording a hint for a UI, not configuring the broker.
+    """
+    try:
+        for line in props.read_text(encoding="utf-8", errors="replace").splitlines():
+            key, _, value = line.partition("=")
+            if key.strip() == "listeners" and value.strip():
+                return int(value.strip().rsplit(":", 1)[-1])
+    except (OSError, ValueError):
+        pass
+    return 9092
+
+
 class KafkaService:
     def __init__(self, cfg: Config | None = None):
         self._cfg = cfg or Config()
@@ -75,7 +98,9 @@ class KafkaService:
         self._procs: list[subprocess.Popen] = []
         self._log_dir = Path(self._cfg.kafka_path) / "temp-logs"
 
-    def _spawn_detached(self, cmd: list[str], target: str) -> subprocess.Popen:
+    def _spawn_detached(
+        self, cmd: list[str], target: str, local_port: int | None = None
+    ) -> subprocess.Popen:
         """Spawn a background process with output captured to a real log file.
 
         The log file lives at ~/.yappy/logs/kafka-<target>-<pid>.log. The pid is
@@ -99,7 +124,11 @@ class KafkaService:
             log_path = placeholder
 
         process_tracker.track_process(
-            pid=proc.pid, resource="kafka", target=target, log_file=str(log_path)
+            pid=proc.pid,
+            resource="kafka",
+            target=target,
+            log_file=str(log_path),
+            local_port=local_port,
         )
         self._procs.append(proc)
         return proc
@@ -132,7 +161,7 @@ class KafkaService:
         ]
 
         if detach:
-            proc = self._spawn_detached(cmd, "server")
+            proc = self._spawn_detached(cmd, "server", _broker_port(props))
             success("Kafka server started (background)")
             time.sleep(2)
             return proc
@@ -147,11 +176,11 @@ class KafkaService:
         ui_jar = self._kafka_ui / "main.jar"
         if not ui_jar.exists():
             die(f"Kafdrop UI jar not found: {ui_jar}")
-        info("Starting Kafdrop UI on port 8080...")
+        info(f"Starting Kafdrop UI on port {KAFDROP_UI_PORT}...")
 
         cmd = [
             "java", "-jar", str(ui_jar),
-            "--server.port=8080",
+            f"--server.port={KAFDROP_UI_PORT}",
         ]
         # Config is in devkit/kafka/config/ui/config.yml
         ui_config = Path(self._cfg.kafka_path) / "config" / "ui" / "config.yml"
@@ -159,23 +188,23 @@ class KafkaService:
             cmd.append(f"--spring.config.additional-location=file:{ui_config}")
 
         if detach:
-            proc = self._spawn_detached(cmd, "ui")
+            proc = self._spawn_detached(cmd, "ui", KAFDROP_UI_PORT)
             success("Kafdrop UI started (background)")
             time.sleep(2)
             # Open browser
             if sys.platform == "win32":
-                os.system('start "" "http://localhost:8080"')
+                os.system(f'start "" "http://localhost:{KAFDROP_UI_PORT}"')
             else:
                 import webbrowser
-                webbrowser.open("http://localhost:8080")
+                webbrowser.open(f"http://localhost:{KAFDROP_UI_PORT}")
             return proc
 
         # Open browser before blocking
         if sys.platform == "win32":
-            os.system('start "" "http://localhost:8080"')
+            os.system(f'start "" "http://localhost:{KAFDROP_UI_PORT}"')
         else:
             import webbrowser
-            webbrowser.open("http://localhost:8080")
+            webbrowser.open(f"http://localhost:{KAFDROP_UI_PORT}")
         try:
             subprocess.run(cmd, check=False)
         except KeyboardInterrupt:

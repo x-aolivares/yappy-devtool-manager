@@ -63,7 +63,10 @@ def _start_detached_refresher(env: str) -> Path:
     child = subprocess.Popen(cmd, **kwargs)
     process_tracker.track_process(
         pid=child.pid,
-        resource="tunnel",
+        # Not a tunnel. It used to be tracked as one, and `kill_ssm()` selects
+        # on `resource="tunnel"` — so stopping the tunnels also killed the
+        # refresher that keeps the token alive.
+        resource="refresher",
         target=env,
         log_file=str(log_path),
     )

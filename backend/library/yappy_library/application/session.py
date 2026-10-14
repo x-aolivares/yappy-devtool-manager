@@ -50,6 +50,8 @@ class ForwarderNamespace:
                 profile=cfg.profile,
                 remote_host=remote_host,
                 quiet=True,
+                env=cfg.env or "",
+                cluster=load_balance or "",
             )
             self._session._procs.append(proc)
             info(f"Tunnel {target}:{port} -> localhost:{local_port}")
@@ -112,6 +114,8 @@ class Session:
             profile=cfg.profile,
             remote_host=cfg.require("AWS_HOST"),
             quiet=True,
+            env=cfg.env or "",
+            label="db",
         )
         self._procs.append(proc)
         time.sleep(3)

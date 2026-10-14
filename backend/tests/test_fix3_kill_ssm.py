@@ -68,7 +68,15 @@ def test_ssm_tunnel_tracks_pid(monkeypatch):
     )
 
     assert proc.pid == 777
-    assert tracked == [{"pid": 777, "resource": "tunnel", "target": "dev"}]
+    assert len(tracked) == 1
+    entry = tracked[0]
+    assert entry["pid"] == 777
+    assert entry["resource"] == "tunnel"
+    assert entry["target"] == "dev"
+    # A tracked tunnel is only useful if it says which port it forwards:
+    # without these the registry can say "a tunnel is running" and nothing more.
+    assert entry["local_port"] == 2
+    assert entry["remote_port"] == 1
 
 
 def test_serve_untracks_on_exit(monkeypatch, capsys):

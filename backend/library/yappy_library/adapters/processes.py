@@ -72,6 +72,7 @@ class BaseCommand:
         name: str = "Service",
         local_port: int | None = None,
         browser_url: str | None = None,
+        env: str = "",
     ):
         if detach:
             log_path = _detach_log_path(name)
@@ -85,8 +86,12 @@ class BaseCommand:
                 )
                 if not already_tracked:
                     process_tracker.track_process(
-                        pid=proc.pid, resource="service", target=name,
+                        pid=proc.pid,
+                        resource="service",
+                        target=name,
+                        env=env,
                         log_file=str(log_path),
+                        local_port=local_port,
                     )
             except (AttributeError, OSError):
                 pass
@@ -188,7 +193,18 @@ class BaseCommand:
         remote_host: str | None = None,
         quiet: bool = False,
         log_file: str | Path | None = None,
+        env: str = "",
+        cluster: str = "",
+        label: str = "",
+        owner: str = process_tracker.OWNER_CLI,
     ) -> subprocess.Popen:
+        """Start one ``ssm start-session`` forwarding ``port`` to ``local_port``.
+
+        ``env``/``cluster``/``label`` are not needed to start anything. They are
+        recorded so a tracked tunnel can be attributed back to the row it belongs
+        to — see :mod:`yappy_library.adapters.process_tracker`, which is the
+        whole reason they are here.
+        """
         if remote_host:
             doc = "AWS-StartPortForwardingSessionToRemoteHost"
             params = {
@@ -228,7 +244,19 @@ class BaseCommand:
         finally:
             if handle is not None:
                 handle.close()
-        process_tracker.track_process(pid=proc.pid, resource="tunnel", target=profile)
+        process_tracker.track_process(
+            pid=proc.pid,
+            resource="tunnel",
+            target=profile,
+            env=env,
+            log_file=str(log_file) if log_file else "",
+            local_port=local_port,
+            remote_port=port,
+            remote_host=remote_host or "",
+            cluster=cluster,
+            label=label,
+            owner=owner,
+        )
         return proc
 
     @staticmethod
