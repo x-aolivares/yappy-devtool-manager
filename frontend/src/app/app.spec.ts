@@ -59,7 +59,10 @@ describe('App', () => {
     const labels = [...compiled.querySelectorAll('.section-label')].map((el) =>
       el.textContent?.trim(),
     );
-    expect(labels).toEqual(['AWS', 'Database', 'Bitbucket', 'CircleCI']);
+    // El orden importa y es el de NAV_SECTIONS: Workflow va entre Database y
+    // Bitbucket, porque es lo que se usa para levantar y parar cosas, y eso pasa
+    // antes de ir a mirar un despliegue.
+    expect(labels).toEqual(['AWS', 'Database', 'Workflow', 'Bitbucket', 'CircleCI']);
   });
 
   it('keeps Inicio outside any section and points at the root route', async () => {
@@ -87,7 +90,7 @@ describe('App', () => {
     expect(empty).toEqual(['Sin herramientas todavía']);
   });
 
-  it('links every AWS, Database and Bitbucket tool to a real route', async () => {
+  it('links every AWS, Database, Workflow and Bitbucket tool to a real route', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
@@ -97,12 +100,16 @@ describe('App', () => {
     // del menú. `/sessions` sigue enrutada aunque no esté acá, porque la página
     // de leer parámetros enlaza a esa vista.
     // El orden importa y es el de NAV_SECTIONS, no alfabético.
+    //
+    // Los prefijos `/aws` y `/db` son reales: las rutas se agruparon bajo ellos y
+    // este test seguía comparando contra las cortas. Fallaba desde ese refactor.
     expect(hrefs).toEqual([
-      '/params-read',
-      '/sql',
-      '/migrate-data',
-      '/compile',
-      '/schema-sync',
+      '/aws/params-read',
+      '/db/sql',
+      '/db/migrate-data',
+      '/db/compile',
+      '/db/schema-sync',
+      '/workflow/resources',
       '/deployments',
     ]);
   });

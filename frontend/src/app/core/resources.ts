@@ -140,3 +140,18 @@ export function canOpen(state: string): boolean {
 export function canShowLogs(state: string): boolean {
   return state === 'up' || state === 'starting';
 }
+
+/**
+ * Si la fila ofrece "Parar".
+ *
+ * Los procesos ajenos no: `kill_ssm()` trabaja sobre el tracker y no le importa
+ * quién levantó qué, así que el botón de una fila es la única barrera entre un
+ * clic y el túnel de otro proyecto. El backend también lo rechaza, pero un botón
+ * que siempre va a fallar es peor que ninguno — el developer aprende que la fila
+ * está mal en vez de entender que hay algo que no se puede parar desde ahí.
+ *
+ * "Parar todo" sí los alcanza, y avisa antes.
+ */
+export function canStop(state: string, foreign: boolean): boolean {
+  return state === 'up' && !foreign;
+}

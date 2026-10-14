@@ -22,6 +22,7 @@ import {
   canOpen,
   canShowLogs,
   canStart,
+  canStop,
   resourceMeta,
   startLabel,
   stateAnnouncement,
@@ -203,6 +204,10 @@ export class WorkflowResourcesPage {
 
   canShowLogsRow(state: string): boolean {
     return canShowLogs(state);
+  }
+
+  canStopRow(state: string, foreign?: boolean): boolean {
+    return canStop(state, !!foreign);
   }
 
   constructor() {
@@ -390,20 +395,21 @@ export class WorkflowResourcesPage {
     }
   }
 
-  /** Si hay alguna fila del catálogo que se pueda levantar. */
+  /** Si hay alguna fila del catálogo que se pueda levantar de un click. */
   readonly hasDown = computed<boolean>(() =>
-    this.ports().some((p: WorkflowPortInfo) => canStart(p.state)),
+    this.ports().some((p: WorkflowPortInfo) => p.state === 'down'),
   );
 
   /**
-   * Levanta todas las filas abajo de una.
+   * Levanta todas las filas que están abajo.
    *
-   * Las de `error` y `dead` también cuentan: "levantar todos" con una fila que
-   * se cayó es exactamente el caso que se quiere resolver de un click. Se las
-   * salta a las que están arriba o levantándose, que ya están en su tunnel.
+   * Sólo `down`, a diferencia del botón de cada fila, que sí ofrece las caídas.
+   * Un botón multiple no tiene dónde decir "esto se cayó": apretarlo con tres
+   * filas caídas y verlas volver a caerse no es lo que "Levantar todos" promete.
+   * Para ésas está el botón de su fila, que sí lo dice.
    */
   async startAllDown(): Promise<void> {
-    const pending = this.ports().filter((p: WorkflowPortInfo) => canStart(p.state));
+    const pending = this.ports().filter((p: WorkflowPortInfo) => p.state === 'down');
     if (!pending.length) return;
     this.busy.set(true);
     // Uno por uno y no en paralelo: cada túnel es un `ssm start-session` contra

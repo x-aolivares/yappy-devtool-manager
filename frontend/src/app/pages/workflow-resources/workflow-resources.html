@@ -67,7 +67,7 @@
           @if (canOpenRow(row.state) && row.browser_url) {
             <a class="secondary open-link" [href]="row.browser_url" target="_blank" rel="noopener">Abrir ↗</a>
           }
-          @if (row.state === 'up') {
+          @if (canStopRow(row.state, row.foreign)) {
             <button type="button" class="danger-tinted" (click)="stopOne(row)" [disabled]="busy()">Parar</button>
           }
           @if (row.state === 'starting') {
@@ -159,7 +159,7 @@
               @if (canOpenRow(row.state) && row.browser_url) {
                 <a class="secondary open-link" [href]="row.browser_url" target="_blank" rel="noopener">Abrir ↗</a>
               }
-              @if (row.state === 'up') {
+              @if (canStopRow(row.state, row.foreign)) {
                 <button type="button" class="danger-tinted" (click)="stopOne(row)" [disabled]="busy()">Parar</button>
               }
               @if (row.state === 'starting') {
@@ -278,7 +278,7 @@
           @if (canOpenRow(row.state) && row.browser_url) {
             <a class="secondary open-link" [href]="row.browser_url" target="_blank" rel="noopener">Abrir ↗</a>
           }
-          @if (row.state === 'up') {
+          @if (canStopRow(row.state, row.foreign)) {
             <button type="button" class="danger-tinted" (click)="stopOne(row)" [disabled]="busy()">Parar</button>
           }
           @if (row.state === 'starting') {
@@ -333,7 +333,7 @@
           <p class="callout err">El puerto local {{ row.local_port }} ya lo está usando {{ row.conflict }}.</p>
         }
         <div class="res-card__actions">
-          @if (row.state === 'up') {
+          @if (canStopRow(row.state, row.foreign)) {
             <button type="button" class="danger-tinted" (click)="stopOne(row)" [disabled]="busy()">Parar</button>
           }
           @if (row.state === 'starting') {
