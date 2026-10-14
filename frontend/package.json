@@ -7,7 +7,10 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "dev": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "api:spec": "python -c \"import json,pathlib,yappy_api.app as a; pathlib.Path('openapi.json').write_text(json.dumps(a.app.openapi(), indent=2, ensure_ascii=False)+chr(10), encoding='utf-8')\"",
+    "api:gen": "npm run api:spec && ng-openapi-gen",
+    "api:check": "npm run api:spec && git diff --quiet -- openapi.json || (echo 'openapi.json quedó desactualizado: corré npm run api:gen' && exit 1)"
   },
   "private": true,
   "packageManager": "npm@11.12.1",

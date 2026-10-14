@@ -5,22 +5,10 @@ from pathlib import Path
 
 import typer
 
+from yappy_library.adapters.log_tail import read_from, tail_start_offset
 from yappy_library.adapters.logging import console, info
 
 logs_app = typer.Typer(help="Show logs of managed processes")
-
-
-def _tail_start_offset(raw: bytes, lines: int) -> int:
-    """Byte offset where the last `lines` lines begin (0 if fewer exist)."""
-    if lines <= 0:
-        return len(raw)
-    count = 0
-    for i in range(len(raw) - 1, -1, -1):
-        if raw[i] == 0x0A:
-            count += 1
-            if count > lines:
-                return i + 1
-    return 0
 
 
 def tail_log(log_path: Path, follow: bool, lines: int):
@@ -29,9 +17,12 @@ def tail_log(log_path: Path, follow: bool, lines: int):
     With follow=True, keep polling the file for appended lines every second
     until KeyboardInterrupt. The offset of the already-printed bytes is
     recorded so only new content is emitted on each poll.
+
+    The offset arithmetic lives in `adapters/log_tail` so the Workflow screen can
+    do the same thing against a browser instead of a terminal.
     """
     data = log_path.read_bytes()
-    offset = _tail_start_offset(data, lines)
+    offset = tail_start_offset(data, lines)
     tail = data[offset:].decode("utf-8", errors="replace")
     for line in tail.splitlines():
         console.print(line)
@@ -42,13 +33,10 @@ def tail_log(log_path: Path, follow: bool, lines: int):
     try:
         while True:
             time.sleep(1)
-            data = log_path.read_bytes()
-            if len(data) > offset:
-                chunk = data[offset:].decode("utf-8", errors="replace")
-                for line in chunk.splitlines():
-                    if line:
-                        console.print(line)
-                offset = len(data)
+            chunk, offset = read_from(log_path, offset)
+            for line in chunk.splitlines():
+                if line:
+                    console.print(line)
     except KeyboardInterrupt:
         return
 

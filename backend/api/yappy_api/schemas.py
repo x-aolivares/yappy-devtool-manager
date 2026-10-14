@@ -554,3 +554,113 @@ class DeploymentsBranchesResponse(BaseModel):
     cluster: str | None = None
     task_definition_type: str | None = None
     environments: list[DeploymentEnvInfo]
+
+
+# --- Workflow/Recursos ------------------------------------------------------
+# These mirror `application/workflow/models.py` one for one. The API layer holds
+# no rules of its own here: if a field is in both, the library decides what it
+# means and this file only decides the shape it arrives in.
+
+
+class WorkflowResourceInfo(BaseModel):
+    key: str
+    group: str
+    name: str
+    detail: str
+    state: str = Field(
+        ...,
+        description="down | starting | up | error | dead. `down` means nothing is tracked "
+        "for that port at all. `dead` means something was tracked and the process is gone.",
+    )
+    local_port: int | None = None
+    pid: int | None = None
+    since: float | None = None
+    """Unix timestamp of when the process started. The client formats it; the
+    server does not know or care about the developer's locale."""
+    foreign: bool = False
+    """True when something other than this web UI started it. Those rows are drawn
+    dashed and a row button will not stop them."""
+    browser_url: str | None = None
+    log_file: str = ""
+    conflict: str | None = None
+
+
+class WorkflowPortInfo(BaseModel):
+    cluster: str
+    port: int
+    label: str
+    state: str
+    pid: int | None = None
+    since: float | None = None
+    foreign: bool = False
+    browser_url: str | None = None
+    log_file: str = ""
+    conflict: str | None = None
+
+
+class WorkflowUnattributedInfo(BaseModel):
+    """A tracked tunnel that no row can account for.
+
+    Almost always one started before the tracker recorded its port. Shown apart
+    rather than guessed at."""
+    pid: int
+    resource: str
+    target: str = ""
+    env: str = ""
+    log_file: str = ""
+
+
+class WorkflowStateResponse(BaseModel):
+    env: str
+    cluster: str
+    remote_host: str
+    generated_at: float
+    resources: list[WorkflowResourceInfo]
+    ports: list[WorkflowPortInfo]
+    unattributed: list[WorkflowUnattributedInfo] = []
+
+
+class WorkflowClustersResponse(BaseModel):
+    clusters: list[str]
+    domain: str
+
+
+class WorkflowStartResourceRequest(BaseModel):
+    key: str = Field(..., min_length=1, description="Registry key, not the display name.")
+
+
+class WorkflowStartPortRequest(BaseModel):
+    port: int = Field(..., ge=1, le=65535)
+    label: str = ""
+
+
+class WorkflowStopRequest(BaseModel):
+    pid: int = Field(..., ge=1)
+    allow_foreign: bool = Field(
+        False,
+        description="Only the screen's explicit \"Parar todo\" sets this, and only after "
+        "telling the developer that the reach is wider than the screen.",
+    )
+
+
+class WorkflowActionResponse(BaseModel):
+    ok: bool = True
+    pid: int | None = None
+    port: int | None = None
+    state: str | None = None
+    stopped: list[int] = []
+    refused: list[dict] = []
+
+
+class WorkflowCatalogAddRequest(BaseModel):
+    port: int = Field(..., ge=1, le=65535)
+    label: str = ""
+
+
+class WorkflowCatalogRenameRequest(BaseModel):
+    label: str
+
+
+class WorkflowCatalogResponse(BaseModel):
+    cluster: str
+    ports: list[WorkflowPortInfo]

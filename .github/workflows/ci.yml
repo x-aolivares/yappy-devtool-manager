@@ -52,6 +52,25 @@ jobs:
       - name: pytest
         run: python -m pytest
 
+      - name: openapi.json al día
+        # `frontend/openapi.json` y `frontend/src/app/api-gen/` están
+        # commiteados, y hasta ahora no había forma de regenerarlos salvo
+        # acordarse del `npx` a mano — nadie lo encuentra solo, y un endpoint
+        # nuevo sin regenerar compila igual y falla en runtime, que es la peor
+        # forma de fallar. Este paso regenera el spec desde la app y falla si
+        # cambió: obliga a correr `npm run api:gen` en el mismo commit.
+        #
+        # Va en el job de backend y no en el de frontend a propósito: acá ya
+        # está `pip install -e .`, que es lo que permite importar `yappy_api`.
+        run: |
+          cd frontend
+          npm run api:spec
+          cd ..
+          git diff --exit-code -- frontend/openapi.json || (
+            echo "::error::frontend/openapi.json quedó desactualizado. Corré 'npm run api:gen' en frontend/ y commiteá el resultado."
+            exit 1
+          )
+
   frontend:
     name: Frontend (Vitest + build)
     runs-on: ubuntu-latest

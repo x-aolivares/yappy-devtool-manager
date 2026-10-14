@@ -1101,6 +1101,596 @@
           }
         }
       }
+    },
+    "/api/workflow/clusters": {
+      "get": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Api Workflow Clusters",
+        "operationId": "list_workflow_clusters",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowClustersResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/state": {
+      "get": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Api Workflow State",
+        "description": "Everything one poll of the screen needs.",
+        "operationId": "get_workflow_state",
+        "parameters": [
+          {
+            "name": "env",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "dev",
+              "title": "Env"
+            }
+          },
+          {
+            "name": "cluster",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "cap",
+              "title": "Cluster"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/resources/start": {
+      "post": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Api Workflow Resource Start",
+        "description": "Spawn a resource and supervise it. Returns as soon as the process exists.\n\n``202`` and not ``200``: the tunnel is not up yet, and saying so is the whole\npoint of the probe running elsewhere.",
+        "operationId": "start_workflow_resource",
+        "parameters": [
+          {
+            "name": "env",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "dev",
+              "title": "Env"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowStartResourceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/ports/start": {
+      "post": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Api Workflow Port Start",
+        "operationId": "start_workflow_port",
+        "parameters": [
+          {
+            "name": "env",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "dev",
+              "title": "Env"
+            }
+          },
+          {
+            "name": "cluster",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "cap",
+              "title": "Cluster"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowStartPortRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/stop": {
+      "post": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Api Workflow Stop",
+        "operationId": "stop_workflow_process",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowStopRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/stop-all": {
+      "post": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Api Workflow Stop All",
+        "operationId": "stop_all_workflow_processes",
+        "parameters": [
+          {
+            "name": "allow_foreign",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Allow Foreign"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/logs": {
+      "get": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Api Workflow Logs",
+        "description": "The last ``lines`` of a tracked process's log, or what got appended.\n\n``offset`` makes this a poll: pass the ``offset`` the previous call returned\nand only new bytes come back. Without it the screen would re-read and\nre-render the whole log every second.",
+        "operationId": "read_workflow_logs",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pid"
+            }
+          },
+          {
+            "name": "lines",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 60,
+              "title": "Lines"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/catalog": {
+      "get": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Api Workflow Catalog",
+        "operationId": "get_workflow_catalog",
+        "parameters": [
+          {
+            "name": "cluster",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "cap",
+              "title": "Cluster"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowCatalogResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Api Workflow Catalog Add",
+        "operationId": "add_workflow_catalog_port",
+        "parameters": [
+          {
+            "name": "cluster",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "cap",
+              "title": "Cluster"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowCatalogAddRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowCatalogResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/catalog/{cluster}/{port}": {
+      "patch": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Api Workflow Catalog Rename",
+        "operationId": "rename_workflow_catalog_port",
+        "parameters": [
+          {
+            "name": "cluster",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cluster"
+            }
+          },
+          {
+            "name": "port",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Port"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowCatalogRenameRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowCatalogResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Api Workflow Catalog Remove",
+        "operationId": "remove_workflow_catalog_port",
+        "parameters": [
+          {
+            "name": "cluster",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cluster"
+            }
+          },
+          {
+            "name": "port",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Port"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowCatalogResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/catalog/{cluster}/reset": {
+      "post": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Api Workflow Catalog Reset",
+        "operationId": "reset_workflow_catalog",
+        "parameters": [
+          {
+            "name": "cluster",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cluster"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowCatalogResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3652,6 +4242,464 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WorkflowActionResponse": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pid"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "stopped": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Stopped",
+            "default": []
+          },
+          "refused": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Refused",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "WorkflowActionResponse"
+      },
+      "WorkflowCatalogAddRequest": {
+        "properties": {
+          "port": {
+            "type": "integer",
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Port"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "port"
+        ],
+        "title": "WorkflowCatalogAddRequest"
+      },
+      "WorkflowCatalogRenameRequest": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "title": "WorkflowCatalogRenameRequest"
+      },
+      "WorkflowCatalogResponse": {
+        "properties": {
+          "cluster": {
+            "type": "string",
+            "title": "Cluster"
+          },
+          "ports": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowPortInfo"
+            },
+            "type": "array",
+            "title": "Ports"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cluster",
+          "ports"
+        ],
+        "title": "WorkflowCatalogResponse"
+      },
+      "WorkflowClustersResponse": {
+        "properties": {
+          "clusters": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Clusters"
+          },
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clusters",
+          "domain"
+        ],
+        "title": "WorkflowClustersResponse"
+      },
+      "WorkflowPortInfo": {
+        "properties": {
+          "cluster": {
+            "type": "string",
+            "title": "Cluster"
+          },
+          "port": {
+            "type": "integer",
+            "title": "Port"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pid"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "foreign": {
+            "type": "boolean",
+            "title": "Foreign",
+            "default": false
+          },
+          "browser_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Browser Url"
+          },
+          "log_file": {
+            "type": "string",
+            "title": "Log File",
+            "default": ""
+          },
+          "conflict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflict"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cluster",
+          "port",
+          "label",
+          "state"
+        ],
+        "title": "WorkflowPortInfo"
+      },
+      "WorkflowResourceInfo": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "group": {
+            "type": "string",
+            "title": "Group"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "state": {
+            "type": "string",
+            "title": "State",
+            "description": "down | starting | up | error | dead. `down` means nothing is tracked for that port at all. `dead` means something was tracked and the process is gone."
+          },
+          "local_port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Port"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pid"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "foreign": {
+            "type": "boolean",
+            "title": "Foreign",
+            "default": false
+          },
+          "browser_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Browser Url"
+          },
+          "log_file": {
+            "type": "string",
+            "title": "Log File",
+            "default": ""
+          },
+          "conflict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflict"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "group",
+          "name",
+          "detail",
+          "state"
+        ],
+        "title": "WorkflowResourceInfo"
+      },
+      "WorkflowStartPortRequest": {
+        "properties": {
+          "port": {
+            "type": "integer",
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Port"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "port"
+        ],
+        "title": "WorkflowStartPortRequest"
+      },
+      "WorkflowStartResourceRequest": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Key",
+            "description": "Registry key, not the display name."
+          }
+        },
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "title": "WorkflowStartResourceRequest"
+      },
+      "WorkflowStateResponse": {
+        "properties": {
+          "env": {
+            "type": "string",
+            "title": "Env"
+          },
+          "cluster": {
+            "type": "string",
+            "title": "Cluster"
+          },
+          "remote_host": {
+            "type": "string",
+            "title": "Remote Host"
+          },
+          "generated_at": {
+            "type": "number",
+            "title": "Generated At"
+          },
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowResourceInfo"
+            },
+            "type": "array",
+            "title": "Resources"
+          },
+          "ports": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowPortInfo"
+            },
+            "type": "array",
+            "title": "Ports"
+          },
+          "unattributed": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowUnattributedInfo"
+            },
+            "type": "array",
+            "title": "Unattributed",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "env",
+          "cluster",
+          "remote_host",
+          "generated_at",
+          "resources",
+          "ports"
+        ],
+        "title": "WorkflowStateResponse"
+      },
+      "WorkflowStopRequest": {
+        "properties": {
+          "pid": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Pid"
+          },
+          "allow_foreign": {
+            "type": "boolean",
+            "title": "Allow Foreign",
+            "description": "Only the screen's explicit \"Parar todo\" sets this, and only after telling the developer that the reach is wider than the screen.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "pid"
+        ],
+        "title": "WorkflowStopRequest"
+      },
+      "WorkflowUnattributedInfo": {
+        "properties": {
+          "pid": {
+            "type": "integer",
+            "title": "Pid"
+          },
+          "resource": {
+            "type": "string",
+            "title": "Resource"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target",
+            "default": ""
+          },
+          "env": {
+            "type": "string",
+            "title": "Env",
+            "default": ""
+          },
+          "log_file": {
+            "type": "string",
+            "title": "Log File",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "pid",
+          "resource"
+        ],
+        "title": "WorkflowUnattributedInfo",
+        "description": "A tracked tunnel that no row can account for.\n\nAlmost always one started before the tracker recorded its port. Shown apart\nrather than guessed at."
       }
     }
   }
