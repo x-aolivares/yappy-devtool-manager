@@ -205,7 +205,7 @@ def test_a_start_is_recorded_as_starting_before_the_probe_runs(tracker, fake_spa
     `down` invites a second click on a port that is already being opened."""
     seen = {}
 
-    def fake_supervise(pid, port, probe, label="", timeout=None):
+    def fake_supervise(pid, port, probe, label="", timeout=None, log_file=""):
         seen["state_at_handoff"] = process_tracker.get_tracked_processes()[0]["state"]
         return None
 
@@ -226,7 +226,7 @@ def test_starting_uses_the_https_probe(tracker, fake_spawn, monkeypatch):
 
     monkeypatch.setattr(
         actions, "supervise",
-        lambda pid, port, probe, label="", timeout=None: seen.update(probe=probe),
+        lambda pid, port, probe, label="", timeout=None, log_file="": seen.update(probe=probe),
     )
 
     start_port(FakeConfig(CLUSTER_PORTS=""), "cap", 8402)

@@ -239,8 +239,23 @@ def _hand_off(proc: subprocess.Popen, port: int, probe: str, label: str) -> dict
     process_tracker.track_process_state_and_supervisor(
         proc.pid, process_tracker.STATE_STARTING, os.getpid()
     )
-    supervise(proc.pid, port, probe, label=label)
+    supervise(proc.pid, port, probe, label=label, log_file=_log_file_for(proc.pid))
     return {"pid": proc.pid, "port": port, "state": process_tracker.STATE_STARTING, "label": label}
+
+
+def _log_file_for(pid: int) -> str:
+    """Where the supervised process writes, read back from the tracker.
+
+    Read back rather than reconstructed: the tunnel log is
+    ``~/.yappy/logs/tunnel-<port>.log`` and the Kafka log is
+    ``<install>/temp-logs/kafka-<target>-<pid>.log``. A supervisor that guesses
+    the first shape for every resource sends the reader to a file that is not
+    there — which is exactly what happened with Kafka.
+    """
+    for entry in process_tracker.get_tracked_processes():
+        if entry.get("pid") == pid:
+            return entry.get("log_file") or ""
+    return ""
 
 
 def _entry_for(pid: int) -> dict | None:

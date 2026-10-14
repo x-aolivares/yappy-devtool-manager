@@ -71,23 +71,38 @@ def _kill_ui_process():
 #: lines below, so tracking it needs the same value rather than a second guess.
 KAFDROP_UI_PORT = 8080
 
+#: Only used when `server.properties` is missing or unreadable. It is not a
+#: default to configure the broker with — see `_broker_port`.
+DEFAULT_BROKER_PORT = 9092
+
 
 def _broker_port(props: Path) -> int:
-    """The port the broker listens on, read from its own configuration.
+    """The port the broker accepts clients on, read from its own configuration.
 
-    Hardcoding 9092 here would put a second source of truth next to the one
-    ``setup_kafka_configs`` writes into ``server.properties``. Falling back to
-    9092 keeps a missing or unreadable file from being fatal — the caller is
-    recording a hint for a UI, not configuring the broker.
+    ``listeners`` can name more than one listener, and the one a KRaft controller
+    runs is *not* it — ``PLAINTEXT://:9092,CONTROLLER://:9093`` serves the
+    controller on 9093. Taking the last ``:`` of the line, which is what this did
+    first, returns the controller port and makes every readiness probe talk to a
+    port where nothing speaks Kafka.
+
+    Hardcoding a default instead would put a second source of truth next to the
+    one ``setup_kafka_configs`` writes. A missing or unreadable file falls back to
+    9092 so a broken config is not fatal: the caller is recording a hint for a UI,
+    not configuring the broker.
     """
     try:
         for line in props.read_text(encoding="utf-8", errors="replace").splitlines():
             key, _, value = line.partition("=")
-            if key.strip() == "listeners" and value.strip():
-                return int(value.strip().rsplit(":", 1)[-1])
+            if key.strip() != "listeners":
+                continue
+            for listener in value.strip().split(","):
+                name, sep, address = listener.partition("://")
+                if not sep or name.strip().upper() == "CONTROLLER":
+                    continue
+                return int(address.strip().rsplit(":", 1)[-1])
     except (OSError, ValueError):
         pass
-    return 9092
+    return DEFAULT_BROKER_PORT
 
 
 class KafkaService:

@@ -88,14 +88,29 @@ def probe_mysql(port: int, timeout: float = 5.0) -> bool:
 
 
 def _kafka_api_versions_request() -> bytes:
-    """A minimal v0 ApiVersions request, the cheapest thing a broker must answer."""
+    """A minimal v0 ApiVersions request, the cheapest thing a broker must answer.
+
+    The Kafka request envelope is, in this order::
+
+        size(int32) | apiKey(int16) | apiVersion(int16) |
+        correlationId(int32) | clientId(nullable string)
+
+    The first version of this put ``correlationId`` where ``apiKey`` goes, so
+    Kafka read the correlation id as the api key, the api key as the version, and
+    then tried to read a 28784-byte client id out of a 4-byte socket. It answered
+    with ``InvalidRequestException`` and closed — the probe read no bytes and
+    called a perfectly healthy broker down.
+
+    ``size`` covers everything after itself, and ``clientId`` is a nullable
+    string: an int16 length then the bytes.
+    """
     client_id = b"yappy"
     body = (
-        (1).to_bytes(4, "big")
+        _KAFKA_API_VERSIONS_KEY.to_bytes(2, "big")
+        + (0).to_bytes(2, "big")                     # api version 0
+        + (1).to_bytes(4, "big")                     # correlation id
         + len(client_id).to_bytes(2, "big")
         + client_id
-        + _KAFKA_API_VERSIONS_KEY.to_bytes(2, "big")
-        + (0).to_bytes(2, "big")
     )
     return len(body).to_bytes(4, "big") + body
 

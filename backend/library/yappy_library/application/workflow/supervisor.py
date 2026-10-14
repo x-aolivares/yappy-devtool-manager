@@ -37,12 +37,21 @@ _MAX_SUPERVISED_SECONDS = DEFAULT_TIMEOUT * 2
 class Supervisor:
     """Polls one readiness probe and records the verdict in the tracker."""
 
-    def __init__(self, pid: int, port: int, probe: str, label: str = ""):
+    def __init__(self, pid: int, port: int, probe: str, label: str = "", log_file: str = ""):
         self.pid = pid
         self.port = port
         self.probe = probe
         self.label = label
+        #: Where this process's output goes. Recorded, not assumed: a tunnel logs
+        #: to `~/.yappy/logs/tunnel-<port>.log` but Kafka logs to its own
+        #: `temp-logs/kafka-<target>-<pid>.log` under the install, and pointing at
+        #: the tunnel path for a Kafka failure sends the reader to a file that
+        #: does not exist.
+        self.log_file = log_file
         self.done = threading.Event()
+
+    def where_to_look(self) -> str:
+        return self.log_file or "el log del proceso"
 
     def verdict(self, timeout: float) -> bool:
         """Poll the probe until it answers or ``timeout`` runs out."""
@@ -72,7 +81,7 @@ class Supervisor:
             else:
                 log_error(
                     f"{self.label or self.port} opened port {self.port} but did not respond "
-                    f"in {timeout:g}s. The log is in ~/.yappy/logs/tunnel-{self.port}.log"
+                    f"in {timeout:g}s. The log is in {self.where_to_look()}"
                 )
         except Exception as exc:  # noqa: BLE001 - a supervisor must not kill the server
             log_error(f"No se pudo verificar {self.label or self.port}: {exc}")
@@ -81,14 +90,14 @@ class Supervisor:
 
 
 def supervise(pid: int, port: int, probe: str, label: str = "",
-              timeout: float = DEFAULT_TIMEOUT) -> Supervisor:
+              timeout: float = DEFAULT_TIMEOUT, log_file: str = "") -> Supervisor:
     """Start a supervisor thread and return it immediately.
 
     Daemon, so it cannot keep the interpreter alive: a server shutting down with
     a probe in flight is fine, and the tracker entry stays ``starting``, which
     reads as "never finished" rather than as a false success.
     """
-    supervisor = Supervisor(pid, port, probe, label)
+    supervisor = Supervisor(pid, port, probe, label, log_file)
     thread = threading.Thread(
         target=supervisor.run,
         kwargs={"timeout": timeout},
