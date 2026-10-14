@@ -553,6 +553,76 @@ gana por estar en el elemento. Los dos usan **0.5** a propósito: donde están
 ambos no se nota, y donde hay uno solo el estado se ve igual en todas las
 páginas.
 
+## Estado que cambia solo: `resource()` y el `aria-live`
+
+Hasta acá todas las páginas piden y esperan. **Workflow/Recursos es la primera que
+mira algo que cambia sin que nadie la toque**, y eso agrega dos reglas que no se
+deducen de las anteriores.
+
+### El poll es un `resource()`, no un `setInterval`
+
+```ts
+readonly state = resource<Estado, { env: string; cluster: string }>({
+  params: (): { env: string; cluster: string } => ({ env: this.env(), cluster: this.cluster() }),
+  loader: ({ params, abortSignal }) => this.workflow.state(params.env, params.cluster, abortSignal),
+  defaultValue: EMPTY_STATE,
+});
+```
+
+Tres cosas que no son estilo:
+
+- **`params` es lo que hace que cambiar de filtro no deje una respuesta vieja
+  encima.** El backend cancela solo la request en vuelo cuando cambia. Con un
+  `setInterval` + `CancelSlot` hay que acordarse de invalidar a mano, y el momento
+  en que se olvida es una fila de `cap` dibujada arriba de la tabla de `cap2`.
+- **`defaultValue` es obligatorio.** Sin él el template lee `undefined` mientras
+  carga y hay que llenar la pantalla de `@if (x(); as y)` para no romper.
+- **El `loader` recibe el `AbortSignal` y lo pasa a `abortCtx()`.** El cliente
+  generado sólo acepta un `HttpContext` como cuarto parámetro — ver `core/cancel.ts`.
+
+El ritmo lo pone la página, no el `resource()`: `reload()` desde un `setTimeout`
+encadenado, y no `setInterval`, porque dos ticks lentos con `setInterval` se
+acumulan. Con la pestaña oculta el intervalo sube (10s contra 1,5s): nadie está
+mirando, y el backend sigue escribiendo el tracker igual.
+
+### El `aria-live` no es un accesorio
+
+```html
+<div class="visually-hidden" role="status" aria-live="polite">{{ announcement() }}</div>
+```
+
+Va **antes** de todo lo que anuncia y **siempre en el DOM**. Si se insertara junto
+al contenido que cambia, el lector de pantalla lo anunciaría como texto nuevo.
+
+Lo que se anuncia no es el estado: es **la transición**. Se comparan contra el poll
+anterior y se avisa sólo lo que se movió. Con tres túneles que suben juntos,
+anunciar los tres encimados es peor que no anunciar nada.
+
+Y hay un caso que no tiene arreglo visual: un túnel que queda en `levantando…`
+para siempre porque el servidor se apagó a mitad del arranque. La fila tiene que
+poder decir `cayó`, y eso lo decide el backend preguntando si el proceso que iba a
+resolver el probe todavía existe.
+
+### Un botón que siempre va a fallar es peor que ninguno
+
+La regla: **si la acción va a ser rechazada, no se dibuja**. Una fila de un
+proceso que no levantó la web no muestra "Parar", aunque el estado sea `up`. El
+backend también lo rechaza, pero el botón que falla siempre le enseña al developer
+que la fila está mal, en vez de que hay algo que no se puede parar desde ahí.
+
+La excepción es la acción cuyo alcance es más ancho que la pantalla —"Parar todo"—,
+que sí lo hace y avisa cuántos ajenos alcanza antes de confirmar. Ese número viene
+del servidor, no se estima en el navegador.
+
+### Guardar en cada tecla es una decisión, no un default
+
+El catálogo de túneles se edita inline y se guarda. El mockup guarda en cada tecla
+porque su catálogo está en `localStorage` y una escritura a memoria no cuesta
+nada. Acá el catálogo es `CLUSTER_PORTS` en `env.base`: guardar en cada tecla es
+escribirle el archivo de un usuario treinta veces por palabra.
+
+Va con debounce de 500 ms. `params-diff` ya usa 350 ms para el script generado.
+
 ## Checklist para migrar una página
 
 1. Cambiar `.section-title` por `.field-label` en los títulos de grupo internos,
@@ -565,7 +635,8 @@ páginas.
 4. Revisar los `<p class="muted hint-error">`: ya se ven como errores.
 5. Si tiene textarea de SQL, agregar `appAutoGrow` + `[autoGrowValue]`.
 6. Subir las acciones al header del panel con `.section-title--plain`.
-7. No tocar nada de signals, bindings ni handlers.
+7. Si muestra estado que cambia solo, aplicar las reglas de polling de más arriba.
+8. No tocar nada de signals, bindings ni handlers.
 
 ## Tests: afirmar sobre el mecanismo
 
