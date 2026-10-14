@@ -77,6 +77,7 @@ def run(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) ->
 
     if open_browser:
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+    _log_shutdown_signal()
     # `lifespan="off"` y no un try/except alrededor del arranque.
     #
     # El protocolo lifespan de uvicorn levanta una tarea que se queda esperando
@@ -96,6 +97,47 @@ def run(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) ->
     # mismo, antes de que uvicorn levante nada. Hay un test que falla si alguien
     # agrega uno — con `lifespan="off"` se ignoraría en silencio.
     uvicorn.run(app, host=host, port=port, log_config=log_config(), lifespan="off")
+
+
+def _log_shutdown_signal():
+    """Say which signal is shutting the server down, before uvicorn eats it.
+
+    Uvicorn installs its own handlers, so by the time anything visible happens
+    the signal has already been swallowed. That leaves the worst question
+    unanswered: *why did the server stop?* — Ctrl+C from a human, a `taskkill`
+    from another process, or a terminal that closed.
+
+    The handler logs and then chains to whatever was there before, so uvicorn
+    still does its graceful shutdown. It only claims SIGINT and SIGTERM; SIGHUP
+    and the rest are left alone.
+    """
+    import signal
+
+    from yappy_library.adapters.logging import info
+
+    previous: dict[int, object] = {}
+    for sig in (signal.SIGINT, getattr(signal, "SIGTERM", signal.SIGINT)):
+        if sig in previous:
+            continue
+        try:
+            previous[sig] = signal.getsignal(sig)
+
+            def handler(signum, frame, _prev=previous):
+                try:
+                    info(f"  [apagado] señal {signal.Signals(signum).name} recibida")
+                except Exception:  # noqa: BLE001 - loggear no puede romper el apagado
+                    pass
+                handler._prev = getattr(handler, "_prev", None)
+                old = handler._prev.get(signum)
+                if callable(old):
+                    return old(signum, frame)
+                return None
+
+            handler._prev = previous
+            signal.signal(sig, handler)
+        except (OSError, ValueError):
+            # Sin consola propia (o signal no disponible): no se puede escuchar.
+            pass
 
 
 if __name__ == "__main__":

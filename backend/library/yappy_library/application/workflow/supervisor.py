@@ -20,6 +20,7 @@ which is also what makes the state survive the browser tab closing.
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -27,6 +28,12 @@ from yappy_library.adapters import process_tracker
 from yappy_library.adapters.logging import error as log_error
 from yappy_library.adapters.logging import info as log_info
 from yappy_library.application.workflow.readiness import DEFAULT_TIMEOUT, probe_for
+
+
+def _stamp() -> str:
+    """La hora, en la misma línea que el paso. El supervisor corre en un hilo
+    aparte del request: sin esto no se puede ordenar contra el access log."""
+    return time.strftime("%H:%M:%S")
 
 #: Never let a supervisor outlive the process it watches by much. The plugin is
 #: killed by `stop`; this is only the backstop for a start that failed in a way
@@ -60,6 +67,12 @@ class Supervisor:
         return wait_for(lambda: probe_for(self.probe)(self.port, 2.0), timeout=timeout)
 
     def run(self, timeout: float = DEFAULT_TIMEOUT) -> None:
+        started = time.monotonic()
+        who = self.label or f":{self.port}"
+        log_info(
+            f"  [wf] {_stamp()} supervisor de {who} arranca: pid={self.pid} "
+            f"probe={self.probe} puerto={self.port} timeout={timeout:g}s"
+        )
         try:
             alive = process_tracker.get_tracked_processes()
             still_there = any(e.get("pid") == self.pid for e in alive)
@@ -69,22 +82,32 @@ class Supervisor:
                 # "error": the process is gone, and that is the more useful
                 # thing to draw.
                 process_tracker.update_process_state(self.pid, process_tracker.STATE_ERROR)
-                log_info(f"El proceso de {self.label or self.port} terminó antes de levantar")
+                log_info(
+                    f"  [wf] {_stamp()} {who}: el proceso ya no esta, sin probe. "
+                    f"Queda 'error'."
+                )
                 return
 
             ok = self.verdict(timeout)
+            took = time.monotonic() - started
             process_tracker.update_process_state(
                 self.pid, process_tracker.STATE_UP if ok else process_tracker.STATE_ERROR
             )
             if ok:
-                log_info(f"{self.label or self.port} responds on localhost:{self.port}")
+                # ASCII en estos logs a propósito: la consola de Windows es
+                # cp1252 y un "→" corta la línea a la mitad con un error de
+                # 'charmap'. Un log que se corta no sirve para debuggear.
+                log_info(
+                    f"  [wf] {_stamp()} {who} responde en localhost:{self.port} "
+                    f"en {took:.1f}s, queda 'up'"
+                )
             else:
                 log_error(
-                    f"{self.label or self.port} opened port {self.port} but did not respond "
-                    f"in {timeout:g}s. The log is in {self.where_to_look()}"
+                    f"  [wf] {_stamp()} {who} abrio el puerto {self.port} pero no respondio "
+                    f"en {timeout:g}s, queda 'error'. Log: {self.where_to_look()}"
                 )
         except Exception as exc:  # noqa: BLE001 - a supervisor must not kill the server
-            log_error(f"No se pudo verificar {self.label or self.port}: {exc}")
+            log_error(f"  [wf] {_stamp()} {who}: el supervisor fallo -- {exc}")
         finally:
             self.done.set()
 
