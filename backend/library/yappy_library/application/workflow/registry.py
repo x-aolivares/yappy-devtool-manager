@@ -7,6 +7,12 @@ lives in the catalog instead, and the two are joined by local port.
 
 Ports that depend on the environment are resolved here rather than stored, so a
 definition can never carry a port that belonged to another environment.
+
+Two resources may not share a local port. ``yappy run tunnel producer <env>`` and
+the bastion forwarder are the same operation — remote 9091 to local 3000, with no
+``remote_host`` — so the screen shows the one that is not an alias. A tunnel
+opened with either command still lights the same row, because the row is keyed
+by the local port and not by the command.
 """
 
 from __future__ import annotations
@@ -59,14 +65,6 @@ def resources_for(cfg: Config) -> list[ResourceDef]:
             detail="Interfaz web del broker local",
             local_port=KAFDROP_UI_PORT,
             browser_url=f"http://localhost:{KAFDROP_UI_PORT}",
-        ),
-        ResourceDef(
-            key="producer",
-            group="named",
-            name="Producer",
-            detail="Broker del ambiente remoto",
-            remote_port=9091,
-            local_port=3000,
         ),
         ResourceDef(
             key="kafdrop-remote",

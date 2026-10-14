@@ -24,6 +24,7 @@ from yappy_library.application.workflow.models import (
     is_foreign,
     state_of,
 )
+from yappy_library.application.workflow.registry import resources_for
 from yappy_library.application.workflow.service import remote_host_for, snapshot
 
 
@@ -237,6 +238,17 @@ def test_resources_carry_their_own_state(tracker):
     assert rows["kafka-ui"].foreign is False
     assert rows["kafka-server"].state == STATE_DOWN
     assert rows["db"].local_port == 8100
+
+
+def test_no_two_resources_claim_the_same_local_port():
+    """The invariant that would have caught Producer/Bastion on :3000.
+
+    Two rows on one port means one of them can never be started, and the other
+    one silently stands for both.
+    """
+    ports = [r.local_port for r in resources_for(FakeConfig(CLUSTER_PORTS="cap="))]
+
+    assert len(ports) == len(set(ports))
 
 
 def test_snapshot_carries_the_resolved_host():
