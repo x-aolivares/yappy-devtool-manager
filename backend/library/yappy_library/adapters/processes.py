@@ -290,6 +290,28 @@ class BaseCommand:
             process_tracker.untrack_process(p)
 
     def _kill_pid(self, pid: int):
+        """Kill a process tree. Refuses when the target is our own family.
+
+        `taskkill /t` walks the tree *upwards and downwards* from the target, so
+        a pid that no longer belongs to the tunnel we tracked is enough to take
+        down whatever process tree that pid happens to be in now. On Windows pid
+        reuse is fast and the tracker is a file on disk that outlives the process
+        it names: a stale entry from a crashed session can, hours later, name a
+        pid that the shell or the web server has since been given.
+
+        Killing an ancestor of ourselves does not raise — it ends the process,
+        and the console reports it as a Ctrl+C that nobody pressed. That is the
+        worst possible failure mode for a "stop this tunnel" button: it looks like
+        the app crashed and there is nothing in its own log to explain it.
+        """
+        if pid in self._own_family():
+            error(
+                f"El pid {pid} pertenece a esta sesión (o a un proceso que la "
+                f"contiene). No se para: `taskkill /t` se llevaría también al "
+                f"proceso que está tratando de cerrarlo."
+            )
+            return
+
         if sys.platform == "win32":
             subprocess.run(
                 ["taskkill", "/pid", str(pid), "/t", "/f"],
@@ -304,6 +326,30 @@ class BaseCommand:
                 os.kill(pid, signal.SIGKILL)
             except (ProcessLookupError, OSError):
                 pass
+
+    @staticmethod
+    def _own_family() -> set[int]:
+        """This process and its ancestors.
+
+        Deliberately only *upwards*. A sibling or a child is a legitimate thing
+        to stop — the refreshers and the tunnels this tool starts are both — and
+        refusing them would break `stop_all`. What must never happen is stopping
+        something that contains us.
+        """
+        family = set()
+        pid = os.getpid()
+        for _ in range(32):  # un ciclo de pids recycled cortaría el bucle
+            if not pid or pid in family:
+                break
+            family.add(pid)
+            try:
+                parent = os.getppid()
+            except (AttributeError, OSError):
+                break
+            if parent == pid:
+                break
+            pid = parent
+        return family
 
     def kill_ssm_all(self):
         """Legacy global kill of every session-manager-plugin process."""
