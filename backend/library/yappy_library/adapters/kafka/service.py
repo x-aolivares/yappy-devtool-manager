@@ -122,11 +122,30 @@ class KafkaService:
         The log file lives at ~/.yappy/logs/kafka-<target>-<pid>.log. The pid is
         only known after Popen returns, so the process writes to a placeholder
         first and a hard link with the pid in its name is created right after.
+
+        **"Detached" es literal.** Sin `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`
+        el hijo queda en el mismo grupo de consola que el server, y en Windows eso
+        significa que un Ctrl+C del grupo lo alcanza a los dos. El broker se
+        llevaba por delante al proceso que lo levantó — que es exactamente lo que
+        pasaba al arrancar Kafka desde la pantalla. El refresher de DB
+        (`db/tunnel.py::_start_detached_refresher`) ya lo hacía así; esta función
+        tenía el nombre pero no el comportamiento.
         """
         self._log_dir.mkdir(parents=True, exist_ok=True)
         placeholder = self._log_dir / f"kafka-{target}.log"
         handle = placeholder.open("ab")
-        proc = subprocess.Popen(cmd, stdout=handle, stderr=subprocess.STDOUT, cwd=str(self._log_dir))
+        kwargs = {
+            "stdout": handle,
+            "stderr": subprocess.STDOUT,
+            "cwd": str(self._log_dir),
+        }
+        if sys.platform == "win32":
+            kwargs["creationflags"] = (
+                subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            )
+        else:
+            kwargs["start_new_session"] = True
+        proc = subprocess.Popen(cmd, **kwargs)
         handle.close()
 
         log_path = self._log_dir / f"kafka-{target}-{proc.pid}.log"
