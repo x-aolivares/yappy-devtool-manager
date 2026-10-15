@@ -83,6 +83,9 @@ describe('WorkflowResourcesPage', () => {
   let renames: Array<{ cluster: string; port: number; label: string }>;
   let removed: Array<{ cluster: string; port: number }>;
   let failStart: ((err: Error) => void) | null;
+  let logError: HttpErrorResponse | null;
+  let logCalls: Array<{ pid: number; offset: number }>;
+  let logText: string;
 
   beforeEach(async () => {
     answer = estado();
@@ -93,6 +96,9 @@ describe('WorkflowResourcesPage', () => {
     renames = [];
     removed = [];
     failStart = null;
+    logError = null;
+    logCalls = [];
+    logText = '';
 
     await TestBed.configureTestingModule({
       imports: [WorkflowResourcesPage],
@@ -101,7 +107,12 @@ describe('WorkflowResourcesPage', () => {
           provide: WorkflowService,
           useValue: {
             state: () => Promise.resolve(answer),
-            log: () => Promise.resolve({ pid: 1, text: '', offset: 0, alive: true }),
+            log: (pid: number, offset: number) => {
+              logCalls.push({ pid, offset });
+              return logError
+                ? Promise.reject(logError)
+                : Promise.resolve({ pid, text: logText, offset: offset + logText.length, alive: true });
+            },
             startResource: (key: string) => {
               startedKeys.push(key);
               return failStart
@@ -523,6 +534,138 @@ describe('WorkflowResourcesPage', () => {
       expect(comp.anythingAlive()).toBe(false);
       const stopAll = [...el.querySelectorAll('button')].find((b) => b.textContent?.includes('Parar todo'));
       expect(stopAll?.disabled).toBe(true);
+    });
+  });
+
+  // --- el panel de logs -----------------------------------------------------
+
+  describe('el panel de logs', () => {
+    /** El caso del server: el pid dejó de estar trackeado y el backend 404ea. */
+    function pidSinTrackear(): HttpErrorResponse {
+      return new HttpErrorResponse({
+        status: 404,
+        error: { detail: 'No hay ningún proceso trackeado con ese pid.' },
+      });
+    }
+
+    const kafka = (over = {}) =>
+      recurso({ state: 'up', pid: 21224, log_file: 'kafka-ui-21224.log', ...over });
+
+    it('no se lee el log hasta que alguien lo pide', async () => {
+      // La regla de dedo del developer: el panel sigue un pid porque él apretó
+      // "Ver logs", no porque la pantalla esté mirando. Con la fila sola —incluso
+      // arriba y con archivo— no sale ninguna request.
+      answer = estado({ resources: [kafka()] });
+      await montar();
+
+      expect(logCalls).toHaveLength(0);
+    });
+
+    it('un 404 corta el poll para siempre', async () => {
+      // El bug: el `catch` se tragaba el 404 como si fuera un corte de red. Un
+      // pid que dejó de estar trackeado no vuelve, así que el panel seguía
+      // golpeando /logs cada 1,5s para siempre — veinte 404s seguidos en el log
+      // del server, uno detrás de otro.
+      logError = pidSinTrackear();
+      const { comp } = await montar();
+
+      comp.showLogs(kafka());
+      await new Promise((r) => setTimeout(r, 0));
+      expect(comp.logGone()).toBe(true);
+      expect(logCalls).toHaveLength(1);
+
+      // Los ticks que sólo pueden volver a fallar.
+      comp.pollLogForTest();
+      comp.pollLogForTest();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(logCalls).toHaveLength(1);
+    });
+
+    it('un corte de red no cierra el panel ni corta el poll', async () => {
+      // Al revés del 404: acá puede contestar el tick siguiente, así que tragarse
+      // el error en silencio es lo correcto. Cerrar el panel por un corte de red
+      // sería perder el log que el developer estaba leyendo por un cable que se
+      // movió.
+      logError = new HttpErrorResponse({ status: 0, error: new ProgressEvent('error') });
+      const { comp, el, fixture } = await montar();
+
+      comp.showLogs(kafka());
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+
+      expect(comp.logGone()).toBe(false);
+      expect(comp.logPid()).toBe(21224);
+      expect(el.querySelector('.log-panel__note')).toBeNull();
+
+      logError = null;
+      comp.pollLogForTest();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(logCalls).toHaveLength(2);
+    });
+
+    it('queda con lo que se leyó y avisa que el proceso se fue', async () => {
+      // Un panel congelado en silencio es indistinguible de uno que anda bien.
+      // El texto que ya se leyó es justo lo que el developer estaba mirando
+      // cuando paró Kafka, así que se conserva y se explica el corte al lado.
+      logText = 'INFO Kafka Server started (registered)\n';
+      const { comp, el, fixture } = await montar();
+
+      comp.showLogs(kafka());
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+      expect(el.querySelector('.log-view')?.textContent).toContain('Kafka Server started');
+
+      logError = pidSinTrackear();
+      comp.pollLogForTest();
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+
+      expect(el.querySelector('.log-view')?.textContent).toContain('Kafka Server started');
+      expect(el.querySelector('.log-panel__note')?.textContent).toContain('ya no está en el tracker');
+      // El panel sigue abierto: lo que se leyó no se tira a la basura.
+      expect(comp.logScope()).toBe(21224);
+    });
+
+    it('un 404 de un panel viejo no mata el log del que se está mostrando', async () => {
+      // La request del panel anterior puede volver después de que el developer
+      // abrió el de otro recurso. Si el 404 llegara sin preguntar de quién es,
+      // dejaría al panel nuevo sin poll para siempre.
+      logError = pidSinTrackear();
+      const { comp } = await montar();
+
+      comp.showLogs(kafka({ pid: 21224 }));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(comp.logGone()).toBe(true);
+
+      logError = null;
+      comp.showLogs(kafka({ pid: 33940 }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(comp.logGone()).toBe(false);
+      comp.pollLogForTest();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(logCalls.filter((c) => c.pid === 33940).length).toBeGreaterThan(0);
+    });
+
+    it('cerrar y volver a abrir vuelve a preguntar', async () => {
+      logError = pidSinTrackear();
+      const { comp } = await montar();
+
+      comp.showLogs(kafka());
+      await new Promise((r) => setTimeout(r, 0));
+      comp.closeLogs();
+
+      logError = null;
+      comp.showLogs(kafka());
+      await new Promise((r) => setTimeout(r, 0));
+      comp.pollLogForTest();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(comp.logGone()).toBe(false);
+      expect(logCalls.length).toBeGreaterThanOrEqual(3);
     });
   });
 

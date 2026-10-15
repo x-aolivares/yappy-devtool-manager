@@ -418,6 +418,14 @@
     } @else {
       <p class="muted">Buscando logs…</p>
     }
+    @if (logGone()) {
+      <!--
+        El proceso ya no existe y el poll cortó. El aviso va *debajo* del texto y
+        no en vez del texto: lo que se alcanzó a leer es lo que el developer
+        estaba mirando cuando paró Kafka, y un panel vacío no dice por qué.
+      -->
+      <p class="muted log-panel__note">El proceso ya no está en el tracker: el log termina en la última línea leída.</p>
+    }
   }
 </section>
 

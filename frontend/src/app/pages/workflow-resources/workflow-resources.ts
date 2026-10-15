@@ -529,13 +529,21 @@ export class WorkflowResourcesPage {
     this.logText.set('');
     this.logOffset.set(0);
     this.logLoaded.set(false);
+    this.logGone.set(false);
     if (row.pid) void this.appendLog(row.pid);
   }
 
-  /** El poll del log, en el mismo tick que el del estado. */
+  /**
+   * El poll del log, en el mismo tick que el del estado.
+   *
+   * `logGone` es la mitad de la regla: el pid se sigue mostrando, pero ya no se
+   * vuelve a preguntar por él. Sin ese corte, un proceso que murió deja el panel
+   * golpeando `/logs` cada 1,5s para siempre — eso es lo que llenaba el log del
+   * server de 404s.
+   */
   private pollLog(): void {
     const pid = this.logPid();
-    if (pid) void this.appendLog(pid);
+    if (pid && !this.logGone()) void this.appendLog(pid);
   }
 
   /**
@@ -563,6 +571,7 @@ export class WorkflowResourcesPage {
     this.logPid.set(pid);
     this.logText.set('');
     this.logOffset.set(0);
+    this.logGone.set(false);
     void this.appendLog(pid);
   }
 
@@ -571,6 +580,7 @@ export class WorkflowResourcesPage {
     this.logText.set('');
     this.logOffset.set(0);
     this.logLoaded.set(false);
+    this.logGone.set(false);
   }
 
   readonly logOffset = signal(0);
@@ -580,17 +590,73 @@ export class WorkflowResourcesPage {
   /** El log del recurso elegido. `null` = el panel está cerrado. */
   readonly logScope = computed<number | null>(() => this.logPid());
 
+  /**
+   * Dejé de seguir a este pid, y el panel sigue abierto por eso.
+   *
+   * No es lo mismo que cerrar: el texto que ya se leyó sigue ahí, que es justo
+   * lo que el developer estaba leyendo cuando el proceso se fue. Lo que se
+   * corta es la pregunta — un 404 del backend es terminal, el pid dejó de estar
+   * trackeado y no va a volver, así que esperar otro tick no es esperar: es una
+   * request que sólo puede volver a fallar.
+   */
+  readonly logGone = signal(false);
+
   private async appendLog(pid: number): Promise<void> {
     try {
       const tail = await this.workflow.log(pid, this.logOffset());
       if (tail.text) this.logText.update((prev) => (prev + tail.text).slice(-20000));
       this.logOffset.set(tail.offset);
       this.logLoaded.set(true);
-    } catch {
-      // El log desapareció con el proceso. No es un fallo de la pantalla: el
-      // panel simplemente deja de crecer.
+    } catch (err) {
+      if (this.isUntracked(err)) {
+        this.forgetLog(pid);
+        return;
+      }
+      // Todo lo demás es transitorio — un corte de red, el server reiniciándose
+      // — y no es un fallo de la pantalla. El panel no se cierra y el próximo
+      // tick reintenta solo.
       this.logLoaded.set(true);
     }
+  }
+
+  /**
+   * Si este 404 no se puede volver a resolver.
+   *
+   * El backend responde 404 en dos casos distintos y sólo uno es terminal: el
+   * pid dejó de estar trackeado (`routes/workflow.py`, 404 "No hay ningún
+   * proceso trackeado con ese pid"), o el proceso existe pero no tiene archivo
+   * de log. Los dos son igual de definitivos para *este* panel — no hay nada que
+   * volver a pedir — así que los dos cortan el poll. Lo que no corta es un 500 o
+   * un status 0: ahí el proceso puede volver a contestarte en el tick siguiente.
+   */
+  private isUntracked(err: unknown): boolean {
+    return err instanceof HttpErrorResponse && err.status === 404;
+  }
+
+  /**
+   * El backend ya no conoce este pid: el panel deja de pedir y lo dice.
+   *
+   * Se chequea que el 404 sea *del pid que se está mostrando*: la request de
+   * un panel puede volver después de que el developer abrió el de otro
+   * recurso, y un 404 tardío no puede matar el seguimiento del nuevo.
+   */
+  private forgetLog(pid: number): void {
+    if (this.logPid() !== pid) return;
+    this.logGone.set(true);
+    // Ya se respondió: sin esto el panel diría "Buscando logs…" para siempre en
+    // el caso de un proceso que murió sin escribir una sola línea.
+    this.logLoaded.set(true);
+  }
+
+  /**
+   * Expuesto para tests: un tick del poll del log sin esperar 1,5s.
+   *
+   * Lo que se verifica es que *no* vuelva a preguntar, y eso no se ve sin
+   * dispararlo: el `setTimeout` real de la pantalla no es algo que un test
+   * pueda avanzar sin meterse con timers que los otros tests también usan.
+   */
+  pollLogForTest(): void {
+    this.pollLog();
   }
 
   // --- avisos ---------------------------------------------------------------

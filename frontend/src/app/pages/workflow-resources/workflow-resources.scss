@@ -57,6 +57,13 @@
   font-family: var(--sys-mono);
 }
 
+/* El aviso de "el proceso se fue". Airado del `<pre>`: es una nota al pie del
+ * log, no parte del log. Sin márgenes propios se pegaría al bloque de código. */
+.log-panel__note {
+  margin: 0.75rem 0 0;
+  font-size: var(--text-sm);
+}
+
 .visually-hidden {
   position: absolute;
   width: 0.0625rem;
