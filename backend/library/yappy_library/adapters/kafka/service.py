@@ -105,6 +105,25 @@ def _broker_port(props: Path) -> int:
     return DEFAULT_BROKER_PORT
 
 
+def _open_kafdrop_browser() -> None:
+    """Open Kafdrop in the default browser.
+
+    Only the caller decides *whether* to call this — see ``_start_ui``. Both
+    platform branches lived inline in two places and neither of them knew who
+    was asking: a background start driven by the web server opened a browser on
+    the developer's machine even though the screen already renders the "Abrir ↗"
+    link for that exact row (``registry.py`` sets ``browser_url`` for it). From a
+    terminal the opposite is true: opening the link beats making someone go find
+    a button, and spawning another terminal just to click one is worse.
+    """
+    if sys.platform == "win32":
+        os.system(f'start "" "http://localhost:{KAFDROP_UI_PORT}"')
+    else:
+        import webbrowser
+
+        webbrowser.open(f"http://localhost:{KAFDROP_UI_PORT}")
+
+
 class KafkaService:
     def __init__(self, cfg: Config | None = None):
         self._cfg = cfg or Config()
@@ -227,20 +246,15 @@ class KafkaService:
             proc = self._spawn_detached(cmd, "ui", KAFDROP_UI_PORT, owner)
             success("Kafdrop UI started (background)")
             time.sleep(2)
-            # Open browser
-            if sys.platform == "win32":
-                os.system(f'start "" "http://localhost:{KAFDROP_UI_PORT}"')
-            else:
-                import webbrowser
-                webbrowser.open(f"http://localhost:{KAFDROP_UI_PORT}")
+            # Only from a terminal. The web path gets the "Abrir ↗" link in the
+            # row it just drew, and stealing the developer's focus with a second
+            # browser window they did not ask for is the cost of the duplicate.
+            if owner == process_tracker.OWNER_CLI:
+                _open_kafdrop_browser()
             return proc
 
-        # Open browser before blocking
-        if sys.platform == "win32":
-            os.system(f'start "" "http://localhost:{KAFDROP_UI_PORT}"')
-        else:
-            import webbrowser
-            webbrowser.open(f"http://localhost:{KAFDROP_UI_PORT}")
+        # Foreground: the terminal is blocked on this process, so open first.
+        _open_kafdrop_browser()
         try:
             subprocess.run(cmd, check=False)
         except KeyboardInterrupt:
