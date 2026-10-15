@@ -10,12 +10,14 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+from pathlib import Path
 
 import pytest
 
 from yappy_library.adapters import process_tracker
 from yappy_library.adapters.processes import BaseCommand
 from yappy_library.application.workflow import actions
+from yappy_library.application.workflow import supervisor as supervisor_module
 from yappy_library.application.workflow.actions import (
     StartRefused,
     StopRefused,
@@ -301,6 +303,50 @@ def test_stop_all_leaves_foreign_processes_alone(tracker):
 
     assert result["stopped"] == []
     assert [r["pid"] for r in result["refused"]] == [os.getpid()]
+
+
+def test_parar_todo_dice_que_paro(tracker, monkeypatch):
+    """The happy path used to be the silent one.
+
+    A "Parar todo" that worked left the terminal with a `POST …/stop-all 200 OK`
+    from uvicorn and not one word about what it had just closed. Refusals were
+    logged, successes were not — so the answer to "did that do anything?" was
+    only ever visible on the screen, and only until the next poll moved it.
+    """
+    parado = os.getpid()
+    _track(tracker, parado, local_port=8402, cluster="cap", owner="web")
+    monkeypatch.setattr(actions, "stop_pid", lambda pid: True)
+
+    lineas: list[str] = []
+    monkeypatch.setattr(actions, "log_info", lineas.append)
+    stop_all()
+
+    fallos = [l for l in lineas if l.startswith(f"Se paró {parado} (")]
+    assert fallos, lineas
+    # It has to name the row, not just the number: a bare pid is the same thing
+    # the developer already saw in the URL bar.
+    assert "cap" in fallos[0], fallos[0]
+
+
+def test_el_andamaje_del_supervisor_no_vuelve():
+    """Four `[wf]` step lines were scaffolding for a start that was failing.
+
+    They described plumbing that either worked or raised — pid, port, probe,
+    supervisor pid, "the request comes back here" — six lines per start. The
+    verdicts the supervisor writes afterwards are the ones worth reading and
+    they stay; this pins only that the chatter does not grow back.
+    """
+    fuente = (
+        Path(actions.__file__).read_text(encoding="utf-8")
+        + Path(supervisor_module.__file__).read_text(encoding="utf-8")
+    )
+    for ruido in (
+        "proceso pid=",
+        "anotado 'starting'",
+        "supervisor entregado",
+        "arranca: pid=",
+    ):
+        assert ruido not in fuente, ruido
 
 
 def test_the_two_refusals_do_not_print_the_same_sentence(tracker, monkeypatch):

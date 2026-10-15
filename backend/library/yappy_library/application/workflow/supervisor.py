@@ -69,10 +69,11 @@ class Supervisor:
     def run(self, timeout: float = DEFAULT_TIMEOUT) -> None:
         started = time.monotonic()
         who = self.label or f":{self.port}"
-        log_info(
-            f"  [wf] {_stamp()} supervisor de {who} arranca: pid={self.pid} "
-            f"probe={self.probe} puerto={self.port} timeout={timeout:g}s"
-        )
+        # The "arranca" line that used to sit here was scaffolding for a start that was
+        # failing: pid, probe, port, timeout — restating what the request being
+        # answered right now already said, six lines per start. The verdicts
+        # below — responds, opened-but-silent, gone, failed — are the ones that
+        # tell you something you cannot read off the row.
         try:
             alive = process_tracker.get_tracked_processes()
             still_there = any(e.get("pid") == self.pid for e in alive)

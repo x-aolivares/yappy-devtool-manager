@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import time
 from dataclasses import dataclass
 
 from yappy_library.adapters import process_tracker
@@ -254,11 +253,6 @@ def start_port(cfg: Config, cluster: str, port: int, label: str = "") -> dict:
     return _hand_off(proc, port, "https", label or f":{port}")
 
 
-def _stamp() -> str:
-    """La hora, en la misma línea que el paso. El flujo es asíncrono y sin esto
-    no hay forma de reconstruir qué pasó cuando algo sale mal tres minutos
-    después."""
-    return time.strftime("%H:%M:%S")
 
 
 def _hand_off(proc: subprocess.Popen, port: int, probe: str, label: str) -> dict:
@@ -271,14 +265,18 @@ def _hand_off(proc: subprocess.Popen, port: int, probe: str, label: str) -> dict
     ``supervisor`` is this process. If the server shuts down before the probe
     finishes, the entry says so and the row reads `dead` instead of waiting
     forever for a verdict that will never come.
+
+    The pid/port/probe/supervisor chatter that used to sit here was diagnostic
+    scaffolding: it existed because a start was failing and the log said
+    nothing about how far it got. Once the failures were fixed it was pure
+    noise — six lines per start describing plumbing that either worked or
+    raised. What the supervisor writes when it has a **verdict** is the part
+    worth reading, and that is still there.
     """
-    log_info(f"  [wf] {_stamp()} proceso pid={proc.pid} puerto={port} probe={probe} '{label}'")
     process_tracker.track_process_state_and_supervisor(
         proc.pid, process_tracker.STATE_STARTING, os.getpid()
     )
-    log_info(f"  [wf] {_stamp()} anotado 'starting', supervisor=pid {os.getpid()}")
     supervise(proc.pid, port, probe, label=label, log_file=_log_file_for(proc.pid))
-    log_info(f"  [wf] {_stamp()} supervisor entregado, la request vuelve acá")
     return {"pid": proc.pid, "port": port, "state": process_tracker.STATE_STARTING, "label": label}
 
 
@@ -331,6 +329,7 @@ def stop_all(*, allow_foreign: bool = False) -> dict:
     refused: list[dict] = []
 
     motivos: list[str] = []
+    parados: list[tuple[dict, int]] = []
 
     for entry in process_tracker.get_tracked_processes():
         if not entry.get("alive"):
@@ -342,6 +341,7 @@ def stop_all(*, allow_foreign: bool = False) -> dict:
             continue
         if stop_pid(pid):
             stopped.append(pid)
+            parados.append((entry, pid))
         else:
             # The kill was refused, not fumbled: the process is still running.
             # Listing it under `stopped` is the one answer the screen must never
@@ -358,5 +358,15 @@ def stop_all(*, allow_foreign: bool = False) -> dict:
     # for a process ownership problem that does not exist.
     for motivo in motivos:
         log_info(f"No se paró {motivo}")
+
+    # The successes used to say nothing at all. A "Parar todo" that works left
+    # the terminal with a `POST …/stop-all 200 OK` from uvicorn and not one word
+    # about what it had just closed — so "did that do anything?" was unanswerable
+    # from the log. Silence on the happy path is its own kind of untruth.
+    #
+    # The tracker entry is read *before* the untrack, so the description names
+    # the row the developer clicked rather than a bare pid.
+    for entry, pid in parados:
+        log_info(f"Se paró {pid} ({_describe(entry)})")
 
     return {"stopped": stopped, "refused": refused}
