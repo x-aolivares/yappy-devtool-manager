@@ -552,12 +552,31 @@ export class WorkflowResourcesPage {
    * La barra no es un recurso: no tiene fila ni botón propio, así que "ver logs"
    * sin más abierta el primer túnel que tenga archivo. El de la tabla gana
    * porque es el que el developer acaba de pedir.
+   *
+   * "Gana" no quiere decir "gana siempre". `logGone` dice que el backend ya
+   * contestó 404 para el pid que está mirando: dejó de estar trackeado, o nunca
+   * tuvo archivo de log. Un 404 es terminal — `pollLog` ya no pregunta por él y
+   * `forgetLog` ya lo anotó — así que ofrecer ese pid otra vez sólo compra una
+   * request que no puede volver a contestarse y vuelve a mostrar el aviso. El
+   * botón queda deshabilitado y, si hay otro recurso con log, la barra pasa a
+   * ese.
+   *
+   * El pid muerto se filtra también de la búsqueda por filas, no sólo del atajo:
+   * las filas son un snapshot del último poll, así que pueden seguir dibujando
+   * ese proceso arriba con su `log_file` hasta que llegue el estado nuevo. Si
+   * sólo se filtrara el atajo, la búsqueda devolvería el mismo pid muerto y el
+   * botón quedaría habilitado igual.
    */
   readonly firstLogPid = computed<number | null>(() => {
     const chosen = this.logPid();
-    if (chosen) return chosen;
+    const gone = chosen !== null && this.logGone();
+    if (chosen && !gone) return chosen;
+
     const rows = [...this.ports(), ...this.resources()];
-    return rows.find((r) => r.log_file && canShowLogs(r.state))?.pid ?? null;
+    const row = rows.find(
+      (r) => r.log_file && canShowLogs(r.state) && (!gone || r.pid !== chosen),
+    );
+    return row?.pid ?? null;
   });
 
   showFirstLog(): void {

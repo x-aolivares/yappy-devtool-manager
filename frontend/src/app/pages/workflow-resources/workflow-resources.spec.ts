@@ -535,6 +535,83 @@ describe('WorkflowResourcesPage', () => {
       const stopAll = [...el.querySelectorAll('button')].find((b) => b.textContent?.includes('Parar todo'));
       expect(stopAll?.disabled).toBe(true);
     });
+
+    // --- "Ver logs" de la barra --------------------------------------------
+
+    function botonVerLogs(el: HTMLElement): HTMLButtonElement | undefined {
+      // Acotado a la barra: cada fila tiene su propio "Ver logs", y el de la
+      // fila se disables por `canShowLogs`, que no es lo que se está probando.
+      const barra = el.querySelector('.summary-bar');
+      return [...(barra?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find((b) =>
+        b.textContent?.includes('Ver logs'),
+      );
+    }
+
+    const kafka = (over = {}) =>
+      recurso({ state: 'up', pid: 21224, log_file: 'kafka-ui-21224.log', ...over });
+
+    const sinTrackear = () =>
+      new HttpErrorResponse({
+        status: 404,
+        error: { detail: 'No hay ningún proceso trackeado con ese pid.' },
+      });
+
+    it('ofrece el pid que se está mirando', async () => {
+      // La mitad que no se toca: el recurso que el developer acaba de pedir es el
+      // que la barra ofrece, aunque haya otro con log más arriba en la tabla.
+      answer = estado({ resources: [kafka({ key: 'kafka-ui', pid: 21224 })] });
+      const { comp } = await montar();
+
+      comp.showLogs(kafka());
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(comp.logGone()).toBe(false);
+      expect(comp.firstLogPid()).toBe(21224);
+    });
+
+    it('deja de ofrecer un pid que ya no está en el tracker', async () => {
+      // El bug: `logPid` sobrevive a `logGone`, así que el botón quedaba
+      // habilitado apuntando a un pid que el backend ya no trackea. Cada click
+      // costaba un 404 y volvía a mostrar el aviso — el mismo callejón sin
+      // salida, pedido por el developer.
+      answer = estado({ resources: [kafka()] });
+      const { comp, el, fixture } = await montar();
+
+      logError = sinTrackear();
+      comp.showLogs(kafka());
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+
+      // La fila sigue dibujándose arriba y con su `log_file`: es el snapshot del
+      // último poll. Por eso el pid muerto se filtra también de la búsqueda por
+      // filas — si no, el fallback devolvería el mismo pid y el botón quedaría
+      // habilitado igual.
+      expect(comp.logGone()).toBe(true);
+      expect(comp.firstLogPid()).toBeNull();
+      expect(botonVerLogs(el)?.disabled).toBe(true);
+    });
+
+    it('pasa al siguiente recurso con log cuando el que se mira se fue', async () => {
+      answer = estado({ resources: [kafka(), kafka({ key: 'kafka-server', pid: 33940, log_file: 'kafka-server-33940.log' })] });
+      const { comp, el, fixture } = await montar();
+
+      logError = sinTrackear();
+      comp.showLogs(kafka());
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+
+      expect(comp.firstLogPid()).toBe(33940);
+      expect(botonVerLogs(el)?.disabled).toBe(false);
+
+      // Y el click lleva al panel al otro recurso, sin volver al pid muerto.
+      logError = null;
+      comp.showFirstLog();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(comp.logPid()).toBe(33940);
+      expect(comp.logGone()).toBe(false);
+      expect(logCalls.filter((c) => c.pid === 21224).length).toBe(1);
+    });
   });
 
   // --- el panel de logs -----------------------------------------------------
