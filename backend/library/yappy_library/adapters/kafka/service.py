@@ -9,8 +9,40 @@ import time
 from pathlib import Path
 
 from yappy_library.adapters import process_tracker
-from yappy_library.adapters.logging import die, info, raw, success, warn
+from yappy_library.adapters.logging import info, raw, success, warn
+from yappy_library.adapters.processes import detached_popen_kwargs, open_url
 from yappy_library.config import Config
+
+
+class KafkaUnavailable(Exception):
+    """Kafka cannot be run from here, and the reason to show for it.
+
+    This exists because :func:`yappy_library.adapters.logging.die` is the wrong
+    thing for a library to do, and ``die()`` was what this module used to do.
+
+    ``die()`` ends the *process*. That is right for ``yappy kafka up`` and fatal
+    everywhere else, because the web server drives this very code:
+    ``actions._start_kafka`` calls :meth:`KafkaService.up` from the sync endpoint
+    ``POST /api/workflow/resources/start``, Starlette runs that in an anyio worker
+    thread, anyio re-raises whatever came out into the event-loop task, and
+    ``SystemExit`` is a ``BaseException`` — ``asyncio.Task.__step`` re-raises it
+    explicitly and it escapes ``run_until_complete``. uvicorn is gone, with no
+    traceback and nothing in the log. A missing ``libs/`` directory did not print
+    an error on the screen; it took the whole UI down.
+
+    The symptom only shows up on a machine with a broken Kafka install, which is
+    why it survived: the happy path never reaches a ``die()``.
+
+    **What a caller does with it is its own decision.** A terminal command turns it
+    back into the exit it used to be (``cli/yappy_cli/kafka/manager.py``); the web
+    turns it into a ``StartRefused`` so the row says why instead of the server
+    vanishing. Nothing in this module calls ``die()`` anymore — that invariant is
+    pinned by ``tests/test_kafka_unavailable.py``.
+    """
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
 
 
 def _kafka_bin(cfg: Config, script: str) -> Path:
@@ -23,7 +55,7 @@ def _kafka_bin(cfg: Config, script: str) -> Path:
 
 def _ensure_windows():
     if sys.platform != "win32":
-        die("Kafka management currently supports Windows only")
+        raise KafkaUnavailable("Kafka management currently supports Windows only")
 
 
 def _on_rm_error(func, path, exc_info):
@@ -115,13 +147,11 @@ def _open_kafdrop_browser() -> None:
     link for that exact row (``registry.py`` sets ``browser_url`` for it). From a
     terminal the opposite is true: opening the link beats making someone go find
     a button, and spawning another terminal just to click one is worse.
-    """
-    if sys.platform == "win32":
-        os.system(f'start "" "http://localhost:{KAFDROP_UI_PORT}"')
-    else:
-        import webbrowser
 
-        webbrowser.open(f"http://localhost:{KAFDROP_UI_PORT}")
+    The *how* is `open_url`'s now — this used to be a raw ``os.system``, which
+    puts the child in the caller's console group.
+    """
+    open_url(f"http://localhost:{KAFDROP_UI_PORT}")
 
 
 class KafkaService:
@@ -148,7 +178,8 @@ class KafkaService:
         llevaba por delante al proceso que lo levantó — que es exactamente lo que
         pasaba al arrancar Kafka desde la pantalla. El refresher de DB
         (`db/tunnel.py::_start_detached_refresher`) ya lo hacía así; esta función
-        tenía el nombre pero no el comportamiento.
+        tenía el nombre pero no el comportamiento. Los flags viven hoy en un solo
+        lugar, `processes.detached_popen_kwargs`, que también los usa `open_url`.
         """
         self._log_dir.mkdir(parents=True, exist_ok=True)
         placeholder = self._log_dir / f"kafka-{target}.log"
@@ -157,13 +188,8 @@ class KafkaService:
             "stdout": handle,
             "stderr": subprocess.STDOUT,
             "cwd": str(self._log_dir),
+            **detached_popen_kwargs(),
         }
-        if sys.platform == "win32":
-            kwargs["creationflags"] = (
-                subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-            )
-        else:
-            kwargs["start_new_session"] = True
         proc = subprocess.Popen(cmd, **kwargs)
         handle.close()
 
@@ -192,9 +218,9 @@ class KafkaService:
         props = self._kafka_core / "config" / "kraft" / "server.properties"
         libs_dir = self._kafka_core / "libs"
         if not props.exists():
-            die(f"Kafka properties not found: {props}")
+            raise KafkaUnavailable(f"Kafka properties not found: {props}")
         if not libs_dir.exists():
-            die(f"Kafka libs not found: {libs_dir}")
+            raise KafkaUnavailable(f"Kafka libs not found: {libs_dir}")
         info("Starting Kafka server (KRaft)...")
 
         # Build classpath from all JARs in libs/
@@ -230,7 +256,7 @@ class KafkaService:
     def _start_ui(self, detach: bool, owner: str = "cli") -> subprocess.Popen | None:
         ui_jar = self._kafka_ui / "main.jar"
         if not ui_jar.exists():
-            die(f"Kafdrop UI jar not found: {ui_jar}")
+            raise KafkaUnavailable(f"Kafdrop UI jar not found: {ui_jar}")
         info(f"Starting Kafdrop UI on port {KAFDROP_UI_PORT}...")
 
         cmd = [
@@ -272,7 +298,7 @@ class KafkaService:
         if target == "clean":
             self.clean()
             return None
-        die("Invalid action. Use: server, ui, or clean")
+        raise KafkaUnavailable("Invalid action. Use: server, ui, or clean")
 
     def _run_kafka_tool(self, classname: str, args: list[str]) -> str | None:
         """Run a Kafka tool class directly via Java. Returns stdout or None."""
@@ -345,7 +371,7 @@ class KafkaService:
         raw("Generando nuevo UUID para el storage...")
         uuid = self._run_kafka_tool("kafka.tools.StorageTool", ["random-uuid"])
         if uuid is None:
-            die("Error generando UUID")
+            raise KafkaUnavailable("Error generando UUID")
         raw(f"  UUID: {uuid}")
 
         raw("Formateando el storage...")
@@ -356,7 +382,7 @@ class KafkaService:
         if output is not None and ("Formatting" in output or output == ""):
             raw("Storage reset completado")
         else:
-            die("Error formateando storage")
+            raise KafkaUnavailable("Error formateando storage")
 
     def _untrack(self, target: str) -> None:
         for p in process_tracker.get_tracked_processes(resource="kafka", target=target):
@@ -382,7 +408,7 @@ class KafkaService:
             info("Stopping Kafdrop UI...")
             _kill_ui_process()
         else:
-            die("Invalid target. Use: server or ui")
+            raise KafkaUnavailable("Invalid target. Use: server or ui")
         self._untrack(target)
 
     def cleanup(self):

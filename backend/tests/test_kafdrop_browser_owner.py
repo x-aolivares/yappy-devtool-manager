@@ -10,8 +10,11 @@ En la terminal el comportamiento es el correcto y no se toca: desde un comando,
 abrir el link gana a hacer que el developer busque un botón, y abrir otra
 terminal para clickearlo es peor.
 
-El 404 y el `os.system` sin detach quedan fuera de acá a propósito: son otros dos
-problemas, con otros dos arreglos.
+El `os.system` sin detach que usaba este opener ya no está: vive ahora en
+`processes.open_url`, y lo comparten los dos que abrían un navegador
+(`test_open_url_detached.py`).
+
+El 404 queda fuera de acá a propósito: es otro problema, con otro arreglo.
 """
 
 from __future__ import annotations

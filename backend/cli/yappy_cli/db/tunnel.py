@@ -13,7 +13,7 @@ from yappy_library.adapters.database.credentials import (
     generate_token as _generate_token,
     write_local_env as _write_local_env,
 )
-from yappy_library.adapters.processes import BaseCommand
+from yappy_library.adapters.processes import BaseCommand, detached_popen_kwargs
 from yappy_library.config import Config
 from ..deprecation import warn_deprecated
 from yappy_library.adapters.logging import die, info, success, warn
@@ -44,7 +44,13 @@ def _start_refresher(cfg: Config, stop_event: threading.Event):
 
 
 def _start_detached_refresher(env: str) -> Path:
-    """Spawn a detached child that refreshes the DB token after the CLI exits."""
+    """Spawn a detached child that refreshes the DB token after the CLI exits.
+
+    This was the first place in the codebase that detached properly, and the two
+    flags were then copied into the Kafka spawn and the browser opener. They live
+    in `detached_popen_kwargs` now, so there is one place where "detached" is
+    decided instead of three that have to agree.
+    """
     log_dir = Path.home() / ".yappy" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"db-refresher-{env}.log"
@@ -53,13 +59,8 @@ def _start_detached_refresher(env: str) -> Path:
         "stdout": log_path.open("ab"),
         "stderr": subprocess.STDOUT,
         "stdin": subprocess.DEVNULL,
+        **detached_popen_kwargs(),
     }
-    if sys.platform == "win32":
-        kwargs["creationflags"] = (
-            subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-        )
-    else:
-        kwargs["start_new_session"] = True
     child = subprocess.Popen(cmd, **kwargs)
     process_tracker.track_process(
         pid=child.pid,

@@ -11,6 +11,7 @@ from typing import Annotated
 import typer
 
 from yappy_library.adapters.logging import console, die, info, success, warn
+from yappy_library.adapters.processes import ToolUnavailable
 from yappy_library.config import Config, venv_scripts_dir, win_to_posix
 from yappy_library.paths import (
     migrate_backend_resources,
@@ -29,7 +30,39 @@ from .verbs.exec import exec_app
 from .verbs.logs import logs_app
 
 
-app = typer.Typer(
+class _YappyTyper(typer.Typer):
+    """The CLI's outermost boundary, and the only place that knows how to exit.
+
+    **Why the exit lives here and not at each command.** ``_aws_cmd()`` raises
+    :class:`~yappy_library.adapters.processes.ToolUnavailable` instead of
+    ``die()`` because the web calls it, and a ``SystemExit`` from a sync endpoint
+    kills uvicorn with no traceback. But ``_aws_cmd`` has nine callers spread
+    over five modules and most of them are several frames deep
+    (``session.pf`` → ``ssm_tunnel`` → ``popen``), so re-``die()``-ing at each
+    one is not a fix, it is a second copy of the same mistake waiting to happen.
+    ``ToolUnavailable`` means *"this machine cannot run this"*, and only the
+    process boundary is entitled to end the process — so the boundary does it,
+    once, for every command and every sub-app.
+
+    Placement matters and this is deliberate. It is inside ``__call__``, which is
+    the outermost frame Typer itself owns, and ``ToolUnavailable`` is an
+    ``Exception``, so it never reaches ``sys.excepthook`` — and that hook is the
+    pretty traceback Typer installs by default. An unhandled exception would
+    replace one clean line with a stack trace, which is a regression a developer
+    would notice immediately.
+
+    The message and the exit code are exactly what ``_aws_cmd`` used to produce
+    itself: ``die()`` with the same string, code 1, on stderr.
+    """
+
+    def __call__(self, *args, **kwargs):
+        try:
+            super().__call__(*args, **kwargs)
+        except ToolUnavailable as exc:
+            die(exc.reason)
+
+
+app = _YappyTyper(
     name="yappy",
     help="AWS CLI Manager - orchestrate AWS, DB, Kafka, and SSM workflows",
     no_args_is_help=True,

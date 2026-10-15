@@ -1,6 +1,6 @@
 import typer
 
-from yappy_library.adapters.kafka.service import KafkaService
+from yappy_library.adapters.kafka.service import KafkaService, KafkaUnavailable
 from yappy_library.config import Config
 from ..deprecation import warn_deprecated
 from yappy_library.adapters.logging import die
@@ -23,7 +23,15 @@ def up(
         warn_deprecated("kafka up", "run kafka")
     if action not in ("server", "ui", "clean"):
         die("Invalid action. Use: server, ui, or clean")
-    _service().up(action, detach=detach)
+    # `KafkaUnavailable` is how the service says "this machine cannot run Kafka"
+    # now that it no longer calls `die()` itself — the web calls it from inside
+    # uvicorn and a `SystemExit` there is a silent server shutdown. From a
+    # terminal that is still an exit, so the exit is re-made right here with the
+    # same message and the same code the service used to use.
+    try:
+        _service().up(action, detach=detach)
+    except KafkaUnavailable as exc:
+        die(exc.reason)
 
 
 @app.command()
@@ -36,4 +44,7 @@ def down(
         warn_deprecated("kafka down", "stop kafka")
     if target not in ("server", "ui"):
         die("Invalid target. Use: server or ui")
-    _service().down(target)
+    try:
+        _service().down(target)
+    except KafkaUnavailable as exc:
+        die(exc.reason)

@@ -22,7 +22,7 @@ import pymysql
 from dotenv import dotenv_values
 
 from yappy_library.adapters.database.credentials import generate_token
-from yappy_library.adapters.processes import BaseCommand, tunnel_log_path
+from yappy_library.adapters.processes import BaseCommand, ToolUnavailable, tunnel_log_path
 from yappy_library.config import Config
 from yappy_library.paths import project_config_dir
 
@@ -194,16 +194,24 @@ def connect(cfg: Config) -> Iterator[pymysql.connections.Connection]:
         # since the cleanup only runs when the request finishes. It also hid the
         # failure, because the tunnel is started quietly.
         if not mysql_greeting(local_port, timeout=1.0):
-            proc = base.ssm_tunnel(
-                instance=instance,
-                port=int(remote_port),
-                local_port=local_port,
-                region=cfg.region,
-                profile=cfg.profile,
-                remote_host=remote_host,
-                quiet=True,
-                log_file=tunnel_log_path(local_port),
-            )
+            try:
+                proc = base.ssm_tunnel(
+                    instance=instance,
+                    port=int(remote_port),
+                    local_port=local_port,
+                    region=cfg.region,
+                    profile=cfg.profile,
+                    remote_host=remote_host,
+                    quiet=True,
+                    log_file=tunnel_log_path(local_port),
+                )
+            except ToolUnavailable as exc:
+                # Every DB route runs on a sync `def`, so a `SystemExit` escaping
+                # here does not produce a 500 — it takes uvicorn with it, silently,
+                # because `asyncio.Task.__step` re-raises `BaseException` and no
+                # `except Exception` in the stack can catch it. `SyncError` is
+                # what every one of those routes already knows how to render.
+                raise SyncError(f"No se pudo abrir el túnel a la base: {exc.reason}") from exc
             _wait_for_port(local_port)
         conn = _open("127.0.0.1", local_port, user, token)
         try:

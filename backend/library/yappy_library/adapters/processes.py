@@ -24,6 +24,47 @@ from yappy_library.adapters.logging import (
 _DETACH_DELAY = 2
 
 
+class ToolUnavailable(Exception):
+    """An external tool this module shells out to is missing or unusable.
+
+    **Why this exists, and why it is not ``die()``.** ``die()`` ends the
+    *process*, which is the right answer for a command and a fatal one for
+    anything the web server drives. ``POST /api/workflow/ports/start`` is a sync
+    ``def``, so Starlette runs it in an anyio worker thread; anyio re-raises
+    whatever came out into the event-loop task, ``asyncio.Task.__step``
+    re-raises ``SystemExit`` explicitly (it is a ``BaseException``, so no
+    ``except Exception`` in the stack can catch it), and it escapes
+    ``run_until_complete``. uvicorn is gone — no traceback, nothing in the log,
+    the UI simply stops existing. The same shape as the ``taskkill /T`` cascade.
+
+    This module is the most exposed version of that: :func:`_aws_cmd` runs on
+    *every* tunnel the web opens (``actions._spawn_tunnel`` →
+    :meth:`BaseCommand.ssm_tunnel`) and on every DB request
+    (``connection.connect``), so the trigger is not a broken Kafka install but a
+    missing or misconfigured AWS CLI — an ordinary machine state.
+
+    **What a caller does with it is its own decision, and each one is right for a
+    different reason:**
+
+    - the Typer app turns it back into the exit it always was, with the same
+      message and the same code (``cli/yappy_cli/cli.py``) — a command has many
+      entry points and one place that knows how to exit;
+    - ``actions._spawn_tunnel`` turns it into a ``StartRefused``, which the route
+      already answers with a 409 carrying the reason;
+    - ``connection.connect`` turns it into a ``SyncError``, which every DB route
+      already knows how to render as an error row.
+
+    The reason travels in English inside the library so the terminal keeps
+    printing exactly what it printed before; only the wrapper the screen reads is
+    Spanish. The invariant that no ``die()`` comes back on a web-reachable path
+    is pinned by ``tests/test_tool_unavailable.py``.
+    """
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
 def _detach_log_path(name: str) -> Path:
     """Designated log file for a detached service: ~/.yappy/logs/<slug>.log."""
     log_dir = Path.home() / ".yappy" / "logs"
@@ -42,9 +83,92 @@ def tunnel_log_path(local_port: int) -> Path:
     return _detach_log_path(f"tunnel-{local_port}")
 
 
+def detached_popen_kwargs() -> dict:
+    """The ``Popen`` keywords that put a child outside our console and its group.
+
+    **Why this is a helper and not three copies of the same four lines.** Windows
+    gives every process a console group, and a child inherits the one of whoever
+    launched it unless it is told otherwise. That is why a broker started from the
+    web used to go down with the web: ``Ctrl+C`` in the group reaches the whole
+    group, and the broker was in it. The flags below are the way out, and the cost
+    of forgetting them once per call site is a process that shares our fate.
+
+    ``DETACHED_PROCESS`` gives the child no console at all — no window flashes on
+    the developer's desktop, and nothing it prints lands in our terminal.
+    ``CREATE_NEW_PROCESS_GROUP`` makes it the root of a *new* group, so the group
+    events we receive are not delivered to it. The two are not interchangeable: the
+    first alone leaves the child in our group.
+
+    On POSIX the equivalent is ``start_new_session``, which calls ``setsid``. The
+    caller always passes a list and never a shell string, so nothing here changes
+    how the arguments are quoted.
+    """
+    if sys.platform == "win32":
+        return {
+            "creationflags": (
+                subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            )
+        }
+    return {"start_new_session": True}
+
+
+def open_url(url: str) -> None:
+    """Open ``url`` in the default browser, from wherever we happen to be running.
+
+    This used to be ``os.system(f'start "" "{url}"')``, and ``os.system`` is the
+    one call in this module that cannot be made safe: it hands the string to
+    ``system()``, which on Windows spawns ``cmd.exe`` **inheriting our console and
+    our process group**. So the browser landed in the same group as uvicorn — the
+    exact group ``detached_popen_kwargs`` exists to escape — and the window that
+    popped up belonged to the server's console rather than to the developer's
+    session. It also meant the caller had no way to opt out: unlike the Kafdrop
+    opener, this one never looked at who was asking.
+
+    The visible behaviour is unchanged: the browser opens, and a URL with spaces
+    still opens correctly.
+
+    **Why the Windows branch is ``["cmd", "/c", "start", "", url]`` and not
+    ``["start", url]``:**
+
+    - ``start`` is a ``cmd.exe`` *builtin*. There is no ``start.exe`` on disk, so
+      ``Popen`` would raise ``FileNotFoundError``. ``/c`` is how you run a builtin
+      from an external command.
+    - The empty string is ``start``'s mandatory *title* argument, and it is the
+      whole trick. ``start`` treats its first quoted token as the window title. The
+      old string was ``start "" "http://..."`` for that reason: without the empty
+      title, the quoted URL is swallowed as the title and ``start`` opens nothing,
+      exiting happily. ``Popen`` quotes the URL itself when it contains a space,
+      so the argument list reproduces the old string's semantics exactly.
+    - The child is never waited on. ``start`` returns as soon as it has handed the
+      URL to the shell, and blocking a request thread on a browser launch is the
+      thing this replaces.
+
+    On POSIX ``webbrowser.open`` is what both callers used before and is kept.
+    """
+    if sys.platform == "win32":
+        subprocess.Popen(
+            ["cmd", "/c", "start", "", url],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            **detached_popen_kwargs(),
+        )
+    else:
+        import webbrowser
+
+        webbrowser.open(url)
+
+
 @functools.lru_cache(maxsize=None)
 def _aws_cmd() -> list[str]:
-    """Return a working aws invocation: binary or python -m awscli."""
+    """Return a working aws invocation: binary or python -m awscli.
+
+    Raises :class:`ToolUnavailable` when neither works. It used to ``die()``
+    here, and ``die()`` from this function was the single most reachable silent
+    uvicorn kill in the codebase: every tunnel and every DB query goes through
+    it. The terminal still ends up in exactly the same place — see the
+    ``_YappyTyper`` handler in ``cli/yappy_cli/cli.py``.
+    """
     try:
         r = subprocess.run(["aws", "--version"], capture_output=True, timeout=10)
         if r.returncode == 0:
@@ -60,7 +184,7 @@ def _aws_cmd() -> list[str]:
             return [sys.executable, "-m", "awscli"]
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
-    die("AWS CLI not found. Install with: pip install awscli")
+    raise ToolUnavailable("AWS CLI not found. Install with: pip install awscli")
 
 
 def _expected_identity(entry: dict | None) -> dict:
@@ -202,11 +326,21 @@ class BaseCommand:
         stdout=None,
         stderr=None,
     ) -> subprocess.Popen:
+        """Spawn ``cmd``, or say the binary is not there.
+
+        The message is the one this always printed. What changed is the type:
+        :class:`ToolUnavailable` instead of ``SystemExit``, because
+        :meth:`ssm_tunnel` calls this and ``ssm_tunnel`` is what the web calls
+        from a sync endpoint. ``FileNotFoundError`` here means the OS refused the
+        exact binary that ``_aws_cmd()`` just ran successfully — a PATH race, a
+        reinstall in progress, an AppLocker refusal — so it is rare, but it is
+        not rarer than the thing this class was written for.
+        """
         log_command(" ".join(cmd))
         try:
             return subprocess.Popen(cmd, stdout=stdout, stderr=stderr)
         except FileNotFoundError:
-            die(f"Command not found: {cmd[0]}. Is it installed?")
+            raise ToolUnavailable(f"Command not found: {cmd[0]}. Is it installed?") from None
 
     def ssm_tunnel(
         self,
@@ -230,6 +364,20 @@ class BaseCommand:
         to — see :mod:`yappy_library.adapters.process_tracker`, which is the
         whole reason they are here.
         """
+        if remote_host and sys.platform == "linux":
+            # Was `sys.exit(1)`, bare, with nothing written anywhere. On Linux,
+            # starting a remote-host tunnel therefore ended *uvicorn*: this
+            # function is reached from `actions._spawn_tunnel`, which backs the
+            # sync `POST /api/workflow/ports/start`, and `SystemExit` is a
+            # `BaseException` — it does not fail the request, it escapes the
+            # Starlette worker thread into the event loop and takes the server
+            # down with no traceback. Raised, the route turns it into a 409 and
+            # the row says why; from a terminal it still exits 1 through the
+            # Typer handler.
+            raise ToolUnavailable(
+                "El port-forwarding a un host remoto no anda en Linux. "
+                "Levantalo desde una sesión de Windows o usá un túnel sin host."
+            )
         if remote_host:
             doc = "AWS-StartPortForwardingSessionToRemoteHost"
             params = {
@@ -466,19 +614,25 @@ class BaseCommand:
             subprocess.run(["pkill", "session-manager-plugin"], capture_output=True)
 
     def open_browser(self, url: str):
-        if sys.platform == "win32":
-            os.system(f'start "" "{url}"')
-        else:
-            import webbrowser
-            webbrowser.open(url)
+        """Open ``url``; see :func:`open_url` for why this is not ``os.system``."""
+        open_url(url)
 
     def check_requirements(self, *cmds: str):
+        """Fail with one message listing every missing tool, not the first one.
+
+        The ``aws`` arm is not ``_which("aws")`` on purpose: ``_aws_cmd`` also
+        accepts ``python -m awscli``, so a machine with no ``aws`` on PATH is
+        perfectly usable and must not be reported as missing. It is also the one
+        caller that *wants* the failure — it is a preflight check, so it turns
+        the refusal into one line instead of letting the first command die later
+        halfway through a workflow.
+        """
         missing = []
         for c in cmds:
             if c == "aws":
                 try:
                     _aws_cmd()
-                except SystemExit:
+                except ToolUnavailable:
                     missing.append("aws")
             elif not self._which(c):
                 missing.append(c)

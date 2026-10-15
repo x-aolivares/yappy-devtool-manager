@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 from yappy_library.adapters import process_tracker
 from yappy_library.adapters.logging import info as log_info
-from yappy_library.adapters.processes import BaseCommand, tunnel_log_path
+from yappy_library.adapters.processes import BaseCommand, ToolUnavailable, tunnel_log_path
 from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES
 from yappy_library.application.workflow.models import is_foreign, is_live, state_of
 from yappy_library.application.workflow.registry import resources_for
@@ -110,21 +110,39 @@ def _spawn_tunnel(
     label: str,
     env: str,
 ) -> subprocess.Popen:
-    """One ``ssm start-session``, tracked with everything the screen needs."""
-    return BaseCommand().ssm_tunnel(
-        instance=cfg.require("AWS_INSTANCE"),
-        port=port,
-        local_port=local_port,
-        region=cfg.require("AWS_REGION"),
-        profile=cfg.profile,
-        remote_host=remote_host,
-        quiet=True,
-        log_file=tunnel_log_path(local_port),
-        env=env,
-        cluster=cluster,
-        label=label,
-        owner=process_tracker.OWNER_WEB,
-    )
+    """One ``ssm start-session``, tracked with everything the screen needs.
+
+    **Why the ``ToolUnavailable`` arm is here and not in the routes.** This is
+    the one place all three start paths converge — ``start_resource``,
+    ``start_port`` and ``_start_db`` all funnel through it — so the conversion
+    lives here once instead of being re-derived per endpoint, and a new caller
+    inherits it for free. A missing AWS CLI used to raise ``SystemExit`` out of
+    ``_aws_cmd`` straight through this function into a Starlette worker thread,
+    where it killed uvicorn with no traceback. A refusal is the shape the screen
+    already knows: the route turns it into a 409 and the row renders the reason.
+
+    The label keeps the message honest about *what* failed, because the reason
+    ("AWS CLI not found…") is identical no matter which row was clicked.
+    """
+    try:
+        return BaseCommand().ssm_tunnel(
+            instance=cfg.require("AWS_INSTANCE"),
+            port=port,
+            local_port=local_port,
+            region=cfg.require("AWS_REGION"),
+            profile=cfg.profile,
+            remote_host=remote_host,
+            quiet=True,
+            log_file=tunnel_log_path(local_port),
+            env=env,
+            cluster=cluster,
+            label=label,
+            owner=process_tracker.OWNER_WEB,
+        )
+    except ToolUnavailable as exc:
+        raise StartRefused(
+            f"No se pudo levantar {label or 'el túnel'}: {exc.reason}"
+        ) from exc
 
 
 def _remote_host_for(cfg: Config, definition, cluster: str) -> str | None:
@@ -170,11 +188,21 @@ def _start_kafka(definition) -> subprocess.Popen:
 
     ``yappy_cli.kafka.manager.up`` is a Typer command: it prints, it can call
     ``die()``, and it lives in another package from the one that needs it.
+
+    ``KafkaUnavailable`` becomes a refusal rather than propagating, because the
+    reason it exists is this function: the service used to end the process on a
+    missing ``libs/`` or ``main.jar``, and the process it ended was uvicorn. A
+    refusal is the shape the screen already knows — it becomes a 409 with the
+    message in ``routes/workflow.py`` — and the message stays in English inside
+    so the terminal keeps printing exactly what it printed before.
     """
-    from yappy_library.adapters.kafka.service import KafkaService
+    from yappy_library.adapters.kafka.service import KafkaService, KafkaUnavailable
 
     target = "server" if definition.key == "kafka-server" else "ui"
-    proc = KafkaService(Config()).up(target, detach=True, owner=process_tracker.OWNER_WEB)
+    try:
+        proc = KafkaService(Config()).up(target, detach=True, owner=process_tracker.OWNER_WEB)
+    except KafkaUnavailable as exc:
+        raise StartRefused(f"No se pudo levantar {definition.name}: {exc.reason}") from exc
     if proc is None:
         raise StartRefused("Kafka no devolvió un proceso")
     return proc
@@ -302,12 +330,15 @@ def stop_all(*, allow_foreign: bool = False) -> dict:
     stopped: list[int] = []
     refused: list[dict] = []
 
+    motivos: list[str] = []
+
     for entry in process_tracker.get_tracked_processes():
         if not entry.get("alive"):
             continue
         pid = entry.get("pid")
         if is_foreign(entry) and not allow_foreign:
             refused.append({"pid": pid, "reason": _describe(entry)})
+            motivos.append(f"{pid}: no lo levantó la web")
             continue
         if stop_pid(pid):
             stopped.append(pid)
@@ -317,8 +348,15 @@ def stop_all(*, allow_foreign: bool = False) -> dict:
             # give, because it is what makes the developer press the button again
             # and wonder why the same thing keeps coming back.
             refused.append({"pid": pid, "reason": _describe(entry)})
+            motivos.append(
+                f"{pid}: el guard se negó — el motivo exacto está en el ERR de arriba"
+            )
 
-    for item in refused:
-        log_info(f"No se paró {item['pid']} ({item['reason']}): no lo levantó la web")
+    # Two different refusals used to print the same sentence, so a guard refusal
+    # read as "no lo levantó la web" when the truth was "that pid is an ancestor
+    # of this server". A log that names the wrong cause sends the reader looking
+    # for a process ownership problem that does not exist.
+    for motivo in motivos:
+        log_info(f"No se paró {motivo}")
 
     return {"stopped": stopped, "refused": refused}

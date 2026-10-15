@@ -303,6 +303,40 @@ def test_stop_all_leaves_foreign_processes_alone(tracker):
     assert [r["pid"] for r in result["refused"]] == [os.getpid()]
 
 
+def test_the_two_refusals_do_not_print_the_same_sentence(tracker, monkeypatch):
+    """A guard refusal and a foreign one are different problems.
+
+    They used to share one sentence, so a pid the guard refused because it is an
+    *ancestor of this server* printed "no lo levantó la web". That sends the
+    reader hunting for an ownership problem that does not exist — the same class
+    of lie as reporting the pid under `stopped`, one layer down. The real reason
+    is already on stderr from `_kill_pid`; this line only has to stop claiming a
+    different one.
+    """
+    ajeno = os.getpid()
+    # Ambos tienen que existir de verdad: el tracker lee la liveness del SO y
+    # saltea lo que no encuentra. `getppid()` sirve igual que `getpid()` para
+    # esto — nadie lo va a matar, solo se lo apunta en el tracker.
+    protegido = os.getppid()
+    _track(tracker, ajeno, local_port=8402, cluster="cap", owner="cli")
+    _track(tracker, protegido, local_port=8403, cluster="cap", owner="web")
+    monkeypatch.setattr(actions, "stop_pid", lambda pid: pid != protegido)
+
+    lineas: list[str] = []
+    monkeypatch.setattr(actions, "log_info", lineas.append)
+    # sin allow_foreign: el ajeno se rechaza por dueño y el del guard pasa el
+    # filtro de dueño (es de la web) y se cae en el guard. Los dos caminos.
+    stop_all()
+
+    ajeno_txt = [l for l in lineas if l.startswith(f"No se paró {ajeno}:")]
+    protegido_txt = [l for l in lineas if l.startswith(f"No se paró {protegido}:")]
+    assert ajeno_txt and protegido_txt, lineas
+    assert "no lo levantó la web" in ajeno_txt[0]
+    # The pid the guard refused must NOT be blamed on ownership.
+    assert "no lo levantó la web" not in protegido_txt[0], protegido_txt[0]
+    assert "guard" in protegido_txt[0].lower(), protegido_txt[0]
+
+
 def test_stop_all_reports_what_it_refused_and_why(tracker):
     """The screen's confirmation says how many are somebody else's; that number
     has to come from here, not be guessed in the browser."""

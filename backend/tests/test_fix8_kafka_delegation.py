@@ -69,27 +69,28 @@ def test_manager_down_delegates_to_service(monkeypatch):
 
 @pytest.mark.parametrize("call", ["up", "down", "clean"])
 def test_kafka_service_rejects_non_windows(call, monkeypatch):
+    """The rejection is unchanged; the mechanism is not.
+
+    It used to be `die()`, and this test pinned that by monkeypatching `die`. A
+    library that ends the process is the defect this repo just fixed — the web
+    calls these same methods, and `SystemExit` out of an anyio worker thread takes
+    uvicorn down with it. What is being pinned now is the *outcome*: same
+    message, raised as `KafkaUnavailable` so the terminal can re-`die()` it.
+    """
     monkeypatch.setattr(api_kafka.sys, "platform", "linux")
-    messages = []
-
-    def fake_die(msg, code=1):
-        messages.append(msg)
-        raise SystemExit(code)
-
-    monkeypatch.setattr(api_kafka, "die", fake_die)
     svc = api_kafka.KafkaService(SimpleNamespace(
         kafka_core_path="/c/kafka/kafka-core",
         kafka_ui_path="/c/kafka/kafka-ui",
         kafka_path="/c/kafka",
     ))
-    with pytest.raises(SystemExit):
+    with pytest.raises(api_kafka.KafkaUnavailable) as excinfo:
         if call == "up":
             svc.up("server")
         elif call == "down":
             svc.down("server")
         else:
             svc.clean()
-    assert messages == ["Kafka management currently supports Windows only"]
+    assert excinfo.value.reason == "Kafka management currently supports Windows only"
 
 
 def _alive_proc():

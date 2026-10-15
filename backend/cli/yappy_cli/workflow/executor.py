@@ -1,4 +1,5 @@
-from yappy_library.adapters.kafka.service import DevUtils
+from yappy_library.adapters.kafka.service import DevUtils, KafkaUnavailable
+from yappy_library.adapters.logging import die
 from yappy_library.application.session import Session
 
 
@@ -12,9 +13,15 @@ def executor(environment: str = "dev") -> tuple:
     cap2 = session.multiple.pf(ports=[8412, 8413], load_balance="cap2")
     bastion = session.bastion.pf(ports=[9091])
 
+    # `KafkaUnavailable` is raised instead of exiting so the web can refuse a
+    # start instead of dying. This file is a terminal script, so the exit is
+    # re-made here — same message, same code as before.
     kafka = DevUtils().kafka()
-    kafka.up("server")
-    kafka.up("ui")
+    for target in ("server", "ui"):
+        try:
+            kafka.up(target)
+        except KafkaUnavailable as exc:
+            die(exc.reason)
 
     return session, kafka
 

@@ -8,7 +8,7 @@ import typer
 
 from yappy_library.adapters.database.credentials import generate_token as _generate_token
 from yappy_library.adapters.database.credentials import write_local_env as _write_local_env
-from yappy_library.adapters.kafka.service import KafkaService
+from yappy_library.adapters.kafka.service import KafkaService, KafkaUnavailable
 from yappy_library.adapters.processes import BaseCommand, _aws_cmd
 from yappy_library.config import Config, win_to_posix
 from yappy_library.adapters.logging import die, info, success, warn
@@ -98,10 +98,16 @@ def debug_local(
 
     info("[3/5] Starting local Kafka...")
     kafka_svc = KafkaService(cfg)
-    kafka_proc = kafka_svc.up("server", detach=True)
+    try:
+        kafka_proc = kafka_svc.up("server", detach=True)
+    except KafkaUnavailable as exc:
+        die(exc.reason)
 
     info("[4/5] Starting Kafdrop UI...")
-    ui_proc = kafka_svc.up("ui", detach=True)
+    try:
+        ui_proc = kafka_svc.up("ui", detach=True)
+    except KafkaUnavailable as exc:
+        die(exc.reason)
 
     info("[5/5] Checking kafka-agents...")
     agents_path = kafka_agents_path or str(
@@ -145,8 +151,9 @@ def debug_local(
 
 
 _DEFAULT_EXECUTOR = '''\
+from yappy_library.adapters.logging import die
 from yappy_library.application.session import Session
-from yappy_library.adapters.kafka.service import DevUtils
+from yappy_library.adapters.kafka.service import DevUtils, KafkaUnavailable
 
 
 def executor(environment: str = "dev") -> tuple:
@@ -160,8 +167,11 @@ def executor(environment: str = "dev") -> tuple:
     bastion = session.bastion.pf(ports=[9091])
 
     kafka = DevUtils().kafka()
-    kafka.up("server")
-    kafka.up("ui")
+    for target in ("server", "ui"):
+        try:
+            kafka.up(target)
+        except KafkaUnavailable as exc:
+            die(exc.reason)
 
     return session, kafka
 
