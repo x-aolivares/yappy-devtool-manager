@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from yappy_library.adapters import process_tracker
+from yappy_library.adapters import process_identity, process_tracker
 from yappy_library.adapters.logging import error as log_error
 from yappy_library.adapters.logging import info as log_info
 from yappy_library.application.workflow.readiness import DEFAULT_TIMEOUT, probe_for
@@ -35,10 +35,11 @@ def _stamp() -> str:
     aparte del request: sin esto no se puede ordenar contra el access log."""
     return time.strftime("%H:%M:%S")
 
-#: Never let a supervisor outlive the process it watches by much. The plugin is
-#: killed by `stop`; this is only the backstop for a start that failed in a way
-#: that left no process to check against.
-_MAX_SUPERVISED_SECONDS = DEFAULT_TIMEOUT * 2
+#: How much of a failed process's own output to quote in the verdict. Three lines
+#: is what a JVM stack trace, an `aws:` error and a bind failure each need to say
+#: something, and a supervisor that pastes a whole log into the server console
+#: has stopped being a summary.
+LOG_TAIL_LINES = 3
 
 
 class Supervisor:
@@ -60,11 +61,116 @@ class Supervisor:
     def where_to_look(self) -> str:
         return self.log_file or "el log del proceso"
 
-    def verdict(self, timeout: float) -> bool:
-        """Poll the probe until it answers or ``timeout`` runs out."""
+    def still_running(self) -> bool:
+        """Whether this pid is still the process that was spawned.
+
+        Asked of the OS, not of the tracker, and that distinction is the whole
+        point. A tracker entry outlives its process — it sits there until
+        something prunes it, which is the ghost that ``prune_dead_on_port``
+        exists to clean up. Answering "is it alive?" from the registry would
+        therefore say yes to every process that ever died, and the wait would
+        run the full timeout on a process that was never going to answer. This
+        is the check that has to fail fast.
+
+        The entry is still consulted for *which* process this is meant to be: a
+        pid alone cannot tell a live process from a recycled one, and Windows
+        recycles aggressively. Same pair ``_kill_pid`` gates on, for the same
+        reason — this module never signals a pid it cannot identify.
+        """
+        entry = next(
+            (e for e in process_tracker.get_tracked_processes() if e.get("pid") == self.pid),
+            None,
+        )
+        if entry is None:
+            # Nothing left to resolve: the row this supervisor was going to
+            # write a verdict into is gone.
+            return False
+        live = process_identity.identity(self.pid)
+        if live is None:
+            return False
+        expected_exe = entry.get("exe") or None
+        if expected_exe and live.exe and live.exe != expected_exe:
+            return False  # a different process wearing this pid
+        expected_time = entry.get("create_time") or None
+        if (
+            expected_time
+            and live.create_time
+            and abs(live.create_time - expected_time)
+            > process_identity.CREATE_TIME_TOLERANCE
+        ):
+            return False  # this pid, but not that process
+        return True
+
+    def log_tail(self, lines: int = LOG_TAIL_LINES) -> list[str]:
+        """The last few lines the process itself wrote.
+
+        Read because the reason a start failed is almost never in anything this
+        module knows. A YAML file with a byte the JVM cannot decode, an expired
+        SSO token, a port already taken — each is one line in the process's own
+        output, and without this the verdict can only say "it did not answer",
+        which sends the reader to the network when the network was never the
+        problem.
+
+        Only the tail: these logs are append-mode and a long-lived tunnel's file
+        is not small. Best effort in every direction — a missing, unreadable or
+        binary-ish log must never turn a failure into a crash of the reporter,
+        since the reporter is a thread nobody is watching.
+        """
+        if not self.log_file:
+            return []
+        try:
+            raw = Path(self.log_file).read_bytes()
+        except OSError:
+            return []
+        # Replacement rather than strict utf-8: a process log can hold anything,
+        # and a decode failure here would cost us the one line that explains
+        # everything. errors="replace" keeps the line count either way.
+        text = raw.decode("utf-8", errors="replace")
+        kept = [line for line in text.splitlines() if line.strip()]
+        return kept[-lines:]
+
+    def verdict_log(self) -> str:
+        """The failure suffix, with the process's own last words when it has any.
+
+        Empty rather than a placeholder when there is no log to quote: a verdict
+        that says "Log: " and nothing else is a worse thing to read than one
+        that just does not mention it.
+        """
+        tail = self.log_tail()
+        quoted = " | ".join(line.strip() for line in tail)
+        if not quoted:
+            return ""
+        # ASCII on purpose, like the rest of this module: the Windows console is
+        # cp1252 and a multibyte char cuts the line in half with a 'charmap'
+        # error. A log that gets cut off is no use for debugging.
+        quoted = quoted.encode("ascii", "replace").decode("ascii")
+        # And the brackets escaped, because this project's logger prints through
+        # rich, which reads `[anything]` as markup: without this a process log
+        # line containing brackets does not merely lose its styling — it loses
+        # text. `[ERROR]` survives by luck; `[inventado]esto` stops saying
+        # "esto", and the whole point of quoting is that the text survives.
+        quoted = quoted.replace("[", "\\[")
+        return f" Ultimas lineas de {self.where_to_look()}: {quoted}"
+
+    def verdict(self, timeout: float) -> tuple[bool, bool]:
+        """Poll the probe until it answers, the process dies, or ``timeout`` runs out.
+
+        Returns ``(ok, died)``. The second value is the one that used to be
+        missing: "nothing answered the probe" and "the process is gone" are
+        different failures with different fixes, and collapsing them into one
+        False is what made this module report that a dead process had opened a
+        port it never reached.
+        """
         from yappy_library.application.workflow.readiness import wait_for
 
-        return wait_for(lambda: probe_for(self.probe)(self.port, 2.0), timeout=timeout)
+        ok = wait_for(
+            lambda: probe_for(self.probe)(self.port, 2.0),
+            timeout=timeout,
+            abort=lambda: not self.still_running(),
+        )
+        if ok:
+            return True, False
+        return False, not self.still_running()
 
     def run(self, timeout: float = DEFAULT_TIMEOUT) -> None:
         started = time.monotonic()
@@ -72,24 +178,21 @@ class Supervisor:
         # The "arranca" line that used to sit here was scaffolding for a start that was
         # failing: pid, probe, port, timeout — restating what the request being
         # answered right now already said, six lines per start. The verdicts
-        # below — responds, opened-but-silent, gone, failed — are the ones that
-        # tell you something you cannot read off the row.
+        # below — responds, died, opened-but-silent, gone, failed — are the ones
+        # that tell you something you cannot read off the row.
         try:
-            alive = process_tracker.get_tracked_processes()
-            still_there = any(e.get("pid") == self.pid for e in alive)
-
-            if not still_there:
+            if not self.still_running():
                 # It died before the probe could say anything. "Dead" beats
                 # "error": the process is gone, and that is the more useful
                 # thing to draw.
                 process_tracker.update_process_state(self.pid, process_tracker.STATE_ERROR)
                 log_info(
                     f"  [wf] {_stamp()} {who}: el proceso ya no esta, sin probe. "
-                    f"Queda 'error'."
+                    f"Queda 'error'.{self.verdict_log()}"
                 )
                 return
 
-            ok = self.verdict(timeout)
+            ok, died = self.verdict(timeout)
             took = time.monotonic() - started
             process_tracker.update_process_state(
                 self.pid, process_tracker.STATE_UP if ok else process_tracker.STATE_ERROR
@@ -102,10 +205,18 @@ class Supervisor:
                     f"  [wf] {_stamp()} {who} responde en localhost:{self.port} "
                     f"en {took:.1f}s, queda 'up'"
                 )
+            elif died:
+                # The case this module was getting wrong. The process is gone, so
+                # nothing was ever listening on that port: the port is not the
+                # thing to go look at, and the process's own output is.
+                log_error(
+                    f"  [wf] {_stamp()} {who} murio en {took:.1f}s sin llegar a "
+                    f"responder; queda 'error'.{self.verdict_log()}"
+                )
             else:
                 log_error(
                     f"  [wf] {_stamp()} {who} abrio el puerto {self.port} pero no respondio "
-                    f"en {timeout:g}s, queda 'error'. Log: {self.where_to_look()}"
+                    f"en {timeout:g}s, queda 'error'.{self.verdict_log()}"
                 )
         except Exception as exc:  # noqa: BLE001 - a supervisor must not kill the server
             log_error(f"  [wf] {_stamp()} {who}: el supervisor fallo -- {exc}")

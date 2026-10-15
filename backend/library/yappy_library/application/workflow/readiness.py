@@ -156,17 +156,27 @@ def probe_for(kind: str) -> Callable[[int, float], bool]:
 
 
 def wait_for(probe: Callable[[], bool], timeout: float = DEFAULT_TIMEOUT,
-             interval: float = POLL_INTERVAL) -> bool:
-    """Poll ``probe`` until it says yes or ``timeout`` runs out.
+             interval: float = POLL_INTERVAL,
+             abort: Callable[[], bool] | None = None) -> bool:
+    """Poll ``probe`` until it says yes, ``abort`` says stop, or ``timeout`` runs out.
 
     Returns a bool instead of raising, because the caller needs to record the
     negative: a tunnel that never came up is an outcome to show, not an error to
     swallow.
+
+    ``abort`` exists because waiting is the wrong thing to do once the thing
+    being waited on is gone. A process that dies half a second after the spawn
+    cannot start answering later, but a plain timeout still burns the full
+    thirty seconds and then reports a network problem — when the truth is that
+    the process was never there. The supervisor passes a liveness check as
+    ``abort`` so a dead start is a fast verdict instead of a slow wrong one.
     """
     deadline = time.monotonic() + timeout
     while True:
         if probe():
             return True
+        if abort is not None and abort():
+            return False
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return False
