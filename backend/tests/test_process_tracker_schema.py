@@ -12,7 +12,7 @@ import os
 
 import pytest
 
-from yappy_library.adapters import process_tracker
+from yappy_library.adapters import process_identity, process_tracker
 
 
 @pytest.fixture
@@ -91,6 +91,47 @@ def test_old_entry_reads_as_the_clis_and_keeps_no_port(tracker):
     # Not 0: "written before the field existed" and "forwards port 0" are
     # different, and a caller drawing one row per port has to tell them apart.
     assert entry["local_port"] is None
+
+
+def test_an_entry_records_which_process_it_names(tracker):
+    """A bare pid is not an identity: Windows hands the same number to a new
+    process within hours, and this file outlives the process it names. Without
+    `exe`/`create_time` there is nothing to compare a stop against."""
+    process_tracker.track_process(
+        pid=os.getpid(), resource="tunnel", target="dev", local_port=8402
+    )
+
+    entry = process_tracker.get_tracked_processes()[0]
+    live = process_identity.identity(os.getpid())
+
+    assert entry["exe"] == live.exe
+    assert entry["create_time"] == pytest.approx(live.create_time)
+
+
+def test_the_caller_can_override_what_the_live_read_reports(tracker):
+    """Auto-filled, not imposed: the caller that just spawned the process knows
+    things the OS read cannot know, and a test needs to be able to lie on
+    purpose."""
+    process_tracker.track_process(
+        pid=4242, resource="tunnel", target="dev", exe="java.exe", create_time=123.0
+    )
+
+    entry = process_tracker.get_tracked_processes()[0]
+    assert entry["exe"] == "java.exe"
+    assert entry["create_time"] == 123.0
+
+
+def test_an_old_entry_has_no_identity_and_still_reads(tracker):
+    """The module promises "the files outlive the code that wrote them". An entry
+    without the fields means *unproven*, not *suspect* — the kill path treats
+    it as such, and this test is what keeps that promise honest."""
+    pid = os.getpid()
+    _write(tracker, pid, _legacy_entry(pid))
+
+    entry = process_tracker.get_tracked_processes()[0]
+
+    assert entry["exe"] == ""
+    assert entry["create_time"] == 0.0
 
 
 def test_refresher_is_not_a_tunnel(tracker):

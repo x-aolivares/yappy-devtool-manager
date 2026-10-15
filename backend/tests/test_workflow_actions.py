@@ -95,7 +95,11 @@ def recorder():
     """Capture the pids handed to `kill_ssm` instead of killing anything."""
     killed: list[int] = []
     original = BaseCommand.kill_ssm
-    BaseCommand.kill_ssm = lambda self, pid=None: killed.append(pid)
+    # `kill_ssm` answers whether a kill was attempted. `append` returns None, so
+    # the `or True` is what keeps the seam faithful to the real contract: without
+    # it every stop reads as "refused" and the wiring under test stops asserting
+    # anything.
+    BaseCommand.kill_ssm = lambda self, pid=None: killed.append(pid) or True
     try:
         yield killed
     finally:
@@ -320,6 +324,32 @@ def test_stop_all_can_be_told_to_include_them(tracker):
 
     assert result["refused"] == []
     assert killed == [pid]
+
+
+def test_stop_all_reports_a_refused_kill_as_refused(tracker, monkeypatch):
+    """A guard that said no must not be reported as a stop.
+
+    ``stop_pid`` used to return ``True`` after asking ``kill_ssm``, whatever the
+    answer was, so the screen answered "Paré 2 procesos" for a run where the
+    guard had refused both — and the developer, seeing the tunnel still up,
+    pressed the button again. The process is the only witness that matters.
+    """
+    pid = os.getpid()
+    _track(tracker, pid, local_port=8402, cluster="cap", owner="web")
+    monkeypatch.setattr(BaseCommand, "kill_ssm", lambda self, pid=None: False)
+
+    result = stop_all(allow_foreign=True)
+
+    assert result["stopped"] == []
+    assert [item["pid"] for item in result["refused"]] == [pid]
+
+
+def test_stop_entry_tells_the_truth_when_the_guard_refuses(tracker, monkeypatch):
+    pid = os.getpid()
+    _track(tracker, pid, local_port=8402, cluster="cap", owner="web")
+    monkeypatch.setattr(BaseCommand, "kill_ssm", lambda self, pid=None: False)
+
+    assert stop_entry(pid)["stopped"] is False
 
 
 def test_stop_all_ignores_processes_that_are_already_gone(tracker):

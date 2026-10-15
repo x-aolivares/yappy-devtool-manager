@@ -21,6 +21,11 @@ def test_kill_ssm_with_pid_uses_taskkill_pid(monkeypatch):
     calls = _win_run_recorder(monkeypatch)
     untracked = []
     monkeypatch.setattr(process_tracker, "untrack_process", lambda pid: untracked.append(pid))
+    # `kill_ssm(pid)` now reads the tracker's identity claim before killing, so
+    # this test has to point at an empty registry: without it, a pid 123 left in
+    # the developer's real ~/.yappy/tracker would make the guard refuse and fail
+    # the test for reasons that have nothing to do with what it checks.
+    monkeypatch.setattr(process_tracker, "get_tracked_processes", lambda **kw: [])
 
     base.BaseCommand().kill_ssm(pid=123)
 

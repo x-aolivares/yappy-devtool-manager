@@ -132,7 +132,14 @@ def supervise(pid: int, port: int, probe: str, label: str = "",
 
 
 def stop_pid(pid: int) -> bool:
-    """Kill a tracked process and forget it. True if something was killed."""
+    """Kill a tracked process and forget it. True if something was killed.
+
+    ``False`` covers two different situations and the screen has to be able to
+    tell them apart: nothing is tracked under that pid, or a guard refused the
+    kill because the pid is not provably the process we started. Only the caller
+    can decide which message to show, so this stays a boolean and the reason
+    stays in the log where :meth:`BaseCommand._kill_pid` wrote it.
+    """
     from yappy_library.adapters.processes import BaseCommand
 
     if not pid:
@@ -140,5 +147,4 @@ def stop_pid(pid: int) -> bool:
     entries = [e for e in process_tracker.get_tracked_processes() if e.get("pid") == pid]
     if not entries:
         return False
-    BaseCommand().kill_ssm(pid)
-    return True
+    return BaseCommand().kill_ssm(pid)

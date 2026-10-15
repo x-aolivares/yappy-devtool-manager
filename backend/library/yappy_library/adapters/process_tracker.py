@@ -10,6 +10,9 @@ Two rules the rest of the codebase depends on:
   them, so a tracker directory can hold entries from a version that did not have
   half these fields. :func:`get_tracked_processes` fills the gaps in rather than
   skipping the entry, because an older entry is still a real running process.
+  That includes ``exe``/``create_time``: an entry with neither is *unproven*, not
+  suspect, and the kill path treats it as such. See
+  :mod:`yappy_library.adapters.process_identity` for what those two fields buy.
 
 - **``resource`` is the kind of thing, not an identifier.** ``"tunnel"``,
   ``"kafka"``, ``"service"``, ``"refresher"``. Which *port* a process serves
@@ -25,9 +28,12 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 import time
 from pathlib import Path
+
+from yappy_library.adapters import process_identity
 
 _TRACKER_DIR = Path.home() / ".yappy" / "tracker"
 
@@ -95,12 +101,33 @@ def track_process(
     owner: str = OWNER_CLI,
     state: str = STATE_UP,
     supervisor: int | None = None,
+    exe: str | None = None,
+    create_time: float | None = None,
 ):
     """Register ``pid`` so it can be found, attributed and stopped later.
 
     ``local_port`` is the field that makes a tracked tunnel meaningful to a UI:
     without it the registry can say "a tunnel is running" and nothing more.
+
+    ``exe`` and ``create_time`` answer "is this still the process we started?",
+    which a bare pid cannot. Windows hands the same pid to a new process within
+    hours, and this file outlives the process it names — so an entry is a claim
+    about a pid that has to be checked before anything kills it. Both default to
+    what the OS says right now, because the caller that just spawned the process
+    is the one who has it open and the one with the best chance of reading it.
+
+    Passing either explicitly is for the cases where the live read is not the
+    truth: a re-adopted pid, or a test. They are optional on read too, and that
+    is load-bearing — see the module docstring.
     """
+    if exe is None or create_time is None:
+        live = process_identity.identity(pid)
+        if live is not None:
+            if exe is None:
+                exe = live.exe
+            if create_time is None:
+                create_time = live.create_time or None
+
     _TRACKER_DIR.mkdir(parents=True, exist_ok=True)
     entry = {
         "pid": pid,
@@ -117,6 +144,8 @@ def track_process(
         "owner": owner,
         "state": state,
         "supervisor": supervisor,
+        "exe": exe or "",
+        "create_time": create_time or 0.0,
     }
     path = _TRACKER_DIR / f"{pid}.json"
     path.write_text(json.dumps(entry, indent=2))
@@ -144,10 +173,29 @@ def update_process_state(pid: int, state: str) -> None:
 
 
 def _process_alive(pid) -> bool:
+    """Whether that pid still has a process behind it.
+
+    Read through :mod:`yappy_library.adapters.process_identity`, not
+    ``os.kill(pid, 0)``. On Windows the latter is not a liveness probe: CPython
+    implements it as ``OpenProcess(PROCESS_ALL_ACCESS)``, which asks for *full
+    control* of the target and fails — ``PermissionError`` — for anything the
+    caller does not fully own. msys processes, elevated windows and other users'
+    sessions therefore read as dead while being very much alive, and the whole UI
+    quietly lies about them: a running tunnel shows as ``dead``, ``Parar todo``
+    skips it, and the entry never goes away. ``PROCESS_QUERY_LIMITED_INFORMATION``
+    asks only to look, which is all a liveness answer needs.
+    """
     if not pid:
         return False
     try:
+        if sys.platform == "win32":
+            return process_identity.identity(int(pid)) is not None
         os.kill(int(pid), 0)
+        return True
+    except PermissionError:
+        # POSIX: the process exists, we are just not allowed to signal it. That
+        # is an *alive* answer, and treating it as dead is the same bug the
+        # Windows branch above exists to avoid.
         return True
     except (OSError, ProcessLookupError, TypeError, ValueError):
         return False
@@ -248,14 +296,7 @@ def get_tracked_processes(
         entry = dict(parsed)
 
         pid = entry.get("pid")
-        if pid:
-            try:
-                os.kill(pid, 0)
-                entry["alive"] = True
-            except (OSError, ProcessLookupError):
-                entry["alive"] = False
-        else:
-            entry["alive"] = False
+        entry["alive"] = _process_alive(pid)
 
         # The process that was going to resolve `starting` into `up` or `error`.
         # If it is gone, nobody ever will: a web server that shut down mid-start
@@ -277,6 +318,12 @@ def get_tracked_processes(
         entry.setdefault("log_file", "")
         entry.setdefault("supervisor", None)
         entry.setdefault("supervisor_alive", True)
+        # Written by a version that predates the identity fields. `""`/`0.0`,
+        # not None, so a caller can tell "there was nothing to record" from
+        # "the key is missing" — and both of those mean *do not refuse to stop*,
+        # which is the only thing they are allowed to mean.
+        entry.setdefault("exe", "")
+        entry.setdefault("create_time", 0.0)
 
         results.append(entry)
 

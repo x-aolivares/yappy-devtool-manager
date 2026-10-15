@@ -115,7 +115,11 @@ def _track(tracker, pid, *, alive=True, **overrides):
 def recorder():
     killed: list[int] = []
     original = BaseCommand.kill_ssm
-    BaseCommand.kill_ssm = lambda self, pid=None: killed.append(pid)
+    # `kill_ssm` answers whether a kill was attempted. `append` returns None, so
+    # the `or True` is what keeps the seam faithful to the real contract: without
+    # it every stop reads as "refused" and the wiring under test stops asserting
+    # anything.
+    BaseCommand.kill_ssm = lambda self, pid=None: killed.append(pid) or True
     try:
         yield killed
     finally:

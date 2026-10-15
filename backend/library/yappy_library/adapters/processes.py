@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from yappy_library.adapters import process_tracker
+from yappy_library.adapters import process_identity, process_tracker
 from yappy_library.adapters.logging import (
     command as log_command,
     die,
@@ -61,6 +61,31 @@ def _aws_cmd() -> list[str]:
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
     die("AWS CLI not found. Install with: pip install awscli")
+
+
+def _expected_identity(entry: dict | None) -> dict:
+    """The identity a tracker entry claims, as ``_kill_pid`` keyword arguments.
+
+    Missing fields come back as ``None`` and that is the whole point: a tracker
+    file written before this feature existed has no opinion about what its pid
+    was, and *no opinion* must not be turned into a refusal. Those entries get
+    the ancestor guard alone — weaker than we want, but refusing to stop a live
+    tunnel because we cannot prove it is the tunnel would be worse.
+    """
+    if not entry:
+        return {"expected_exe": None, "expected_create_time": None}
+    return {
+        "expected_exe": entry.get("exe") or None,
+        "expected_create_time": entry.get("create_time") or None,
+    }
+
+
+def _tracked_entry(pid: int) -> dict | None:
+    """The tracker entry for ``pid``, if the registry still has one."""
+    for entry in process_tracker.get_tracked_processes():
+        if entry.get("pid") == pid:
+            return entry
+    return None
 
 
 class BaseCommand:
@@ -266,33 +291,48 @@ class BaseCommand:
         except (AttributeError, OSError):
             pass
 
-    def kill_ssm(self, pid: int | None = None):
+    def kill_ssm(self, pid: int | None = None) -> bool:
         """Kill SSM tunnel processes.
 
         With `pid`: kill only that process tree. Without `pid`: kill only the
         pids tracked by the process tracker (never a global wildcard kill).
+
+        Returns whether a kill was actually attempted. A ``False`` means a guard
+        in :meth:`_kill_pid` refused, which is the one answer a caller must not
+        turn into "parado": the process is still running, and a screen that says
+        otherwise teaches the developer to click the button again.
         """
         if pid is not None:
-            self._kill_pid(pid)
-            process_tracker.untrack_process(pid)
-            return
+            killed = self._kill_pid(pid, **_expected_identity(_tracked_entry(pid)))
+            if killed:
+                process_tracker.untrack_process(pid)
+            return killed
 
         tracked = [
-            p["pid"]
+            p
             for p in process_tracker.get_tracked_processes(resource="tunnel")
             if p.get("pid")
         ]
         if not tracked:
             info("No tracked tunnels found — use `yappy ssm kill --all`")
-            return
-        for p in tracked:
-            self._kill_pid(p)
-            process_tracker.untrack_process(p)
+            return False
+        killed = False
+        for entry in tracked:
+            if self._kill_pid(entry["pid"], **_expected_identity(entry)):
+                killed = True
+                process_tracker.untrack_process(entry["pid"])
+        return killed
 
-    def _kill_pid(self, pid: int):
-        """Kill a process tree. Refuses when the target is our own family.
+    def _kill_pid(
+        self,
+        pid: int,
+        *,
+        expected_exe: str | None = None,
+        expected_create_time: float | None = None,
+    ) -> bool:
+        """Kill a process tree, but only after proving that pid is ours.
 
-        `taskkill /t` walks the tree *upwards and downwards* from the target, so
+        ``taskkill /t`` walks the tree *upwards and downwards* from the target, so
         a pid that no longer belongs to the tunnel we tracked is enough to take
         down whatever process tree that pid happens to be in now. On Windows pid
         reuse is fast and the tracker is a file on disk that outlives the process
@@ -303,14 +343,58 @@ class BaseCommand:
         and the console reports it as a Ctrl+C that nobody pressed. That is the
         worst possible failure mode for a "stop this tunnel" button: it looks like
         the app crashed and there is nothing in its own log to explain it.
+
+        Three gates, weakest reason first. The ancestor check is unconditional —
+        it is the one that protects *us*. The identity checks only apply when the
+        tracker recorded what the pid was; an entry written before those fields
+        existed gets the ancestor check and nothing else, because refusing to stop
+        a real tunnel on the grounds that we cannot identify it would trade a rare
+        wrong kill for a permanent leak.
+
+        Returns whether the kill was actually attempted. Callers ignore this
+        today; it exists so a refusal is distinguishable from a silent success.
         """
-        if pid in self._own_family():
+        if not pid:
+            return False
+
+        parent_map = process_identity.parent_map()
+        if pid in self._own_family(parent_map):
             error(
                 f"El pid {pid} pertenece a esta sesión (o a un proceso que la "
                 f"contiene). No se para: `taskkill /t` se llevaría también al "
                 f"proceso que está tratando de cerrarlo."
             )
-            return
+            return False
+
+        live = process_identity.identity(pid)
+
+        if expected_exe and live and live.exe and live.exe != expected_exe:
+            error(
+                f"El pid {pid} ahora es {live.exe}, y el tracker lo había "
+                f"registrado como {expected_exe}. No se para: ese pid ya no "
+                f"pertenece al proceso que se levantó."
+            )
+            return False
+
+        if (
+            expected_create_time
+            and live
+            and live.create_time
+            and abs(live.create_time - expected_create_time)
+            > process_identity.CREATE_TIME_TOLERANCE
+        ):
+            error(
+                f"El pid {pid} se creó {abs(live.create_time - expected_create_time):.0f}s "
+                f"después de lo que el tracker registró. No se para: es otro "
+                f"proceso con el mismo pid."
+            )
+            return False
+
+        if not expected_exe and not expected_create_time:
+            info(
+                f"El pid {pid} no tiene identidad registrada (tracker anterior a esta "
+                f"versión): sólo se verificó que no sea ancestro de esta sesión."
+            )
 
         if sys.platform == "win32":
             subprocess.run(
@@ -326,30 +410,50 @@ class BaseCommand:
                 os.kill(pid, signal.SIGKILL)
             except (ProcessLookupError, OSError):
                 pass
+        return True
 
     @staticmethod
-    def _own_family() -> set[int]:
-        """This process and its ancestors.
+    def _own_family(parent_map: dict[int, int] | None = None) -> set[int]:
+        """This process and its ancestors, read from the OS.
 
         Deliberately only *upwards*. A sibling or a child is a legitimate thing
         to stop — the refreshers and the tunnels this tool starts are both — and
         refusing them would break `stop_all`. What must never happen is stopping
         something that contains us.
+
+        Why :mod:`yappy_library.adapters.process_identity` and not ``os.getppid()``:
+        ``os.getppid()`` takes no arguments. It reports the parent of *this*
+        process and nothing else, so assigning it to a loop variable and calling
+        it again returns the same value every iteration. The version that did
+        that returned exactly ``{os.getpid(), os.getppid()}`` no matter how deep
+        the real chain went — a guard that looks like it checks a tree and in
+        fact checks two pids, which is why a web server could kill itself over a
+        tracker entry nobody had looked at in a week.
+
+        Falls back to ``{os.getpid(), os.getppid()}`` when the platform will not
+        give us a map. That is the *old*, broken behaviour and it is kept
+        deliberately: a guard that refuses everything because it could not read
+        the process table would make "stop this tunnel" never work, and two pids
+        is strictly more than not trying.
         """
-        family = set()
-        pid = os.getpid()
-        for _ in range(32):  # un ciclo de pids recycled cortaría el bucle
-            if not pid or pid in family:
-                break
-            family.add(pid)
+        if parent_map is None:
+            parent_map = process_identity.parent_map()
+
+        me = os.getpid()
+        if not parent_map or me not in parent_map:
+            warn(
+                "No se pudo leer el mapa de procesos del sistema; la protección "
+                "de ancestros queda reducida al proceso actual y a su padre "
+                "directo."
+            )
+            family = {me}
             try:
-                parent = os.getppid()
+                family.add(os.getppid())
             except (AttributeError, OSError):
-                break
-            if parent == pid:
-                break
-            pid = parent
-        return family
+                pass
+            return family
+
+        return process_identity.ancestors(me, parent_map=parent_map)
 
     def kill_ssm_all(self):
         """Legacy global kill of every session-manager-plugin process."""

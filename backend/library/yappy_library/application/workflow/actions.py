@@ -311,6 +311,12 @@ def stop_all(*, allow_foreign: bool = False) -> dict:
             continue
         if stop_pid(pid):
             stopped.append(pid)
+        else:
+            # The kill was refused, not fumbled: the process is still running.
+            # Listing it under `stopped` is the one answer the screen must never
+            # give, because it is what makes the developer press the button again
+            # and wonder why the same thing keeps coming back.
+            refused.append({"pid": pid, "reason": _describe(entry)})
 
     for item in refused:
         log_info(f"No se paró {item['pid']} ({item['reason']}): no lo levantó la web")
