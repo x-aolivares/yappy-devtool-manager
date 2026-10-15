@@ -7,7 +7,7 @@ import threading
 import webbrowser
 from copy import deepcopy
 
-from yappy_library.adapters.logging import LOG_TIME_FORMAT, info
+from yappy_library.adapters.logging import LOG_TIME_FORMAT, error, info
 from yappy_library.config import Config
 
 
@@ -67,6 +67,23 @@ def run(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) ->
 
     url = f"http://{host}:{port}"
     info(f"Region Sync web -> {url}")
+
+    # El tracker es un registro en disco que sobrevive al proceso que nombra, así
+    # que al arrancar hay entradas de sesiones web anteriores: procesos muertos,
+    # pids reciclados y huérfanos de una sesión que ya no existe. `reconcile()`
+    # decide qué hacer con cada una una vez y lo deja asentado en el log. Va
+    # antes de cualquier otra cosa porque todo lo que sigue lee ese registro.
+    #
+    # El `try/except` es la parte importante: una limpieza rota no puede costarle
+    # la UI al que la llamó. Peor todavía, con `lifespan="off"` no hay un hook de
+    # startup donde atar esto (ver más abajo y `tests/test_web_shutdown.py`), así
+    # que este es el único lugar del que sale.
+    from .reconcile import reconcile
+
+    try:
+        reconcile()
+    except Exception as exc:  # noqa: BLE001 - el server tiene que levantar igual
+        error(f"La reconciliación del tracker falló ({exc}). La web levanta igual.")
 
     # Los clientes de AWS se calientan en un hilo aparte para que el server
     # levante ya: el trabajo es el mismo en los dos caminos, pero bloquear el
