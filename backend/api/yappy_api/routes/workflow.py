@@ -1,6 +1,6 @@
-"""Workflow/Recursos: what is running, and the buttons to change it.
+"""Workflow: what is running, and the buttons to change it.
 
-Eight routes for one screen. The reason there are not more is the read side: the
+Eight routes for one domain. The reason there are not more is the read side: the
 browser polls ``/api/workflow/state`` and gets everything — resources, the
 catalog, ownership, port conflicts, the resolved host — in one response. A screen
 that asked per row would make N round trips to answer one question it already

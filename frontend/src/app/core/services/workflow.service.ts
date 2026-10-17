@@ -23,7 +23,12 @@ export interface LogTail {
 }
 
 /**
- * Las lecturas y los cinco endpoints con botón de la pantalla Workflow/Recursos.
+ * Las lecturas y los cinco endpoints con botón de las pantallas de Workflow.
+ *
+ * Las cuatro páginas de Workflow —Kafka local, Túneles, Servicios y Base de
+ * datos— hablan con este servicio y con ningún otro. Comparten el endpoint de
+ * estado entero en vez de pedir una fila: una pantalla que preguntara por recurso
+ * haría N viajes para contestarse algo que ya tiene en una respuesta.
  *
  * La lectura del estado y la del log son lo que la página refresca, así que
  * devuelven promesas con `AbortSignal`: `resource()` cancela la anterior cuando

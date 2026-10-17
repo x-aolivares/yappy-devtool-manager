@@ -1,4 +1,4 @@
-"""The states a resource can be in on the Workflow/Recursos screen.
+"""The states a resource can be in on the Workflow screens.
 
 Five states, and only three of them are stored. The tracker records how a *start*
 went; whether the process is still there is read live from the OS, and the two

@@ -556,7 +556,7 @@ class DeploymentsBranchesResponse(BaseModel):
     environments: list[DeploymentEnvInfo]
 
 
-# --- Workflow/Recursos ------------------------------------------------------
+# --- Workflow ----------------------------------------------------------------
 # These mirror `application/workflow/models.py` one for one. The API layer holds
 # no rules of its own here: if a field is in both, the library decides what it
 # means and this file only decides the shape it arrives in.

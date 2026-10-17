@@ -88,8 +88,8 @@ def mysql_greeting(port: int, timeout: float) -> bool:
     what separates "the tunnel is up" from "the port is merely listening", and
     it is the difference between an error and an indefinite hang.
 
-    Public because the Workflow/Recursos screen runs the same probe to decide
-    whether a tunnel it just opened is actually up.
+    Public because the Workflow screens run the same probe to decide
+    whether a tunnel they just opened is actually up.
     """
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=timeout) as sock:

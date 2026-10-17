@@ -91,7 +91,7 @@ función nueva no se entera hasta que corra la suite.
 ## 4. No hay canal push, y el poll está reimplementado seis veces
 
 **Medido**: `deployments`, `params-diff`, `params-read`, `sql`,
-`workflow-resources` y `copy-button` tienen su propio `setTimeout`. Ninguno
+`workflow-section-page` y `copy-button` tienen su propio `setTimeout`. Ninguno
 comparte nada.
 
 El backend tiene un **hilo supervisor** que resuelve el `up`/`error` de un
