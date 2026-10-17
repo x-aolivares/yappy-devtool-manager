@@ -1431,7 +1431,7 @@
           "workflow"
         ],
         "summary": "Api Workflow Logs",
-        "description": "The last ``lines`` of a tracked process's log, or what got appended.\n\n``offset`` makes this a poll: pass the ``offset`` the previous call returned\nand only new bytes come back. Without it the screen would re-read and\nre-render the whole log every second.",
+        "description": "The last ``lines`` of a tracked process's log, or what got appended.\n\n``offset`` makes this a poll: pass the ``offset`` the previous call returned\nand only new bytes come back. Without it the screen would re-read and\nre-render the whole log every second.\n\n``page`` no cambia una sola línea de la respuesta: está porque es lo único\nque el access log de uvicorn imprime de una request que no sea el path, y\ncon cuatro secciones usando el mismo endpoint la línea \"-GET /logs?pid=20192\n200-\" no dice cuál de ellas estaba preguntando. Es diagnóstico, y por eso\ntiene default: un curl sin el parámetro sigue funcionando.",
         "operationId": "read_workflow_logs",
         "parameters": [
           {
@@ -1468,6 +1468,16 @@
               "type": "integer",
               "default": 0,
               "title": "Offset"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Page"
             }
           }
         ],

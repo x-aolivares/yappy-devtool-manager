@@ -12,6 +12,7 @@ export interface ReadWorkflowLogs$Params {
   pid?: (number | null);
   lines?: number;
   offset?: number;
+  page?: string;
 }
 
 export function readWorkflowLogs(http: HttpClient, rootUrl: string, params?: ReadWorkflowLogs$Params, context?: HttpContext): Observable<StrictHttpResponse<any>> {
@@ -20,6 +21,7 @@ export function readWorkflowLogs(http: HttpClient, rootUrl: string, params?: Rea
     rb.query('pid', params.pid, {});
     rb.query('lines', params.lines, {});
     rb.query('offset', params.offset, {});
+    rb.query('page', params.page, {});
   }
 
   return http.request(

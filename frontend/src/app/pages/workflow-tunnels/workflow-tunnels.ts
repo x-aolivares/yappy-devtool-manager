@@ -49,6 +49,9 @@ export class WorkflowTunnelsPage extends WorkflowSectionPage {
 
   private readonly labelTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
+  /** El nombre que viaja en la URL de cada pedido. Ver `WorkflowSectionPage.section`. */
+  readonly section = 'tunnels';
+
   /** El catálogo del cluster elegido. Son las filas de esta pantalla. */
   protected override get sectionRows(): readonly WorkflowPortInfo[] {
     return this.ports();

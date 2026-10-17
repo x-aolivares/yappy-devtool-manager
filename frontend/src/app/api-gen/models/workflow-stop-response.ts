@@ -6,9 +6,10 @@
  * Parar un proceso. Distinto de "parar todo" a propósito.
  *
  * Uno pregunta "¿lo maté?" y contesta un booleano; el otro pregunta "¿qué
- * mataste?" y contrea una lista. Meterlos en un mismo modelo obligaba a que uno
- * de los dos mintiera, y como los tests llaman los handlers directo —que no pasa
- * por la validación de respuesta— el desajuste llegó a la pantalla como un 500.
+ * mataste?" y contesta una lista. Meterlos en un mismo modelo obligaba a que uno
+ * de los dos mintiera, y como los tests llamaban los handlers directo —que no
+ * pasa por la validación de respuesta de FastAPI— el desajuste no se vio hasta
+ * que la pantalla lo pidió y le llegó un 500.
  */
 export interface WorkflowStopResponse {
   ok?: boolean;

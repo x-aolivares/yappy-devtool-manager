@@ -112,10 +112,13 @@ export class WorkflowService {
     offset: number,
     lines = 60,
     signal?: AbortSignal,
+    section = 'workflow',
   ): Promise<LogTail> {
     return this.api.invoke(
       readWorkflowLogs,
-      { pid, lines, offset },
+      // `page` no cambia la respuesta: existe para que la línea del access log
+      // diga qué panel preguntó. Ver `WorkflowLogs.section`.
+      { pid, lines, offset, page: section },
       abortCtx(signal),
     ) as Promise<LogTail>;
   }

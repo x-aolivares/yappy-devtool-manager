@@ -299,12 +299,18 @@ def api_workflow_stop_all(allow_foreign: bool = False):
     "/api/workflow/logs",
     operation_id="read_workflow_logs",
 )
-def api_workflow_logs(pid: int | None = None, lines: int = 60, offset: int = 0):
+def api_workflow_logs(pid: int | None = None, lines: int = 60, offset: int = 0, page: str = ""):
     """The last ``lines`` of a tracked process's log, or what got appended.
 
     ``offset`` makes this a poll: pass the ``offset`` the previous call returned
     and only new bytes come back. Without it the screen would re-read and
     re-render the whole log every second.
+
+    ``page`` no cambia una sola línea de la respuesta: está porque es lo único
+    que el access log de uvicorn imprime de una request que no sea el path, y
+    con cuatro secciones usando el mismo endpoint la línea "-GET /logs?pid=20192
+    200-" no dice cuál de ellas estaba preguntando. Es diagnóstico, y por eso
+    tiene default: un curl sin el parámetro sigue funcionando.
     """
     from pathlib import Path
 

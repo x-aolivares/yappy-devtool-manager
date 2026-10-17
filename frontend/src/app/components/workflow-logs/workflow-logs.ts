@@ -60,6 +60,16 @@ export class WorkflowLogs {
    */
   readonly rows = input<readonly WorkflowRow[]>([]);
 
+  /**
+   * La sección que está mirando este panel, para que el pedido lo diga.
+   *
+   * Va en la URL porque el access log del server imprime el path y nada más. Con
+   * las cuatro secciones usando el mismo panel, `GET /api/workflow/logs?pid=20192`
+   * no dice si la pregunta venía de Kafka o de Túneles — y en medio de un log lleno
+   * de líneas iguales, esa es justo la información que falta.
+   */
+  readonly section = input<string>('workflow');
+
   /** El pid que se está mirando. `null` = el panel está cerrado. */
   readonly pid = signal<number | null>(null);
   readonly text = signal('');
@@ -172,7 +182,7 @@ export class WorkflowLogs {
       //
       // El offset es el acumulador de la lectura, no una entrada del poll. Lo que
       // decide cuándo preguntar es el pid y el `gone`, y ésos sí se trackean.
-      const tail = await this.workflow.log(pid, untracked(this.offset));
+      const tail = await this.workflow.log(pid, untracked(this.offset), 60, undefined, untracked(this.section));
       if (tail.text) this.text.update((prev) => (prev + tail.text).slice(-MAX_CHARS));
       this.offset.set(tail.offset);
       this.loaded.set(true);

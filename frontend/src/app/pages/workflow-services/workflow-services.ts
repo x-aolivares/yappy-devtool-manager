@@ -37,6 +37,9 @@ export class WorkflowServicesPage extends WorkflowSectionPage {
   /** Ver `WorkflowKafkaPage.logs`: las filas abren un panel declarado más abajo. */
   readonly logs = viewChild(WorkflowLogs);
 
+  /** El nombre que viaja en la URL de cada pedido. Ver `WorkflowSectionPage.section`. */
+  readonly section = 'services';
+
   protected override get sectionRows(): readonly WorkflowResourceInfo[] {
     return this.resources().filter((r) => r.group === 'named');
   }

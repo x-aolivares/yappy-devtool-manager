@@ -44,7 +44,7 @@
   (stopAll)="askStopAll()"
 />
 
-<app-workflow-logs [rows]="logRows()" />
+<app-workflow-logs [rows]="logRows()" [section]="section" />
 
 @if (busy()) {
   <!--

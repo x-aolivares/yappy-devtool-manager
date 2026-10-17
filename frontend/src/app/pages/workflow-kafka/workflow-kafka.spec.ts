@@ -189,6 +189,21 @@ describe('WorkflowKafkaPage', () => {
       expect(fixture.nativeElement.querySelector('.error-box')).toBeNull();
     });
 
+    it('el pedido del log dice de qué sección salió', async () => {
+      // El access log del server imprime el path y nada más. Con las cuatro
+      // secciones sobre el mismo endpoint, sin esto el log del server tiene
+      // treinta líneas idénticas y no se sabe cuál de ellas estaba preguntando.
+      calls.answer = { ...calls.answer, resources: [kafkaArriba()] };
+      const { el } = await montar();
+
+      [...tarjeta(el, 'Kafdrop UI').querySelectorAll('button')]
+        .find((b) => b.textContent?.trim() === 'Ver logs')
+        ?.click();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(calls.logCalls).toEqual([{ pid: 21224, offset: 0, section: 'kafka' }]);
+    });
+
     it('se cierra al abandonar la página', async () => {
       const { fixture } = await montar();
 
@@ -226,7 +241,7 @@ describe('WorkflowKafkaPage', () => {
       await new Promise((r) => setTimeout(r, 0));
 
       expect(comp.logs()?.scope()).toBe(21224);
-      expect(calls.logCalls).toEqual([{ pid: 21224, offset: 0 }]);
+      expect(calls.logCalls).toEqual([{ pid: 21224, offset: 0, section: 'kafka' }]);
     });
 
     it('una fila ajena no se puede parar desde la tarjeta', async () => {

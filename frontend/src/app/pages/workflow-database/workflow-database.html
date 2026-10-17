@@ -46,7 +46,7 @@
   (stopAll)="askStopAll()"
 />
 
-<app-workflow-logs [rows]="logRows()" />
+<app-workflow-logs [rows]="logRows()" [section]="section" />
 
 @if (busy()) {
   <app-busy-modal [open]="busy()" message="Trabajando…" [writes]="true" (cancelled)="dismissNotice()" />

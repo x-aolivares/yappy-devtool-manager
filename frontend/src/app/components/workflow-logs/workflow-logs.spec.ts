@@ -62,7 +62,7 @@ describe('WorkflowLogs', () => {
       // regresión que se vigila acá es que `appendLog` leyera el offset dentro del
       // `effect` — el effect dependía de él, cada vuelta lo escribía y volvía a
       // dispararse: cien requests en el tiempo de una.
-      expect(calls.logCalls).toEqual([{ pid: 21224, offset: 0 }]);
+      expect(calls.logCalls).toEqual([{ pid: 21224, offset: 0, section: 'workflow' }]);
       expect(comp.text()).toContain('Kafka Server started');
     });
 

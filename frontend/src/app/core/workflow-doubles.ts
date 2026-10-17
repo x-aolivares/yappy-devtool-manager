@@ -170,7 +170,7 @@ export interface WorkflowCalls {
   failStart: ((err: Error) => Error) | null;
   /** Lo que `/api/workflow/logs` rechaza. `null` = responde bien. */
   logError: HttpErrorResponse | null;
-  logCalls: Array<{ pid: number; offset: number }>;
+  logCalls: Array<{ pid: number; offset: number; section: string }>;
   /** Lo que el log agrega en cada lectura. */
   logText: string;
   /** Cuántas veces se pidió la lista de ambientes. Una sección sin selector, cero. */
@@ -252,8 +252,8 @@ export function workflowProviders(calls: WorkflowCalls): Provider[] {
             return () => inner.unsubscribe();
           });
         },
-        log: (pid: number, offset: number) => {
-          calls.logCalls.push({ pid, offset });
+        log: (pid: number, offset: number, _lines = 60, _signal?: AbortSignal, section = 'workflow') => {
+          calls.logCalls.push({ pid, offset, section });
           return calls.logError
             ? Promise.reject(calls.logError)
             : Promise.resolve({

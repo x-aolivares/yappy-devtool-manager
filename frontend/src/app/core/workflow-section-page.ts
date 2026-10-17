@@ -130,6 +130,20 @@ export abstract class WorkflowSectionPage {
   /** Las filas que esta página dibuja, y por lo tanto las que cuenta y anuncia. */
   protected abstract get sectionRows(): readonly WorkflowRow[];
 
+  /**
+   * El nombre corto de la sección: `kafka`, `tunnels`, `services`, `database`.
+   *
+   * Viaja en la URL de cada pedido que la pantalla hace, porque el access log del
+   * server imprime el path y nada más: sin esto, cuatro secciones golpeando
+   * `/api/workflow/logs` dan líneas indistinguibles y no hay forma de saber cuál
+   * de ellas estaba preguntando.
+   *
+   * Abstracto y no un default en la base a propósito: una página que no lo declara
+   * no compila, que es el recordatorio de que si aparece una quinta hay que darle
+   * nombre.
+   */
+  abstract readonly section: string;
+
   /** Las mismas filas, para el panel de logs. Se pasa a `<app-workflow-logs>`. */
   readonly logRows = computed<readonly WorkflowRow[]>(() => this.sectionRows);
 

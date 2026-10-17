@@ -55,6 +55,8 @@ export type { ListWorkflowClusters$Params as ListWorkflowClusters$Params } from 
 export { listWorkflowClusters as listWorkflowClusters } from './fn/workflow/list-workflow-clusters';
 export type { GetWorkflowState$Params as GetWorkflowState$Params } from './fn/workflow/get-workflow-state';
 export { getWorkflowState as getWorkflowState } from './fn/workflow/get-workflow-state';
+export type { StreamWorkflowState$Params as StreamWorkflowState$Params } from './fn/workflow/stream-workflow-state';
+export { streamWorkflowState as streamWorkflowState } from './fn/workflow/stream-workflow-state';
 export type { StartWorkflowResource$Params as StartWorkflowResource$Params } from './fn/workflow/start-workflow-resource';
 export { startWorkflowResource as startWorkflowResource } from './fn/workflow/start-workflow-resource';
 export type { StartWorkflowPort$Params as StartWorkflowPort$Params } from './fn/workflow/start-workflow-port';

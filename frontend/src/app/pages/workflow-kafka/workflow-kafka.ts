@@ -45,6 +45,9 @@ export class WorkflowKafkaPage extends WorkflowSectionPage {
    */
   readonly logs = viewChild(WorkflowLogs);
 
+  /** El nombre que viaja en la URL de cada pedido. Ver `WorkflowSectionPage.section`. */
+  readonly section = 'kafka';
+
   /** Sólo Kafka. El `group` es el único discriminante que manda el backend. */
   protected override get sectionRows(): readonly WorkflowResourceInfo[] {
     return this.resources().filter((r) => r.group === 'kafka');
