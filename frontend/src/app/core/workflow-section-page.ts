@@ -2,11 +2,10 @@
  * La base de las cuatro páginas de Workflow.
  *
  * Antes de la separación esto era una sola pantalla con cuatro `<section>`
- * apiladas. Ahora cada sección tiene su ruta y su componente, pero las cuatro leen
- * del **mismo** endpoint (`GET /api/workflow/state`) y comparten casi todo lo que
- * no es el marcado: el poll, los announcements, los modales y las acciones. Copiar
- * eso cuatro veces sería cuatro lugares donde el 404 que corta el poll se puede
- * volver a equivocar.
+ * apiladas. Ahora cada sección tiene su ruta y su componente, pero las cuatro
+ * escuchan el **mismo** stream (`GET /api/workflow/stream`) y comparten casi todo
+ * lo que no es el marcado: los announcements, los modales y las acciones. Copiar
+ * eso cuatro veces sería cuatro lugares donde se puede volver a equivocar uno.
  *
  * Lo que queda en cada página es lo que de verdad es distinto: **qué filas
  * dibuja**. Eso es `sectionRows`, y es la única cosa que la subclase tiene que
@@ -19,49 +18,28 @@
  * prototipo y ya está resuelto cuando la base lo lee por primera vez.
  */
 import {
-  DestroyRef, computed, effect, inject, resource, signal,
+  DestroyRef, computed, effect, inject, signal,
 } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
+import type { Subscription } from 'rxjs';
 
 import {
   WorkflowPortInfo, WorkflowResourceInfo, WorkflowStateResponse, WorkflowUnattributedInfo,
 } from '../api-gen/models';
 import { EnvironmentService } from './services/environment.service';
-import { WorkflowService } from './services/workflow.service';
+import {
+  WorkflowScope, WorkflowService, WorkflowStreamEvent,
+} from './services/workflow.service';
 import { toApiError } from './services/api-error';
 import {
   canOpen, canShowLogs, canStart, canStop, resourceMeta, startLabel,
   stateAnnouncement, stateBadge, stateBadgeClass,
 } from './resources';
 
-/**
- * Cuánto espera entre polls.
- *
- * No es un adorno: el readiness check corre cada medio segundo en el supervisor,
- * y 1.5s son suficientes para que la fila se mueva sin que el developer la esté
- * mirando fija. Con la pestaña oculta el `document.visibilityState` lo sube a
- * 10s — nadie está mirando, y el tracker lo sigue escribiendo igual.
- *
- * Cada página tiene el suyo: se separaron para que se puedan abrir y mirar de a
- * una, no para que se prendan cuatro polls del mismo endpoint a la vez.
- */
-const POLL_MS = 1500;
-const POLL_HIDDEN_MS = 10000;
+export type { WorkflowScope } from './services/workflow.service';
 
 /** Una fila de cualquiera de las dos tablas. Lo que las dos tienen en común. */
 export type WorkflowRow = WorkflowResourceInfo | WorkflowPortInfo;
-
-/**
- * Con qué ambiente y cluster pregunta la página el estado.
- *
- * Los dos son opcionales a propósito: una sección *full local* —Kafka— no tiene
- * ni ambiente ni cluster que elegir, así que no manda lo que nadie va a cambiar y
- * deja que el backend aplique sus defaults. Lo que la página no elige, no lo pide.
- */
-export interface WorkflowScope {
-  readonly env?: string;
-  readonly cluster?: string;
-}
 
 /** El aviso que la página muestra en el `notice-modal`. */
 export interface WorkflowNotice {
@@ -140,8 +118,12 @@ export abstract class WorkflowSectionPage {
   readonly announcement = signal('');
 
   /**
-   * El error del poll, o `''` cuando la última vuelta trajo datos.
-   * Estado propio y no `state.error()` del `resource()`: ver `settleFailure`.
+   * El error de la conexión, o `''` cuando el último frame trajo datos.
+   *
+   * Se va solo con el próximo frame, no con un `reload()`: es la misma regla de
+   * antes —una caja de error que sobrevive a la recuperación dice que no se puede
+   * leer algo que hace un rato se está leyendo— y ahora el frame que la borra es
+   * el mismo que la tablero ya tenía.
    */
   readonly readError = signal('');
 
@@ -152,30 +134,22 @@ export abstract class WorkflowSectionPage {
   readonly logRows = computed<readonly WorkflowRow[]>(() => this.sectionRows);
 
   /**
-   * La foto del estado. Un poll, una request.
+   * La foto del estado, empujada.
    *
-   * `request` se recalcula cuando cambia `env` o `cluster`, así que cambiar de
-   * cluster abandona la request en vuelo sola: es lo que evita que la respuesta
-   * de `cap` llegue después de que el developer ya pasó a `cap2` y le pise la
-   * tabla. En una página sin ámbito —Kafka— los params son un objeto vacío y el
-   * request sale sin query string.
+   * Un `signal` y no un `resource()`: no hay nada que resolver, sólo algo que
+   * escuchar. `listen()` abre la conexión y la vuelve a abrir si cambia el ámbito.
    */
-  readonly state = resource<WorkflowStateResponse, WorkflowScope>({
-    params: (): WorkflowScope => this.scope,
-    loader: ({ params, abortSignal }) =>
-      this.workflow.state(params.env, params.cluster, abortSignal),
-    defaultValue: EMPTY_STATE,
-  });
+  protected readonly state = signal<WorkflowStateResponse>(EMPTY_STATE);
 
-  readonly remoteHost = computed<string>(() => this.state.value().remote_host);
+  readonly remoteHost = computed<string>(() => this.state().remote_host);
   /** False cuando `CLUSTER_PORTS` no está seteado: el vacío se arregla distinto. */
   readonly catalogConfigured = computed<boolean>(
-    () => this.state.value().catalog_configured ?? false,
+    () => this.state().catalog_configured ?? false,
   );
-  readonly resources = computed<WorkflowResourceInfo[]>(() => this.state.value().resources);
-  readonly ports = computed<WorkflowPortInfo[]>(() => this.state.value().ports);
+  readonly resources = computed<WorkflowResourceInfo[]>(() => this.state().resources);
+  readonly ports = computed<WorkflowPortInfo[]>(() => this.state().ports);
   readonly unattributed = computed<WorkflowUnattributedInfo[]>(
-    () => this.state.value().unattributed ?? [],
+    () => this.state().unattributed ?? [],
   );
 
   // --- el resumen -----------------------------------------------------------
@@ -239,51 +213,47 @@ export abstract class WorkflowSectionPage {
         });
     }
 
-    this.pollTimer();
+    this.listen();
     this.watchStates();
   }
 
   /**
-   * El poll.
+   * Abre el stream, y lo vuelve a abrir si cambia el ámbito.
    *
-   * Un `setTimeout` encadenado en vez de `setInterval`: cada tick espera a que el
-   * anterior termine, así dos polls lentos no se acumulan. Con `visibilityState`
-   * sube el intervalo cuando nadie está mirando — el supervisor sigue escribiendo
-   * el tracker igual, sólo se lee menos.
+   * Un `effect` y no una suscripción sola porque `scope` se puede cambiar: la página
+   * de túneles tiene un selector de cluster. Leerlo acá adentro es lo que registra
+   * la dependencia, así que cambiar de cluster cierra el stream anterior y abre
+   * otro — sin esto, el frame de `cap` podría llegar después de que el developer ya
+   * pasó a `cap2` y pisarle la tabla.
+   *
+   * `onCleanup` corre **antes** de la siguiente vuelta, y el `unsubscribe` es lo
+   * que cierra el `EventSource` del otro lado: abandonar la ruta no puede dejar una
+   * conexión abierta.
    */
-  private pollTimer(): void {
-    const tick = () => {
-      // `reload()` devuelve un booleano y no una promesa: el fallo no se puede
-      // capturar en el `catch`. El `resource()` lo expone por `error()` después
-      // de la vuelta, así que se lee en el microtask siguiente — cuando la
-      // promise ya se resolvió o rechazó.
-      this.state.reload();
-      queueMicrotask(() => this.settleFailure(this.state.error()));
-
-      const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
-      const timer = setTimeout(tick, hidden ? POLL_HIDDEN_MS : POLL_MS);
-      this.destroyRef.onDestroy(() => clearTimeout(timer));
-    };
-    const first = setTimeout(tick, POLL_MS);
-    this.destroyRef.onDestroy(() => clearTimeout(first));
+  private listen(): void {
+    effect((onCleanup) => {
+      const scope = this.scope;
+      const subscription: Subscription = this.workflow
+        .stream(scope)
+        .subscribe((event) => this.apply(event));
+      onCleanup(() => subscription.unsubscribe());
+    });
   }
 
   /**
-   * El error que se ve arriba de la pantalla.
+   * Lo que llega del stream, aplicado a la pantalla.
    *
-   * Es un estado propio y no `state.error()` del `resource()`, por una razón que
-   * sólo aparece cuando se apaga el server: el poll de 1,5s sigue corriendo contra
-   * un backend muerto, así que cada tick falla, y el último fallo queda clavado
-   * para siempre aunque el backend vuelva y el poll siga trayendo datos. La caja
-   * roja sobrevive a la recuperación y dice que no se puede leer algo que hace un
-   * rato se está leyendo.
-   *
-   * `settleFailure` recibe el error de la vuelta en vez de leerlo del signal: el
-   * `resource()` lo expone como `error()` pero no deja escribirlo, y un test no
-   * puede fabricarlo sin andarle los signals por debajo.
+   * Un frame borra el error anterior: la conexión se cayó, vuelve, y manda el
+   * estado entero. Es la misma regla que tenía el poll —la caja roja no sobrevive
+   * a la recuperación— pero ahora la resuelve el mismo frame que repinta la tabla.
    */
-  private settleFailure(failed: unknown): void {
-    this.readError.set(failed ? describePollFailure(failed) : '');
+  private apply(event: WorkflowStreamEvent): void {
+    if (event.kind === 'error') {
+      this.readError.set(event.detail);
+      return;
+    }
+    this.readError.set('');
+    this.state.set(event.state);
   }
 
   /**
@@ -322,9 +292,9 @@ export abstract class WorkflowSectionPage {
       // El ámbito, no `env()` a secas: una página full local levanta sin
       // ambiente, igual que lee sin ambiente.
       await this.workflow.startResource(row.key, this.scope.env);
-      // El `reload` del poll traería el estado solo, pero forzarlo acá hace que
-      // la fila cambie en el mismo clic en vez de hasta 1.5s después.
-      this.state.reload();
+      // Sin `reload()`. El backend ya escribió el tracker y ya publicó antes de
+      // contestar, así que el frame está viniendo: la fila cambia en el mismo clic
+      // y preguntar otra vez sería justamente la consulta de más.
     } catch (err) {
       this.showError('No se pudo levantar', toApiError(err).message);
     } finally {
@@ -345,7 +315,6 @@ export abstract class WorkflowSectionPage {
     this.busy.set(true);
     try {
       await this.workflow.startPort(row.port, row.label, this.env(), this.cluster());
-      this.state.reload();
     } catch (err) {
       this.showError('No se pudo levantar el túnel', toApiError(err).message);
     } finally {
@@ -359,7 +328,6 @@ export abstract class WorkflowSectionPage {
     this.busy.set(true);
     try {
       await this.workflow.stop(pid);
-      this.state.reload();
     } catch (err) {
       this.showError('No se pudo parar', toApiError(err).message);
     } finally {
@@ -398,7 +366,6 @@ export abstract class WorkflowSectionPage {
     this.busy.set(true);
     try {
       await this.workflow.stopAll(true);
-      this.state.reload();
     } catch (err) {
       this.showError('No se pudo parar todo', toApiError(err).message);
     } finally {
@@ -438,36 +405,6 @@ export abstract class WorkflowSectionPage {
   protected canStop(row: WorkflowRow): boolean {
     return canStop(row.state, !!row.foreign);
   }
-
-  // --- herramientas para los tests ------------------------------------------
-
-  /**
-   * Expuesto para tests: la caja desaparece cuando la vuelta trae datos.
-   *
-   * No se prueba por el `reload()` del `resource()` porque en un test el recurso
-   * resuelve de inmediato y no hay tick que capturar. Lo que importa es la regla:
-   * un error sin recuperación se muestra, y con recuperación se va.
-   */
-  settleFailureForTest(failed: unknown): void { this.settleFailure(failed); }
-
-  describePollFailureForTest(err: unknown): string { return describePollFailure(err); }
-}
-
-/**
- * El texto de un error del poll.
- *
- * El `error-box` va arriba de todo y es lo único que hay entre una caída del
- * backend y una pantalla que sigue mostrando la última foto buena. Dice qué
- * pasó, no sólo que pasó algo.
- */
-export function describePollFailure(err: unknown): string {
-  if (err instanceof HttpErrorResponse) {
-    const body = err.error as { detail?: string } | null;
-    if (body?.detail) return body.detail;
-    if (err.status === 0) return 'No se pudo conectar con el servidor.';
-    return `El servidor respondió ${err.status}.`;
-  }
-  return toApiError(err).message;
 }
 
 export const EMPTY_STATE: WorkflowStateResponse = {

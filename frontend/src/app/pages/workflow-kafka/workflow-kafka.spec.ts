@@ -17,7 +17,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { WorkflowKafkaPage } from './workflow-kafka';
 import {
-  WorkflowCalls, callsVacios, kafkaArriba, recurso, workflowProviders,
+  WorkflowCalls, callsVacios, emiteCaida, emiteEstado, kafkaArriba, recurso, workflowProviders,
 } from '../../core/workflow-doubles';
 
 describe('WorkflowKafkaPage', () => {
@@ -120,10 +120,11 @@ describe('WorkflowKafkaPage', () => {
   // --- el ámbito ------------------------------------------------------------
 
   describe('el ámbito que pide', () => {
-    it('el poll va sin ambiente ni cluster', async () => {
+    it('abre el stream sin ambiente ni cluster', async () => {
       await montar();
 
-      expect(calls.stateCalls).toEqual([{}]);
+      expect(calls.streams).toHaveLength(1);
+      expect(calls.streams[0].scope).toEqual({});
     });
 
     it('no pide la lista de ambientes: acá no hay selector', async () => {
@@ -145,6 +146,55 @@ describe('WorkflowKafkaPage', () => {
       fixture.detectChanges();
 
       expect(calls.startEnvs).toEqual([undefined]);
+    });
+  });
+
+  // --- el stream ------------------------------------------------------------
+
+  describe('la conexión', () => {
+    it('la fila se mueve cuando llega un frame, sin pedir nada', async () => {
+      // El comportamiento que reemplaza al poll: el backend publica que el
+      // supervisor escribió el veredicto, y la tarjeta cambia. Nadie interroga.
+      calls.answer = { ...calls.answer, resources: [kafkaArriba({ state: 'starting', pid: 9001 })] };
+      const { el, fixture } = await montar();
+      expect(tarjeta(el, 'Kafdrop UI').textContent).toContain('levantando');
+
+      emiteEstado(calls, { resources: [kafkaArriba()] });
+      fixture.detectChanges();
+
+      expect(tarjeta(el, 'Kafdrop UI').textContent).not.toContain('levantando');
+    });
+
+    it('anuncia el cambio de estado que trae el frame', async () => {
+      calls.answer = { ...calls.answer, resources: [kafkaArriba({ state: 'down', pid: null })] };
+      const { comp, fixture } = await montar();
+
+      emiteEstado(calls, { resources: [kafkaArriba()] });
+      fixture.detectChanges();
+
+      expect(comp.announcement()).toContain('Kafdrop UI');
+    });
+
+    it('la caja de error sale y se va sola', async () => {
+      const { comp, fixture } = await montar();
+
+      emiteCaida(calls);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.error-box')).not.toBeNull();
+
+      emiteEstado(calls);
+      fixture.detectChanges();
+
+      expect(comp.readError()).toBe('');
+      expect(fixture.nativeElement.querySelector('.error-box')).toBeNull();
+    });
+
+    it('se cierra al abandonar la página', async () => {
+      const { fixture } = await montar();
+
+      fixture.destroy();
+
+      expect(calls.streams[0].closed).toBe(true);
     });
   });
 
@@ -189,17 +239,18 @@ describe('WorkflowKafkaPage', () => {
     });
   });
 
-  // --- el error del poll ----------------------------------------------------
+  // --- el error de la conexión ----------------------------------------------
 
   it('la caja de error aparece y se va sola', async () => {
     const { comp, fixture } = await montar();
 
-    comp.settleFailureForTest({ status: 0 });
+    emiteCaida(calls);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.error-box')).not.toBeNull();
 
-    comp.settleFailureForTest(undefined);
+    emiteEstado(calls);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.error-box')).toBeNull();
+    expect(comp.readError()).toBe('');
   });
 });

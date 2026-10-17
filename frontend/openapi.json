@@ -1129,7 +1129,7 @@
           "workflow"
         ],
         "summary": "Api Workflow State",
-        "description": "Everything one poll of the screen needs.",
+        "description": "Everything one read of the screen needs.\n\nKept, and not replaced by the stream: it is the documented shape, the one a\n``curl`` can hit, and what a reader gets on the first frame.",
         "operationId": "get_workflow_state",
         "parameters": [
           {
@@ -1163,6 +1163,53 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/stream": {
+      "get": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Api Workflow Stream",
+        "description": "The same payload, pushed when it changes instead of asked for on a timer.\n\nThe browser opens this once per screen and listens. A start writes the tracker\nand publishes; the stream wakes, re-reads, and sends. The screen that used to ask\nthe same question twenty times while a tunnel booted now asks it once.\n\n**The validation happens here, before the response starts.** An environment or a\ncluster that does not exist is a ``400`` — which is only expressible while the\nstatus line can still be written. Inside the generator it could not be reported\nat all; the client would see a stream that opens and then says nothing forever.",
+        "operationId": "stream_workflow_state",
+        "parameters": [
+          {
+            "name": "env",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "dev",
+              "title": "Env"
+            }
+          },
+          {
+            "name": "cluster",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "cap",
+              "title": "Cluster"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -4718,7 +4765,7 @@
           "stopped"
         ],
         "title": "WorkflowStopResponse",
-        "description": "Parar un proceso. Distinto de \"parar todo\" a propósito.\n\nUno pregunta \"¿lo maté?\" y contesta un booleano; el otro pregunta \"¿qué\nmataste?\" y contrea una lista. Meterlos en un mismo modelo obligaba a que uno\nde los dos mintiera, y como los tests llaman los handlers directo —que no pasa\npor la validación de respuesta— el desajuste llegó a la pantalla como un 500."
+        "description": "Parar un proceso. Distinto de \"parar todo\" a propósito.\n\nUno pregunta \"¿lo maté?\" y contesta un booleano; el otro pregunta \"¿qué\nmataste?\" y contesta una lista. Meterlos en un mismo modelo obligaba a que uno\nde los dos mintiera, y como los tests llamaban los handlers directo —que no\npasa por la validación de respuesta de FastAPI— el desajuste no se vio hasta\nque la pantalla lo pidió y le llegó un 500."
       },
       "WorkflowUnattributedInfo": {
         "properties": {

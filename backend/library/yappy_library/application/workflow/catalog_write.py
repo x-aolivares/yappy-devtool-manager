@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 
+from yappy_library.adapters.state_bus import state_bus
 from yappy_library.application.workflow.catalog import CONFIG_KEY, format_catalog, parse_catalog
 from yappy_library.application.workflow.models import PortEntry
 from yappy_library.config import Config
@@ -154,3 +155,8 @@ def _persist(cfg: Config, catalog: dict) -> None:
         path.write_text(updated, encoding="utf-8")
     except OSError as exc:
         raise CatalogError(f"No se pudo escribir {path}: {exc}") from exc
+
+    # The catalog is part of the state the screen reads, so a rename has to reach it
+    # the same way a verdict does. Without this the new name would only show up on
+    # the watchdog tick, up to five seconds after the developer stopped typing.
+    state_bus.publish()

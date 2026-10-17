@@ -14,10 +14,16 @@ up. Nothing here waits for a tunnel to come up.
 
 from __future__ import annotations
 
+import asyncio
+import json
+
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from yappy_library.adapters.process_tracker import get_tracked_processes
 from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES
+from yappy_library.adapters.state_bus import state_bus
 from yappy_library.application.workflow import actions, catalog, catalog_write
 from yappy_library.application.workflow import service as workflow_service
 from yappy_library.config import Config
@@ -38,6 +44,19 @@ from ..schemas import (
 )
 
 router = APIRouter(tags=["workflow"])
+
+#: How long a connected stream waits before re-reading even if nothing published.
+#:
+#: Not a safety net for a broken bus: it is how two kinds of change get noticed at
+#: all, because **neither of them has an event**. A tunnel opened from the terminal
+#: is written by another process, and a process killed by something outside this
+#: project writes nothing at all. Both are still true, and the truth is in the OS
+#: rather than in the tracker files — so reading it stays a periodic operation.
+#:
+#: Five seconds because it is the floor of what the screen loses if this gets
+#: wrong: a row that moved while nobody was looking, back on its own within one
+#: tick. Anything faster is CPU nobody asked for.
+STREAM_WATCHDOG_SECONDS = 5.0
 
 
 def _cfg(env: str) -> Config:
@@ -99,6 +118,73 @@ def _unattributed_info(entry: dict) -> dict:
     }
 
 
+def _state_body(snap) -> dict:
+    """The snapshot as the dict the API sends, for both transports.
+
+    One function on purpose: ``GET /api/workflow/state`` and the SSE stream answer
+    the same question with the same shape, and two copies of this dict is two places
+    where a field gets added to one and forgotten in the other — which reads as "the
+    stream is stale", not as "the serializer drifted".
+    """
+    return {
+        "env": snap.env,
+        "cluster": snap.cluster,
+        "remote_host": snap.remote_host,
+        "generated_at": snap.generated_at,
+        "catalog_configured": snap.catalog_configured,
+        "resources": [_resource_info(r) for r in snap.resources],
+        "ports": [_port_info(p) for p in snap.ports],
+        "unattributed": [_unattributed_info(e) for e in snap.unattributed],
+    }
+
+
+def _signature(body: dict) -> str:
+    """The body as a comparable string, minus the field that always differs.
+
+    ``generated_at`` is the wall clock of the read, so it changes on every pass by
+    construction: including it would make every watchdog tick look like a change and
+    turn "send only when it moved" into "send constantly". It is still **sent**, so
+    the payload a reader gets is the same one ``/api/workflow/state`` returns.
+    """
+    return json.dumps({k: v for k, v in body.items() if k != "generated_at"})
+
+
+async def _stream_frames(cfg: Config, cluster: str):
+    """Yield one SSE frame per real change, and nothing per non-change.
+
+    The loop is "read, maybe send, then wait for a wake **or** the watchdog". Both
+    halves are load-bearing and neither replaces the other: the wake is what makes a
+    verdict land in milliseconds instead of up to five seconds, and the watchdog is
+    the only way a tunnel started from the terminal ever shows up at all.
+
+    The snapshot goes through :func:`run_in_threadpool` because it is blocking work —
+    file reads and, on Windows, a process-table walk — and doing it inline would
+    stall every other connection for its duration.
+    """
+    subscription = state_bus.subscribe()
+    last: str | None = None
+    try:
+        while True:
+            snap = await run_in_threadpool(workflow_service.snapshot, cfg, cluster)
+            body = _state_body(snap)
+            signature = _signature(body)
+            if signature != last:
+                last = signature
+                yield f"data: {json.dumps(body)}\n\n"
+            try:
+                await asyncio.wait_for(
+                    subscription.queue.get(), STREAM_WATCHDOG_SECONDS
+                )
+            except TimeoutError:
+                # Nothing published. Go around: re-read, and send only if the OS
+                # says something moved.
+                pass
+    finally:
+        # Reached when the client disconnects and the generator is closed. Without
+        # it the bus would keep a dead connection's queue for the process's life.
+        subscription.close()
+
+
 @router.get(
     "/api/workflow/clusters",
     operation_id="list_workflow_clusters",
@@ -114,20 +200,41 @@ def api_workflow_clusters():
     response_model=WorkflowStateResponse,
 )
 def api_workflow_state(env: str = "dev", cluster: str = "cap"):
-    """Everything one poll of the screen needs."""
+    """Everything one read of the screen needs.
+
+    Kept, and not replaced by the stream: it is the documented shape, the one a
+    ``curl`` can hit, and what a reader gets on the first frame.
+    """
     cfg = _cfg(env)
     cluster = _cluster(cluster)
     snap = workflow_service.snapshot(cfg, cluster)
-    return {
-        "env": snap.env,
-        "cluster": snap.cluster,
-        "remote_host": snap.remote_host,
-        "generated_at": snap.generated_at,
-        "catalog_configured": snap.catalog_configured,
-        "resources": [_resource_info(r) for r in snap.resources],
-        "ports": [_port_info(p) for p in snap.ports],
-        "unattributed": [_unattributed_info(e) for e in snap.unattributed],
-    }
+    return _state_body(snap)
+
+
+@router.get(
+    "/api/workflow/stream",
+    operation_id="stream_workflow_state",
+    response_class=StreamingResponse,
+)
+async def api_workflow_stream(env: str = "dev", cluster: str = "cap"):
+    """The same payload, pushed when it changes instead of asked for on a timer.
+
+    The browser opens this once per screen and listens. A start writes the tracker
+    and publishes; the stream wakes, re-reads, and sends. The screen that used to ask
+    the same question twenty times while a tunnel booted now asks it once.
+
+    **The validation happens here, before the response starts.** An environment or a
+    cluster that does not exist is a ``400`` — which is only expressible while the
+    status line can still be written. Inside the generator it could not be reported
+    at all; the client would see a stream that opens and then says nothing forever.
+    """
+    cfg = _cfg(env)
+    cluster = _cluster(cluster)
+    return StreamingResponse(
+        _stream_frames(cfg, cluster),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.post(

@@ -34,6 +34,7 @@ import time
 from pathlib import Path
 
 from yappy_library.adapters import process_identity
+from yappy_library.adapters.state_bus import state_bus
 
 _TRACKER_DIR = Path.home() / ".yappy" / "tracker"
 
@@ -150,6 +151,7 @@ def track_process(
     path = _TRACKER_DIR / f"{pid}.json"
     path.write_text(json.dumps(entry, indent=2))
     _forget(path.name)
+    state_bus.publish()
 
 
 def update_process_state(pid: int, state: str) -> None:
@@ -158,6 +160,10 @@ def update_process_state(pid: int, state: str) -> None:
     Only the state moves. Rewriting the whole entry here would race with a
     tracker written by a *different* process — a CLI tunnel and the web both
     touching the same file would each clobber the other's fields.
+
+    This is the one write the whole push feature is built around: it is what the
+    supervisor calls when a start finally has a verdict, so publishing here is what
+    makes the row move without the screen ever asking.
     """
     path = _TRACKER_DIR / f"{pid}.json"
     try:
@@ -170,6 +176,7 @@ def update_process_state(pid: int, state: str) -> None:
     except OSError:
         return
     _forget(path.name)
+    state_bus.publish()
 
 
 def _process_alive(pid) -> bool:
@@ -219,6 +226,7 @@ def track_process_state_and_supervisor(pid: int, state: str, supervisor: int) ->
     except OSError:
         return
     _forget(path.name)
+    state_bus.publish()
 
 
 def _mtime(path: Path) -> float:
@@ -375,3 +383,4 @@ def untrack_process(pid: int):
     if f.exists():
         f.unlink()
     _forget(f.name)
+    state_bus.publish()

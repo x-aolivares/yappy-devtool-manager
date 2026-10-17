@@ -13,15 +13,23 @@
  * Los fakes no inventan comportamiento: cada método responde `ok` y anota la
  * llamada, para que el test afirme sobre lo que la página *pidió* y no sobre lo
  * que el backend *haría*.
+ *
+ * El del estado es un stream y no una función: se suscribe, y el test le empuja
+ * frames con `emiteEstado`. Es la diferencia entre "el backend respondió esto" y
+ * "el backend dijo que algo pasó", y un test que no puede empujar un frame no puede
+ * probar que la pantalla reacciona a un cambio.
  */
 import { HttpErrorResponse } from '@angular/common/http';
 import type { Provider } from '@angular/core';
+import { Observable, Subject, finalize } from 'rxjs';
 
 import type {
   WorkflowPortInfo, WorkflowResourceInfo, WorkflowStateResponse,
 } from '../api-gen/models';
 import { EnvironmentService } from './services/environment.service';
-import { WorkflowService } from './services/workflow.service';
+import {
+  WorkflowScope, WorkflowService, WorkflowStreamEvent,
+} from './services/workflow.service';
 
 export const ENVS = [
   { env: 'dev', region: 'us-west-2', profile: 'base-profile' },
@@ -102,17 +110,53 @@ export function corteDeRed(): HttpErrorResponse {
   return new HttpErrorResponse({ status: 0, error: new ProgressEvent('error') });
 }
 
+/**
+ * Un stream abierto, que el test empuja.
+ *
+ * Guarda el ámbito con el que se abrió y si el front lo cerró: esas son las dos
+ * cosas que un test necesita afirmar y que no se pueden ver mirando la pantalla.
+ */
+export class WorkflowStreamDouble {
+  /** Los frames que salieron, para poder afirmar que no salió alguno. */
+  readonly frames: WorkflowStreamEvent[] = [];
+
+  private readonly subject = new Subject<WorkflowStreamEvent>();
+  private isClosed = false;
+
+  /** Con qué ambiente y cluster se abrió. Sin los dos = una página sin ámbito. */
+  constructor(readonly scope: WorkflowScope) {}
+
+  /** Empuja un frame, como el backend cuando algo se mueve. */
+  emit(event: WorkflowStreamEvent): void {
+    this.frames.push(event);
+    this.subject.next(event);
+  }
+
+  /**
+   * `true` cuando la página desarmó la suscripción.
+   *
+   * Sale del `finalize`, porque desarmar es lo que cierra el `EventSource` del otro
+   * lado: un test que no la desarma está probando una página que se va a dejar
+   * conexiones abiertas en el server.
+   */
+  get closed(): boolean {
+    return this.isClosed;
+  }
+
+  /** Lo que la página se suscribe. */
+  observable(): Observable<WorkflowStreamEvent> {
+    return this.subject
+      .asObservable()
+      .pipe(finalize(() => { this.isClosed = true; }));
+  }
+}
+
 /** Todo lo que los fakes anotan, para que el test afirme sobre las llamadas. */
 export interface WorkflowCalls {
-  /** Lo que el endpoint de estado devuelve en la próxima vuelta. */
+  /** Lo que el próximo frame va a decir. Cambiarlo y empujar es un cambio de estado. */
   answer: WorkflowStateResponse;
-  /**
-   * Cada pedido de estado, para afirmar a qué ambiente y cluster se le pidió.
-   *
-   * `env` y `cluster` son opcionales porque hay secciones que no los mandan:
-   * Kafka es full local y su ámbito es vacío.
-   */
-  stateCalls: Array<{ env?: string; cluster?: string }>;
+  /** Un stream por cada suscripción abierta, en orden de apertura. */
+  streams: WorkflowStreamDouble[];
   startedPorts: Array<{ port: number; label: string; cluster: string }>;
   startedKeys: string[];
   /** El ambiente de cada `startedKeys`, en el mismo orden. `undefined` = no mandó. */
@@ -137,7 +181,7 @@ export interface WorkflowCalls {
 export function callsVacios(): WorkflowCalls {
   return {
     answer: estado(),
-    stateCalls: [],
+    streams: [],
     startedPorts: [],
     startedKeys: [],
     startEnvs: [],
@@ -155,6 +199,34 @@ export function callsVacios(): WorkflowCalls {
 }
 
 /**
+ * Empuja un estado a todos los streams abiertos.
+ *
+ * Es lo que hace el backend cuando el supervisor escribe un veredicto: el mismo
+ * `answer` que el test tenía preparado, ahora como frame.
+ */
+export function emiteEstado(
+  calls: WorkflowCalls,
+  over: Partial<WorkflowStateResponse> = {},
+): WorkflowCalls {
+  calls.answer = { ...calls.answer, ...over };
+  for (const stream of calls.streams) {
+    stream.emit({ kind: 'state', state: calls.answer });
+  }
+  return calls;
+}
+
+/** Empuja el corte de conexión: lo que el `EventSource` emite cuando se cae. */
+export function emiteCaida(
+  calls: WorkflowCalls,
+  detail = 'No se pudo conectar con el servidor.',
+): WorkflowCalls {
+  for (const stream of calls.streams) {
+    stream.emit({ kind: 'error', detail });
+  }
+  return calls;
+}
+
+/**
  * Los providers de `TestBed` para las cuatro páginas y para los componentes
  * compartidos.
  *
@@ -167,9 +239,18 @@ export function workflowProviders(calls: WorkflowCalls): Provider[] {
     {
       provide: WorkflowService,
       useValue: {
-        state: (env?: string, cluster?: string) => {
-          calls.stateCalls.push({ env, cluster });
-          return Promise.resolve(calls.answer);
+        /**
+         * Abre un stream y manda el primer frame en el acto, como el server: la
+         * conexión abre y el estado entero viene sin que nadie lo pida.
+         */
+        stream: (scope: WorkflowScope) => {
+          const stream = new WorkflowStreamDouble(scope);
+          calls.streams.push(stream);
+          return new Observable<WorkflowStreamEvent>((subscriber) => {
+            const inner = stream.observable().subscribe(subscriber);
+            stream.emit({ kind: 'state', state: calls.answer });
+            return () => inner.unsubscribe();
+          });
         },
         log: (pid: number, offset: number) => {
           calls.logCalls.push({ pid, offset });

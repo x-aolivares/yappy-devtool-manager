@@ -18,12 +18,11 @@
  * - **El aviso de "Parar todo" cuenta sobre el tracker entero**, no sobre las
  *   filas de esta página —ver `stopAllForeignCount`.
  */
-import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 
 import { WorkflowTunnelsPage } from './workflow-tunnels';
 import {
-  WorkflowCalls, callsVacios, fila, recurso, workflowProviders,
+  WorkflowCalls, callsVacios, emiteCaida, emiteEstado, fila, recurso, workflowProviders,
 } from '../../core/workflow-doubles';
 
 describe('WorkflowTunnelsPage', () => {
@@ -241,8 +240,7 @@ describe('WorkflowTunnelsPage', () => {
       calls.answer = { ...calls.answer, ports: [fila({ state: 'down' })] };
       const { comp, fixture } = await montar();
 
-      calls.answer = { ...calls.answer, ports: [fila({ state: 'up' })] };
-      comp.state.reload();
+      emiteEstado(calls, { ports: [fila({ state: 'up' })] });
       await recargar(fixture);
 
       expect(comp.announcement()).toContain('arriba');
@@ -252,8 +250,7 @@ describe('WorkflowTunnelsPage', () => {
       calls.answer = { ...calls.answer, ports: [fila({ state: 'down', label: '' })] };
       const { comp, fixture } = await montar();
 
-      calls.answer = { ...calls.answer, ports: [fila({ state: 'up', label: '' })] };
-      comp.state.reload();
+      emiteEstado(calls, { ports: [fila({ state: 'up', label: '' })] });
       await recargar(fixture);
 
       expect(comp.announcement()).toContain(':8402');
@@ -266,8 +263,7 @@ describe('WorkflowTunnelsPage', () => {
       calls.answer = { ...calls.answer, resources: [recurso({ group: 'kafka', name: 'Kafdrop UI', state: 'down', pid: 1 })] };
       const { comp, fixture } = await montar();
 
-      calls.answer = { ...calls.answer, resources: [recurso({ group: 'kafka', name: 'Kafdrop UI', state: 'up', pid: 1 })] };
-      comp.state.reload();
+      emiteEstado(calls, { resources: [recurso({ group: 'kafka', name: 'Kafdrop UI', state: 'up', pid: 1 })] });
       await recargar(fixture);
 
       expect(comp.announcement()).toBe('');
@@ -323,15 +319,15 @@ describe('WorkflowTunnelsPage', () => {
     it('cambiar de cluster pide el estado del cluster nuevo y abandona el anterior', async () => {
       // Si la respuesta de `cap` llegara después de que el developer ya pasó a
       // `cap2`, le pisaría la tabla con los puertos del cluster equivocado. Lo que
-      // lo evita es que `params` sea parte de la identidad del `resource()`: al
-      // cambiar, el backend cancela la request en vuelo.
+      // lo evita es que `scope` sea parte de la identidad del stream: al cambiar, la
+      // base cierra la suscripción vieja y abre otra.
       calls.answer = { ...calls.answer, ports: [fila({ port: 8402, cluster: 'cap' })] };
       const { comp } = await montar();
 
       comp.cluster.set('cap2');
       await new Promise((r) => setTimeout(r, 0));
 
-      expect(calls.stateCalls.at(-1)).toEqual({ env: 'dev', cluster: 'cap2' });
+      expect(calls.streams.at(-1)?.scope).toEqual({ env: 'dev', cluster: 'cap2' });
     });
 
     it('cambiar de ambiente también repide el estado', async () => {
@@ -341,7 +337,7 @@ describe('WorkflowTunnelsPage', () => {
       comp.env.set('qa');
       await new Promise((r) => setTimeout(r, 0));
 
-      expect(calls.stateCalls.at(-1)).toEqual({ env: 'qa', cluster: 'cap' });
+      expect(calls.streams.at(-1)?.scope).toEqual({ env: 'qa', cluster: 'cap' });
     });
   });
 
@@ -535,28 +531,22 @@ describe('WorkflowTunnelsPage', () => {
 
   // --- errores --------------------------------------------------------------
 
-  describe('cuando el backend falla', () => {
-    it('el error del poll dice qué pasó', async () => {
-      const { comp } = await montar();
-
-      expect(comp.describePollFailureForTest(new Error('boom'))).toBe('boom');
-      // Sin conexión es el caso que más se da: el server se apagó o el túnel de
-      // la sesión se cayó. Un "status 0" a secas no dice nada.
-      expect(comp.describePollFailureForTest(new HttpErrorResponse({ status: 0 }))).toContain(
-        'No se pudo conectar',
-      );
-      expect(
-        comp.describePollFailureForTest(
-          new HttpErrorResponse({ status: 500, error: { detail: 'se rompió' } }),
-        ),
-      ).toBe('se rompió');
-    });
-
-    it('la caja no aparece si el poll trajo datos', async () => {
+  describe('cuando el backend se corta', () => {
+    it('la caja aparece con un corte y dice que no se pudo conectar', async () => {
       const { comp, fixture } = await montar();
 
-      // La vuelta terminó bien: el `error()` del `resource()` es `undefined`.
-      comp.settleFailureForTest(undefined);
+      // El `EventSource` no puede decir por qué se cortó: sólo avisa que se cortó.
+      emiteCaida(calls);
+      fixture.detectChanges();
+
+      expect(comp.readError()).toContain('No se pudo conectar');
+      expect(fixture.nativeElement.querySelector('.error-box')).not.toBeNull();
+    });
+
+    it('la caja no aparece mientras llegan estados', async () => {
+      const { comp, fixture } = await montar();
+
+      emiteEstado(calls);
       fixture.detectChanges();
 
       expect(comp.readError()).toBe('');
@@ -564,25 +554,75 @@ describe('WorkflowTunnelsPage', () => {
     });
 
     it('la caja se va sola cuando el servidor vuelve', async () => {
-      // El bug: leer `state.error()` del `resource()` dejaba la caja pegada para
-      // siempre. Apagar el server con Ctrl+C deja el poll golpeando un backend
-      // muerto, cada tick falla, y el último error sobrevive a la recuperación —
-      // diciendo que no se puede leer algo que hace un rato se está leyendo.
+      // El bug: el error quedaba pegado para siempre. Una caja roja que sobrevive a
+      // la recuperación termina diciendo que no se puede leer algo que hace un rato
+      // se está leyendo — y el `EventSource` reconecta solo, así que el frame que la
+      // borra es el mismo que repinta la tabla.
       const { comp, fixture } = await montar();
 
-      // El server está caído: el poll falla.
-      comp.settleFailureForTest(new HttpErrorResponse({ status: 0 }));
+      emiteCaida(calls);
       fixture.detectChanges();
+      expect(comp.readError()).not.toBe('');
 
-      expect(comp.readError()).toContain('No se pudo conectar');
-      expect(fixture.nativeElement.querySelector('.error-box')).not.toBeNull();
-
-      // El server volvió y el poll trajo datos otra vez.
-      comp.settleFailureForTest(undefined);
+      emiteEstado(calls, { ports: [fila({ state: 'up' })] });
       fixture.detectChanges();
 
       expect(comp.readError()).toBe('');
       expect(fixture.nativeElement.querySelector('.error-box')).toBeNull();
+    });
+
+    it('el estado anterior sobrevive al corte', async () => {
+      // No se vacía la tabla mientras no hay respuesta: la última foto buena es
+      // mejor que una pantalla en blanco que parece "no hay nada corriendo".
+      calls.answer = { ...calls.answer, ports: [fila({ state: 'up' })] };
+      const { comp } = await montar();
+
+      emiteCaida(calls);
+
+      expect(comp.ports()).toHaveLength(1);
+    });
+  });
+
+  // --- el stream ------------------------------------------------------------
+
+  describe('la conexión', () => {
+    it('se abre una vez y trae el estado entero sin pedir nada', async () => {
+      calls.answer = { ...calls.answer, ports: [fila({ state: 'up' })] };
+      const { comp } = await montar();
+
+      expect(calls.streams).toHaveLength(1);
+      expect(comp.ports()).toHaveLength(1);
+    });
+
+    it('se cierra al abandonar la página', async () => {
+      const { fixture } = await montar();
+
+      fixture.destroy();
+
+      expect(calls.streams[0].closed).toBe(true);
+    });
+
+    it('cambiar de cluster cierra el anterior y abre otro', async () => {
+      // Si el stream viejo siguiera abierto, su frame podría llegar después de que
+      // el developer ya pasó a `cap2` y pisarle la tabla con los puertos del cluster
+      // equivocado. Cerrarlo es lo que lo evita.
+      const { comp } = await montar();
+      const antes = calls.streams[0];
+
+      comp.cluster.set('cap2');
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(antes.closed).toBe(true);
+      expect(calls.streams.at(-1)?.scope).toEqual({ env: 'dev', cluster: 'cap2' });
+    });
+
+    it('cambiar de ambiente también reabre la conexión', async () => {
+      const { comp } = await montar();
+
+      comp.env.set('qa');
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(calls.streams.at(-1)?.scope).toEqual({ env: 'qa', cluster: 'cap' });
     });
   });
 });

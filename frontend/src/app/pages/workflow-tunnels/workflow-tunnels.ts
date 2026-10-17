@@ -93,7 +93,6 @@ export class WorkflowTunnelsPage extends WorkflowSectionPage {
     try {
       await this.workflow.addPort(port, '', this.cluster());
       this.addPortValue.set('');
-      this.state.reload();
     } catch (err) {
       this.addPortError.set(toApiError(err).message);
     }
@@ -131,7 +130,6 @@ export class WorkflowTunnelsPage extends WorkflowSectionPage {
       }
     }
     this.busy.set(false);
-    this.state.reload();
   }
 
   /**
@@ -153,7 +151,6 @@ export class WorkflowTunnelsPage extends WorkflowSectionPage {
         if (row.label === value.trim()) return;
         void this.workflow
           .renamePort(this.cluster(), row.port, value.trim())
-          .then(() => this.state.reload())
           .catch((err) => this.showError('No se pudo guardar el nombre', toApiError(err).message));
       }, LABEL_DEBOUNCE_MS),
     );
@@ -173,7 +170,6 @@ export class WorkflowTunnelsPage extends WorkflowSectionPage {
         if (row.pid) await this.workflow.stop(row.pid);
       }
       await this.workflow.removePort(this.cluster(), row.port);
-      this.state.reload();
     } catch (err) {
       this.showError('No se pudo quitar el puerto', toApiError(err).message);
     } finally {
