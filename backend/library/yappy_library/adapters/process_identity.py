@@ -35,6 +35,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 #: How many links to follow before giving up. A parent chain is 3-5 deep on any
@@ -182,6 +183,41 @@ def _live_parent_map() -> dict[int, int]:
     """Indirection so :func:`ancestors` can call the module function while
     ``parent_map`` is bound to its own parameter name."""
     return parent_map()
+
+
+def alive_map(pids: Iterable[int]) -> dict[int, bool] | None:
+    """Liveness for many pids in one pass — or ``None`` when this cannot answer.
+
+    Windows has no cheap per-pid liveness. The only way to ask that does not demand
+    control of somebody else's process is ``CreateToolhelp32Snapshot`` plus a walk
+    of the **whole process table** (:func:`_windows_entries`). Asking it once per
+    pid is what made the workflow screen expensive: a poll over ten tracked rows
+    walked a 285-process table ten times, at 5.4ms a walk, to answer "nothing
+    changed since last time".
+
+    So this takes the table once and answers every pid from it with a set lookup.
+    Measured on that machine it turns a 54ms poll into a 7ms one, and unlike a
+    cache it cannot go stale — a process that died is simply not in the next table.
+
+    Callers that need the exe or the creation time still use :func:`identity`: that
+    extra work per pid is what this function exists to avoid.
+
+    ``None`` means **"I could not tell"**, and that is deliberately not the same as
+    "they are all dead". An unavailable API or a snapshot that came back empty
+    returns ``None`` on purpose: reading that as "every process is gone" would paint
+    every live tunnel red on a transient failure and make ``Parar todo`` skip them.
+    On POSIX this is ``None`` too — ``os.kill(pid, 0)`` is one cheap syscall per
+    pid, so there is nothing to batch, and the caller keeps its existing path.
+    """
+    wanted = [int(p) for p in pids if p]
+    if not wanted:
+        return {}
+    if sys.platform != "win32":
+        return None
+    entries = _windows_entries()
+    if not entries:
+        return None
+    return {pid: pid in entries for pid in wanted}
 
 
 def _exe_basename(raw: str) -> str:

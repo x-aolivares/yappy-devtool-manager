@@ -252,6 +252,54 @@ def prune_dead_on_port(port: int) -> list[int]:
     return forgotten
 
 
+def _matching(
+    paths: list[Path],
+    resource: str | None,
+    target: str | None,
+    env: str | None,
+) -> list[dict]:
+    """The parsed entries the filters keep, in the order they arrived.
+
+    Separate from :func:`get_tracked_processes` because liveness is no longer
+    knowable one entry at a time: on Windows answering it means taking one
+    process-table snapshot for the whole batch, so the batch has to exist before
+    the first question is asked.
+    """
+    kept: list[dict] = []
+    for f in paths:
+        parsed = _parse(f)
+        if parsed is None:
+            continue
+        if resource and parsed.get("resource") != resource:
+            continue
+        if target and parsed.get("target") != target:
+            continue
+        if env and parsed.get("env") != env:
+            continue
+        kept.append(parsed)
+    return kept
+
+
+def _liveness_for(entries: list[dict]) -> dict[int, bool]:
+    """``pid -> alive`` for every pid the entries mention, supervisors included.
+
+    One bulk question first, and the per-pid path only when the bulk one could not
+    answer — see :func:`process_identity.alive_map` for why "could not answer" is
+    not "all dead".
+    """
+    pids: set[int] = set()
+    for parsed in entries:
+        for key in ("pid", "supervisor"):
+            value = parsed.get(key)
+            if value:
+                pids.add(int(value))
+
+    answers = process_identity.alive_map(pids)
+    if answers is not None:
+        return answers
+    return {pid: _process_alive(pid) for pid in pids}
+
+
 def get_tracked_processes(
     resource: str | None = None,
     target: str | None = None,
@@ -279,24 +327,16 @@ def get_tracked_processes(
         for name in [n for n in _parsed_cache if n not in seen]:
             del _parsed_cache[name]
 
-    for f in paths:
-        parsed = _parse(f)
-        if parsed is None:
-            continue
+    candidates = _matching(paths, resource, target, env)
+    alives = _liveness_for(candidates)
 
-        if resource and parsed.get("resource") != resource:
-            continue
-        if target and parsed.get("target") != target:
-            continue
-        if env and parsed.get("env") != env:
-            continue
-
+    for parsed in candidates:
         # A copy: the cached dict is shared between calls and callers annotate
         # what they get back.
         entry = dict(parsed)
 
         pid = entry.get("pid")
-        entry["alive"] = _process_alive(pid)
+        entry["alive"] = alives.get(pid, False) if pid else False
 
         # The process that was going to resolve `starting` into `up` or `error`.
         # If it is gone, nobody ever will: a web server that shut down mid-start
@@ -304,7 +344,7 @@ def get_tracked_processes(
         # forever even though the Kafka broker is happily serving.
         supervisor = entry.get("supervisor")
         if supervisor is not None:
-            entry["supervisor_alive"] = _process_alive(supervisor)
+            entry["supervisor_alive"] = alives.get(supervisor, False)
 
         # Files written before these fields existed. They predate the web UI
         # entirely, so `cli` is the honest owner and the process did start.

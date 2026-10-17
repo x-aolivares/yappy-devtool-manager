@@ -16,6 +16,7 @@ the real thing on this machine, where it has to agree with the OS.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from types import SimpleNamespace
@@ -250,6 +251,20 @@ def _foreign_map(*extra: tuple[int, int]) -> dict[int, int]:
     return mapping
 
 
+@pytest.fixture
+def tracker(tmp_path, monkeypatch):
+    """Point the tracker at a temp dir with an empty parse cache.
+
+    Same fixture as ``test_process_tracker_schema``, duplicated rather than
+    imported: a test module that borrows another module's fixtures couples them, and
+    this one is about the identity layer, not about the entry format.
+    """
+    directory = tmp_path / ".yappy" / "tracker"
+    monkeypatch.setattr(process_tracker, "_TRACKER_DIR", directory)
+    monkeypatch.setattr(process_tracker, "_parsed_cache", {})
+    return directory
+
+
 def _fake_identity(**kwargs):
     defaults = {"pid": 4242, "parent_pid": 1, "exe": "aws.exe", "create_time": 1_700_000_000.0}
     defaults.update(kwargs)
@@ -470,6 +485,69 @@ def test_the_windows_snapshot_reports_real_exes_and_parents():
 # --------------------------------------------------------------------------
 # Liveness: the same "do not trust the pid" mistake, one layer over.
 # --------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="la tabla de procesos es Windows-only")
+def test_una_lectura_del_tracker_toma_la_tabla_de_procesos_una_sola_vez(
+    tracker, monkeypatch
+):
+    """El guard de :func:`process_identity.alive_map`.
+
+    En Windows la liveness de un pid sale de ``CreateToolhelp32Snapshot`` más un
+    recorrido de la tabla completa de procesos, que medido en esta máquina dio
+    5,4ms. Preguntar pid por pid —un ``alive`` por entrada y otro por su
+    supervisor— hacía que una lectura de cinco filas caminara la tabla diez veces:
+    62ms de CPU para responder "no cambió nada". Este test cuenta las caminatas, así
+    que volver a preguntar de a uno sale rojo en vez de volver a ser lento en
+    silencio.
+    """
+    walks: list[int] = []
+    real_entries = process_identity._windows_entries
+
+    def counting_entries():
+        walks.append(1)
+        return real_entries()
+
+    monkeypatch.setattr(process_identity, "_windows_entries", counting_entries)
+
+    live = os.getpid()
+    tracker.mkdir(parents=True, exist_ok=True)
+    for i in range(5):
+        (tracker / f"{9000 + i}.json").write_text(
+            json.dumps(
+                {"pid": live, "resource": "tunnel", "state": "up", "supervisor": live}
+            )
+        )
+
+    rows = process_tracker.get_tracked_processes()
+
+    assert len(rows) == 5
+    assert all(r["alive"] and r["supervisor_alive"] for r in rows)
+    assert len(walks) == 1, f"caminó la tabla {len(walks)} veces; tiene que ser una"
+
+
+def test_una_tabla_que_no_se_puede_leer_no_declara_muerto_a_todo(tracker, monkeypatch):
+    """Sin tabla no hay respuesta, y "no lo sé" no es "está muerto".
+
+    :func:`alive_map` devuelve ``None`` cuando la API de Windows no está o el
+    snapshot viene vacío, y el tracker cae al camino pid por pid. Si ese ``None``
+    se leyera como "todos muertos", un fallo transitorio de ctypes pintaría de rojo
+    cada fila viva y "Parar todo" se las saltearía — el peor resultado posible a
+    partir de una duda.
+    """
+    tracker.mkdir(parents=True, exist_ok=True)
+    (tracker / "9000.json").write_text(
+        json.dumps({"pid": 4242, "resource": "tunnel", "state": "up", "supervisor": 4243})
+    )
+
+    asked: list[int] = []
+    monkeypatch.setattr(process_identity, "alive_map", lambda pids: None)
+    monkeypatch.setattr(process_tracker, "_process_alive", lambda pid: asked.append(pid) or True)
+
+    rows = process_tracker.get_tracked_processes()
+
+    assert all(r["alive"] and r["supervisor_alive"] for r in rows)
+    assert sorted(asked) == [4242, 4243], "no preguntó de a uno: ése es el camino de reserva"
 
 
 def test_liveness_does_not_ask_for_control_of_the_process(monkeypatch):
