@@ -1,0 +1,234 @@
+<app-page-header
+  title="Túneles de cluster"
+  description="Los puertos que el cluster expone por sesión SSM. El catálogo se guarda en CLUSTER_PORTS del archivo de ambiente, y el estado sale del tracker, así que también aparecen los túneles que levantaste desde la terminal."
+>
+  <div class="field">
+    <label class="field-label" for="wf-tunnels-env">Ambiente</label>
+    <select
+      id="wf-tunnels-env"
+      [value]="env()"
+      (change)="env.set($any($event.target).value)"
+    >
+      @for (e of envList().length ? envList() : [{ env: env() }]; track e.env) {
+        <option [value]="e.env">{{ e.env }}</option>
+      }
+    </select>
+  </div>
+</app-page-header>
+
+<div class="visually-hidden" role="status" aria-live="polite">{{ announcement() }}</div>
+
+@if (readError()) {
+  <div class="error-box">No se pudo leer el estado: {{ readError() }}</div>
+}
+
+<section class="panel">
+  <div class="section-title section-title--plain">
+    <strong>Túneles de cluster</strong>
+    <span class="muted">port-forwarding · <code>yappy run tunnel</code></span>
+  </div>
+
+  <div class="columns">
+    <div class="field">
+      <div class="field-label">Cluster</div>
+      <div class="radio-row" role="radiogroup" aria-label="Cluster">
+        @for (c of clusters; track c) {
+          <label>
+            <input
+              type="radio"
+              name="wf-cluster"
+              [value]="c"
+              [checked]="cluster() === c"
+              (change)="cluster.set(c)"
+            />
+            {{ c }}
+          </label>
+        }
+      </div>
+    </div>
+  </div>
+
+  @if (remoteHost()) {
+    <p class="cluster-context"><span>Se resuelve a</span> <code>{{ remoteHost() }}</code></p>
+  }
+
+  <div class="cat-bar">
+    <span>{{ catalogSummary() }}</span>
+    <span class="cat-bar__saved"><span class="cat-bar__dot"></span> se guarda solo</span>
+  </div>
+
+  <div class="table-scroll">
+    <table class="port-table">
+      <thead>
+        <tr>
+          <th scope="col">Puerto</th>
+          <th scope="col">Servicio</th>
+          <th scope="col">Estado</th>
+          <th scope="col"></th>
+          <th scope="col"><span class="visually-hidden">Quitar</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of ports(); track trackPort($index, row)) {
+          <tr [attr.data-conflict]="!!row.conflict">
+            <td class="port-table__number">{{ row.port }}</td>
+            <td>
+              <input
+                class="port-input"
+                list="wf-service-names"
+                placeholder="nombre del servicio"
+                [value]="row.label"
+                (input)="writeLabel(row, $any($event.target).value)"
+              />
+              @if (row.conflict) {
+                <p class="callout err">El puerto local {{ row.port }} ya lo está usando {{ row.conflict }}.</p>
+              }
+            </td>
+            <td>
+              <span class="state-dot" [attr.data-state]="row.state" aria-hidden="true"></span>
+              <span class="badge" [class]="'badge ' + badgeClass(row.state)">{{ badge(row.state) }}</span>
+              <span class="muted">{{ meta(row) }}</span>
+            </td>
+            <td class="port-table__actions">
+              @if (canOpenRow(row.state) && row.browser_url) {
+                <a class="secondary open-link" [href]="row.browser_url" target="_blank" rel="noopener">Abrir ↗</a>
+              }
+              @if (canStop(row)) {
+                <button type="button" class="danger-tinted" (click)="stopOne(row)" [disabled]="busy()">Parar</button>
+              }
+              @if (row.state === 'starting') {
+                <button type="button" disabled>Levantando…</button>
+              }
+              @if (canStartRow(row.state)) {
+                <button type="button" class="secondary" (click)="startPort(row)" [disabled]="busy()">
+                  {{ startText(row.state) }}
+                </button>
+              }
+              @if (canShowLogsRow(row.state) && row.pid) {
+                <button type="button" class="secondary" (click)="logs()?.open(row)">Ver logs</button>
+              }
+            </td>
+            <td>
+              <button
+                type="button"
+                class="del-btn"
+                (click)="removePort(row)"
+                [disabled]="busy()"
+                [title]="'Quitar ' + (row.label || row.port) + ' del catálogo'"
+              >
+                &times;
+              </button>
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="5" class="muted">
+              @if (catalogConfigured()) {
+                El cluster <code>{{ cluster() }}</code> no tiene puertos cargados. Agregá el primero
+                con el campo de abajo.
+              } @else {
+                No hay <code>CLUSTER_PORTS</code> en <code>env.base</code>, así que todavía no hay
+                un catálogo. Agregá el primero con el campo de abajo y se escribe solo.
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <datalist id="wf-service-names">
+    @for (row of ports(); track trackPort($index, row)) {
+      @if (row.label) {
+        <option [value]="row.label"></option>
+      }
+    }
+  </datalist>
+
+  <div class="add-form">
+    <input
+      #newPort
+      class="add-form__input"
+      type="number"
+      min="1"
+      max="65535"
+      placeholder="puerto"
+      aria-label="Puerto a agregar al catálogo"
+      aria-describedby="wf-add-err"
+      [attr.aria-invalid]="!!addPortError()"
+      [value]="addPortValue()"
+      (input)="addPortValue.set($any($event.target).value)"
+      (keydown)="onAddPortKey($event)"
+    />
+    <button type="button" class="secondary" (click)="addPort()" [disabled]="busy()">Agregar</button>
+    <button
+      type="button"
+      class="secondary"
+      (click)="startAllDown()"
+      [disabled]="busy() || !hasDown()"
+    >
+      Levantar todos
+    </button>
+  </div>
+  @if (addPortError()) {
+    <p id="wf-add-err" class="muted hint-error">{{ addPortError() }}</p>
+  }
+
+  <p class="callout warn">
+    <strong>El túnel no levanta cuando el puerto bindea.</strong>
+    <code>session-manager-plugin</code> abre el puerto local apenas arranca y puede seguir aceptando
+    conexiones que no producen un byte. Por eso la fila queda en <em>levantando…</em> hasta un
+    readiness check de verdad, y no sólo hasta que el proceso existe.
+  </p>
+</section>
+
+<!--
+  Túneles que el tracker conoce y ninguna fila puede ubicar. Casi siempre son
+  de antes del campo `local_port`: van acá y no en las otras secciones porque son
+  filas del catálogo sin puerto — el catálogo es de esta pantalla.
+-->
+@if (unattributed().length) {
+  <section class="panel">
+    <div class="section-title"><strong>Sin puerto conocido</strong></div>
+    <p class="muted">
+      Trackeados antes de que el registro guardara el puerto. Bajalos y volvé a levantarlos una vez.
+    </p>
+    @for (row of unattributed(); track trackUnattributed($index, row)) {
+      <p class="res-card__meta">{{ row.resource }} · pid {{ row.pid }} @if (row.env) { ({{ row.env }}) }</p>
+    }
+  </section>
+}
+
+<app-workflow-summary
+  [text]="summary()"
+  [canStopAll]="anythingAlive()"
+  [canShowLogs]="logs()?.hasFirstLog() ?? false"
+  (logs)="logs()?.openFirst()"
+  (stopAll)="askStopAll()"
+/>
+
+<app-workflow-logs [rows]="logRows()" />
+
+@if (busy()) {
+  <!--
+    Escribe: levantar o parar un túnel no se puede deshacer cortando el request.
+    El backend seguiría escribiendo aunque el navegador abandone la conexión, así
+    que el rótulo no promete una cancelación que no existe.
+  -->
+  <app-busy-modal [open]="busy()" message="Trabajando…" [writes]="true" (cancelled)="dismissNotice()" />
+}
+
+@if (notice(); as n) {
+  <app-notice-modal
+    [open]="true"
+    [title]="n.title"
+    [tone]="n.tone"
+    [confirmLabel]="n.confirmLabel ?? 'Entendido'"
+    (confirmed)="confirmNotice()"
+    (closed)="dismissNotice()"
+  >
+    @for (paragraph of n.paragraphs; track $index) {
+      <p>{{ paragraph }}</p>
+    }
+  </app-notice-modal>
+}

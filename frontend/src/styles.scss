@@ -2055,15 +2055,38 @@ details {
 }
 
 // ============================================================
-// Recursos (página "Workflow / Recursos")
+// Recursos (las cuatro páginas de Workflow)
 // ============================================================
+
+/* Sacado de pantalla sin sacarlo del DOM. Lo usan las cuatro páginas de Workflow
+ * para el `aria-live` y para el rótulo de la columna "Quitar" de la tabla de
+ * túneles: texto que tiene que estar en el árbol para que el lector de pantalla
+ * lo encuentre, y que no tiene que ocupar espacio. */
+.visually-hidden {
+  position: absolute;
+  width: 0.0625rem;
+  height: 0.0625rem;
+  padding: 0;
+  margin: -0.0625rem;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* La tarjeta de un recurso: nombre, puerto, estado y acciones.
 
    El punto de color es lo único que cambia asíncronamente en toda la pantalla, y
    para quien no lo ve no hay ningún otro aviso de que el túnel quedó arriba. Por
    eso el `aria-live` de la página es obligatorio y no un accesorio: el punto es
-   la información, la etiqueta es el refuerzo. */
+   la información, la etiqueta es el refuerzo.
+
+   Los primitivos de esta barra —`.res-card`, `.state-dot`, `.port-table`,
+   `.log-view`, `.callout`, `.summary-bar`— son globales y no scoped a propósito:
+   los dibuja el template de `app-resource-cards` y de `app-workflow-logs`, y el
+   encapsulado de Angular sólo empareja un selector scoped con los elementos del
+   template que lo declara. Una regla scoped en la página no llegaría a la tarjeta
+   que vive dos componentes más adentro. */
 .res-card {
   display: flex;
   flex-direction: column;

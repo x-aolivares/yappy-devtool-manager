@@ -1,0 +1,26 @@
+/* Layout de la pantalla de Túneles.
+ *
+ * Los primitivos —`.port-table`, `.state-dot`, `.port-input`, `.add-form`,
+ * `.cat-bar`, `.log-view`, `.callout`— son globales en `styles.scss`: los usa el
+ * bloque entero y un estilo scoped no llega a todo. Acá sólo está lo que es de
+ * esta página, que es el bloque de contexto del cluster.
+ *
+ * Lo que las otras tres páginas tienen —`.res-grid`, `.log-panel__note`,
+ * `.visually-hidden`— ya no está acá: el header es `app-page-header`, la grilla
+ * es `app-resource-cards`, el panel de logs es `app-workflow-logs` y
+ * `visually-hidden` se movió a `styles.scss` porque lo usan las cuatro.
+ */
+
+.cluster-context {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  margin: 0.75rem 0 0.5rem;
+
+  code {
+    font-family: var(--sys-mono);
+    color: var(--text);
+  }
+}

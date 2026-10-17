@@ -10,7 +10,10 @@ import { SchemaSyncPage } from './pages/schema-sync/schema-sync';
 import { SessionDetailPage } from './pages/session-detail/session-detail';
 import { SessionsPage } from './pages/sessions/sessions';
 import { SqlPage } from './pages/sql/sql';
-import { WorkflowResourcesPage } from './pages/workflow-resources/workflow-resources';
+import { WorkflowDatabasePage } from './pages/workflow-database/workflow-database';
+import { WorkflowKafkaPage } from './pages/workflow-kafka/workflow-kafka';
+import { WorkflowServicesPage } from './pages/workflow-services/workflow-services';
+import { WorkflowTunnelsPage } from './pages/workflow-tunnels/workflow-tunnels';
 
 // `/params-diff` sí está, pero en modo de solo lectura: comparar dos ambientes es
 // leer, y el comando para aplicar se copia desde la pantalla. Las páginas de
@@ -37,7 +40,20 @@ export const routes: Routes = [
       { path: 'sql', component: SqlPage },
     ],
   },
-  { path: 'workflow/resources', component: WorkflowResourcesPage },
+  // Workflow son cuatro páginas y no una con cuatro secciones. Leen del mismo
+  // endpoint y cada una tiene su propio poll, así que abrirlas una por una es el
+  // modo de uso: no se está mirando cuatro fotos del tracker a la vez.
+  //
+  // El orden es el de la pregunta que uno se hace cuando algo no levanta: primero
+  // Kafka (que casi siempre es lo que se necesita para probar), después los
+  // túneles, después los servicios propios y por último la base.
+  { path: 'workflow/kafka', component: WorkflowKafkaPage },
+  { path: 'workflow/tunnels', component: WorkflowTunnelsPage },
+  { path: 'workflow/services', component: WorkflowServicesPage },
+  { path: 'workflow/database', component: WorkflowDatabasePage },
+  // El link viejo sigue funcionando: la pantalla era `/workflow/resources` y hay
+  // marcadores y chats con esa URL. Kafka es donde caía la mitad de la pantalla.
+  { path: 'workflow/resources', redirectTo: 'workflow/kafka', pathMatch: 'full' },
   { path: 'sessions', component: SessionsPage },
   { path: 'sessions/:sessionId', component: SessionDetailPage },
   { path: 'deployments', component: DeploymentsPage },

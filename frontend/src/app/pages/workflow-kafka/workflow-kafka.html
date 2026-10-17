@@ -1,0 +1,71 @@
+<app-page-header
+  title="Kafka local"
+  description="El broker KRaft y su UI, corriendo en el puerto local. El estado sale del tracker, así que también aparece el que levantaste desde la terminal."
+>
+</app-page-header>
+
+<!--
+  El `aria-live` va antes de todo lo que anuncia y siempre en el DOM: si se
+  insertara junto al contenido que cambia, el lector de pantalla lo anunciaría
+  como si fuera texto nuevo. Sin esto, quien no ve el punto de color no se
+  entera de que Kafka quedó arriba.
+-->
+<div class="visually-hidden" role="status" aria-live="polite">{{ announcement() }}</div>
+
+<!--
+  La caja de error se saca y se pone sola con el poll: si el backend volvió y el
+  poll trae datos, desaparece.
+-->
+@if (readError()) {
+  <div class="error-box">No se pudo leer el estado: {{ readError() }}</div>
+}
+
+<section class="panel">
+  <div class="section-title section-title--plain">
+    <strong>Kafka local</strong>
+    <span class="muted">KRaft · <code>yappy run kafka</code></span>
+  </div>
+
+  <app-resource-cards
+    [rows]="rows()"
+    [busy]="busy()"
+    emptyText="No hay Kafka corriendo en esta máquina. Levantá el broker para poder probar contra él."
+    (start)="startResource($event)"
+    (stop)="stopOne($event)"
+    (logs)="logs()?.open($event)"
+  />
+</section>
+
+<app-workflow-summary
+  [text]="summary()"
+  [canStopAll]="anythingAlive()"
+  [canShowLogs]="logs()?.hasFirstLog() ?? false"
+  (logs)="logs()?.openFirst()"
+  (stopAll)="askStopAll()"
+/>
+
+<app-workflow-logs [rows]="logRows()" />
+
+@if (busy()) {
+  <!--
+    Escribe: arrancar o parar Kafka no se puede deshacer cortando el request.
+    El backend seguiría escribiendo aunque el navegador abandone la conexión, así
+    que el rótulo no promete una cancelación que no existe.
+  -->
+  <app-busy-modal [open]="busy()" message="Trabajando…" [writes]="true" (cancelled)="dismissNotice()" />
+}
+
+@if (notice(); as n) {
+  <app-notice-modal
+    [open]="true"
+    [title]="n.title"
+    [tone]="n.tone"
+    [confirmLabel]="n.confirmLabel ?? 'Entendido'"
+    (confirmed)="confirmNotice()"
+    (closed)="dismissNotice()"
+  >
+    @for (paragraph of n.paragraphs; track $index) {
+      <p>{{ paragraph }}</p>
+    }
+  </app-notice-modal>
+}

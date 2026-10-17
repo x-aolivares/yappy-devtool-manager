@@ -1,0 +1,32 @@
+<!--
+  El panel entero. El `[hidden]` en vez de un `@if`: el `<section>` tiene que estar
+  en el DOM para que el "Cerrar" y el texto que ya se leyó no salten de posición
+  al cerrarse y abrirse. Es la misma razón por la que el `aria-live` de la página
+  nunca se inserta junto a lo que anuncia.
+-->
+<section class="panel log-panel" [hidden]="!scope()">
+  <div class="section-title section-title--plain">
+    <strong>Logs</strong>
+    <button type="button" class="secondary" (click)="close()">Cerrar</button>
+  </div>
+
+  @if (scope()) {
+    @if (text()) {
+      <pre class="log-view">{{ text() }}</pre>
+    } @else if (loaded()) {
+      <p class="muted">Sin contenido todavía.</p>
+    } @else {
+      <p class="muted">Buscando logs…</p>
+    }
+    @if (gone()) {
+      <!--
+        El proceso ya no existe y el poll cortó. El aviso va *debajo* del texto y
+        no en vez del texto: lo que se alcanzó a leer es lo que el developer
+        estaba mirando cuando paró Kafka, y un panel vacío no dice por qué.
+      -->
+      <p class="muted log-panel__note">
+        El proceso ya no está en el tracker: el log termina en la última línea leída.
+      </p>
+    }
+  }
+</section>

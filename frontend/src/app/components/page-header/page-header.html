@@ -1,6 +1,14 @@
 <header class="page-header">
-  <h1>{{ title() }}</h1>
-  @if (description()) {
-    <p class="muted page-header__description">{{ description() }}</p>
-  }
+  <div class="page-header__text">
+    <h1>{{ title() }}</h1>
+    @if (description()) {
+      <p class="muted page-header__description">{{ description() }}</p>
+    }
+  </div>
+
+  <!--
+    El slot de controles es opcional: las páginas que no proyectan nada no lo
+    necesitan declarar. Sin él, el título y la descripción se apilan como antes.
+  -->
+  <div class="page-header__controls"><ng-content /></div>
 </header>

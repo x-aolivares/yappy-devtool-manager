@@ -2,10 +2,24 @@
   display: block;
 }
 
+/* Fila y no grid: el título y la descripción se apilan dentro de su propia
+   columna, y los controles —el selector de ambiente de Workflow— se apoyan a la
+   derecha. Una página que no proyecta nada deja la columna de controles vacía y
+   el resultado es el mismo que con el `grid` de antes. */
 .page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.125rem;
+}
+
+.page-header__text {
+  flex: 1;
+  min-width: 0;
   display: grid;
   gap: 0.375rem;
-  margin-bottom: 1.125rem;
 }
 
 h1 {
@@ -20,4 +34,23 @@ h1 {
   max-width: 44rem;
   font-size: var(--text-base);
   line-height: 1.55;
+}
+
+/* Los controles no estiran: un `<select>` de ambiente tiene el ancho de su
+   contenido, no el de media pantalla. */
+.page-header__controls {
+  flex: none;
+}
+
+/* En pantalla angosta el control se apila abajo del título y ocupa el ancho
+   entero, en vez de quedar apretado al lado de un `h1` largo. */
+@media (max-width: 40rem) {
+  .page-header {
+    align-items: stretch;
+  }
+
+  .page-header__controls,
+  .page-header__controls :is(select, input) {
+    width: 100%;
+  }
 }

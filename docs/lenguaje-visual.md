@@ -555,9 +555,13 @@ páginas.
 
 ## Estado que cambia solo: `resource()` y el `aria-live`
 
-Hasta acá todas las páginas piden y esperan. **Workflow/Recursos es la primera que
-mira algo que cambia sin que nadie la toque**, y eso agrega dos reglas que no se
-deducen de las anteriores.
+Hasta acá todas las páginas piden y esperan. **Workflow es la primera que mira algo
+que cambia sin que nadie la toque**, y eso agrega dos reglas que no se deducen de
+las anteriores.
+
+Workflow son cuatro páginas —Kafka, Túneles, Servicios y Base de datos— y las
+cuatro heredan de `core/workflow-section-page.ts`. Lo que va abajo está escrito
+ahí una sola vez: si aparece otra sección de Workflow, no lo vuelve a decidir.
 
 ### El poll es un `resource()`, no un `setInterval`
 
@@ -584,6 +588,12 @@ El ritmo lo pone la página, no el `resource()`: `reload()` desde un `setTimeout
 encadenado, y no `setInterval`, porque dos ticks lentos con `setInterval` se
 acumulan. Con la pestaña oculta el intervalo sube (10s contra 1,5s): nadie está
 mirando, y el backend sigue escribiendo el tracker igual.
+
+**Cada página tiene su propio poll.** Se evaluó compartir uno en un servicio
+`providedIn: 'root'` —un solo `resource()`, y el ambiente y el cluster recordados
+al navegar entre secciones— y se descartó: la idea de partir la pantalla es
+poder abrir una sección y mirarla sola, no tener cuatro fotos del tracker
+encimadas. Lo que se comparte es el código del poll, no su estado.
 
 ### Un error de poll es del momento, no un dato
 
@@ -616,6 +626,11 @@ Lo que se anuncia no es el estado: es **la transición**. Se comparan contra el 
 anterior y se avisa sólo lo que se movió. Con tres túneles que suben juntos,
 anunciar los tres encimados es peor que no anunciar nada.
 
+Y se anuncia **lo de esta pantalla**: el `effect` compara `sectionRows`, no el estado
+entero. Anunciar un Kafka que se levantó mientras se miran los túneles es ruido
+para quien está leyendo, y contra una pantalla donde todo cambia al mismo tiempo el
+ruido es indistinguible del mensaje.
+
 Y hay un caso que no tiene arreglo visual: un túnel que queda en `levantando…`
 para siempre porque el servidor se apagó a mitad del arranque. La fila tiene que
 poder decir `cayó`, y eso lo decide el backend preguntando si el proceso que iba a
@@ -632,6 +647,13 @@ La excepción es la acción cuyo alcance es más ancho que la pantalla —"Parar
 que sí lo hace y avisa cuántos ajenos alcanza antes de confirmar. Ese número viene
 del servidor, no se estima en el navegador.
 
+Y como el alcance es más ancho que la pantalla, el aviso cuenta sobre el **tracker
+entero**, no sobre las filas de la página: `/api/workflow/stop-all` no sabe qué
+sección está abierta. Decirle "0 ajenos" a alguien que tiene dos Kafka y una base
+de datos levantados desde la terminal sería una mentira. El resumen de la barra, en
+cambio, cuenta sólo lo que se ve — son dos números distintos y por eso son dos
+signals (`stopAllForeignCount` y `summary`).
+
 ### Guardar en cada tecla es una decisión, no un default
 
 El catálogo de túneles se edita inline y se guarda. El mockup guarda en cada tecla
@@ -640,6 +662,68 @@ nada. Acá el catálogo es `CLUSTER_PORTS` en `env.base`: guardar en cada tecla 
 escribirle el archivo de un usuario treinta veces por palabra.
 
 Va con debounce de 500 ms. `params-diff` ya usa 350 ms para el script generado.
+
+### Un componente compartido no se Trackea a sí mismo
+
+`app-workflow-logs` programa su poll con un `effect`, y el `effect` trackea
+**todo lo que se lee durante su ejecución**. La primera versión llamaba a
+`appendLog()` sincrónicamente desde adentro, y `appendLog` leía `this.offset()`:
+el panel pasaba a depender del acumulador de la lectura, cada vuelta lo escribía
+y disparaba el effect otra vez. Cien requests a `/logs` en el tiempo de una.
+
+La regla: **un effect que programa un timer no puede hacer trabajo que escriba lo
+que él lee**. O el trabajo se posterga fuera del contexto reactivo, o la lectura
+se envuelve en `untracked()` — que además documenta la intención, porque "esto no
+es una entrada del poll" es exactamente lo que hay que dejar escrito.
+
+## Partir una pantalla en varias, sin duplicar la lógica
+
+Workflow eran cuatro `<section>` apiladas en un template de 454 líneas, y tres de
+ellas eran el mismo bloque de tarjetas con el rótulo del puerto cambiado. Al
+partirlas:
+
+1. **Una base, no un store compartido.** `core/workflow-section-page.ts` es una
+   clase abstracta y no un `providedIn: 'root'`: cada página tiene su propia
+   instancia con su propio poll, y desaparecer con la ruta se lleva el poll con
+   ella. Una clase base tiene además una ventaja sobre un servicio para esto: el
+   `get` abstracto se resuelve en el prototipo, así que un `computed()` de la base
+   puede leerlo durante su propia inicialización, cosa que un campo de la subclasa
+   no podría.
+2. **La única decisión de la subclase es qué filas dibuja.** `sectionRows`. De ahí
+   salen, sin que nadie lo escriba dos veces, qué cuenta el resumen, qué se anuncia
+   y qué puede ofrecer el atajo de "Ver logs".
+3. **Lo que las cuatro repiten va a `components/`.** `app-workflow-logs` (el panel
+   y su poll), `app-resource-cards` (la grilla y qué botón ofrece cada estado) y
+   `app-workflow-summary` (la barra con las dos acciones de pantalla).
+4. **El `notice-modal` lleva el rótulo del botón adentro del payload.** El
+   template anterior pasaba `confirmLabel="Parar todo"` fijo, así que un aviso de
+   error ofrecía un botón que paraba todo. Con cuatro páginas eso iba a ser un bug
+   repetido cuatro veces.
+5. **El enlace viejo se redirige, no se borra.** `/workflow/resources` era una URL
+   que la gente tiene en marcadores y en chats; `app.routes.ts` la manda a Kafka y
+   `app.spec.ts` verifica que el menú no la vuelva a usar.
+
+### Una sección que no elige el ámbito, no lo pide
+
+`env` y `cluster` viajan en la URL del poll porque Túneles, Servicios y Base de
+datos los cambian. **Kafka es full local**: el backend lo levanta con `Config()`,
+sin env, así que `?env=dev&cluster=cap` eran dos query params fijos en cada pedido
+de 1,5s — ruido en el log del server y una impresión falsa de que la pantalla
+depende de un selector que no tiene. Lo mismo con `GET /api/environments`: no hay
+`<select>` que lo justifique, así que no se pide.
+
+De ahí el `get scope` de la base, con `env` y `cluster` opcionales: es la **única**
+fuente de verdad de si la página tiene ámbito. El poll lo usa como `params`, la
+lista de ambientes se pide sólo si `scope.env` existe, y el "Levantar" manda el
+ámbito o no lo manda. Las tres cosas salen de una, porque si cada una decidiera por
+su cuenta volverían a discrepar —que es exactamente el motivo por el que existe
+`sectionRows`.
+
+Es un `get` y no un campo por la misma razón que `sectionRows`: los inicializadores
+de campo de la subclase corren **después** de los de la base, así que un `readonly`
+sobreescrito llegaría `undefined` cuando el constructor de la base lo lee. Y el
+backend tiene `env` y `cluster` por default, así que omitirlos devuelve el mismo
+snapshot: lo que se ahorra son los parámetros, nunca el dato.
 
 ## Checklist para migrar una página
 

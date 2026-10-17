@@ -40,8 +40,14 @@ export class WorkflowService {
   private readonly api = inject(Api);
   private readonly http = inject(HttpClient);
 
-  /** La foto del estado. Un poll, una request. */
-  state(env: string, cluster: string, signal?: AbortSignal): Promise<WorkflowStateResponse> {
+  /**
+   * La foto del estado. Un poll, una request.
+   *
+   * `env` y `cluster` son opcionales porque hay secciones que no los eligen —Kafka
+   * es full local— y mandar el default del cliente en cada poll es ruido en el log
+   * del server. Sin ellos, el backend aplica los suyos.
+   */
+  state(env?: string, cluster?: string, signal?: AbortSignal): Promise<WorkflowStateResponse> {
     return this.api.invoke(getWorkflowState, { env, cluster }, abortCtx(signal));
   }
 
@@ -59,12 +65,21 @@ export class WorkflowService {
     ) as Promise<LogTail>;
   }
 
-  startResource(key: string, env: string): Promise<WorkflowActionResponse> {
+  /**
+   * Levantar un recurso del registro.
+   *
+   * `env` opcional por lo mismo que en `state`: Kafka no tiene ambiente. Omitirlo
+   * lo deja en el default del backend, que es el mismo que mandaría el cliente.
+   */
+  startResource(key: string, env?: string): Promise<WorkflowActionResponse> {
     return firstValueFrom(
       this.http.post<WorkflowActionResponse>(
         `${this.api.rootUrl}/api/workflow/resources/start`,
         { key },
-        { params: { env } },
+        // El objeto se arma acá y no con `{ params: { env } }`: los params de
+        // Angular no admiten `undefined` en el tipo, y mandarlo es lo mismo que no
+        // mandarlo.
+        { params: env ? { env } : {} },
       ),
     );
   }

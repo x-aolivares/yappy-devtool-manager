@@ -1,0 +1,15 @@
+/* La grilla de tarjetas. `auto-fill` con mínimo de 19rem: por debajo de eso una
+   tarjeta quedaría con el nombre partido en tres líneas y el puerto desalineado
+   con el de al lado. */
+.res-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: 0.75rem;
+}
+
+/* El mensaje de grilla vacía ocupa la celda entera de la grilla, no una columna
+   angosta: es un aviso de la sección, no de una tarjeta. */
+.res-grid__empty {
+  grid-column: 1 / -1;
+  margin: 0;
+}

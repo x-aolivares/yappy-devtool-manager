@@ -1,0 +1,75 @@
+<app-page-header
+  title="Servicios con destino propio"
+  description="Los que no dependen del cluster: cada uno traduce un puerto remoto a uno local, así que se pueden levantar sin un túnel SSM."
+>
+  <div class="field">
+    <label class="field-label" for="wf-services-env">Ambiente</label>
+    <select
+      id="wf-services-env"
+      [value]="env()"
+      (change)="env.set($any($event.target).value)"
+    >
+      @for (e of envList().length ? envList() : [{ env: env() }]; track e.env) {
+        <option [value]="e.env">{{ e.env }}</option>
+      }
+    </select>
+  </div>
+</app-page-header>
+
+<div class="visually-hidden" role="status" aria-live="polite">{{ announcement() }}</div>
+
+@if (readError()) {
+  <div class="error-box">No se pudo leer el estado: {{ readError() }}</div>
+}
+
+<section class="panel">
+  <div class="section-title section-title--plain">
+    <strong>Servicios con destino propio</strong>
+    <span class="muted">no dependen del cluster</span>
+  </div>
+
+  <app-resource-cards
+    [rows]="rows()"
+    [busy]="busy()"
+    portMode="remote"
+    emptyText="No hay servicios con destino propio en este ambiente."
+    (start)="startResource($event)"
+    (stop)="stopOne($event)"
+    (logs)="logs()?.open($event)"
+  />
+
+  <p class="callout err">
+    <strong><code>yappy stop tunnel</code> mata todas las sesiones SSM.</strong>
+    Incluye las que levantaste desde la terminal y las de otro proyecto. Por eso las ajenas van con
+    borde punteado y la etiqueta <em>ajeno</em>: la lista no las mezcla con las que arrancó la web.
+  </p>
+</section>
+
+<app-workflow-summary
+  [text]="summary()"
+  [canStopAll]="anythingAlive()"
+  [canShowLogs]="logs()?.hasFirstLog() ?? false"
+  (logs)="logs()?.openFirst()"
+  (stopAll)="askStopAll()"
+/>
+
+<app-workflow-logs [rows]="logRows()" />
+
+@if (busy()) {
+  <app-busy-modal [open]="busy()" message="Trabajando…" [writes]="true" (cancelled)="dismissNotice()" />
+}
+
+@if (notice(); as n) {
+  <app-notice-modal
+    [open]="true"
+    [title]="n.title"
+    [tone]="n.tone"
+    [confirmLabel]="n.confirmLabel ?? 'Entendido'"
+    (confirmed)="confirmNotice()"
+    (closed)="dismissNotice()"
+  >
+    @for (paragraph of n.paragraphs; track $index) {
+      <p>{{ paragraph }}</p>
+    }
+  </app-notice-modal>
+}

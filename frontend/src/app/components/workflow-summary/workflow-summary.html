@@ -1,0 +1,13 @@
+<!-- `.summary-bar` es global en `styles.scss`: es la disposición del bloque, y
+     la comparten las cuatro secciones. -->
+<div class="summary-bar">
+  <p class="summary-bar__text">{{ text() }}</p>
+  <div class="summary-bar__actions">
+    <button type="button" class="secondary" (click)="logs.emit()" [disabled]="!canShowLogs()">
+      Ver logs
+    </button>
+    <button type="button" class="danger-tinted" (click)="stopAll.emit()" [disabled]="!canStopAll()">
+      Parar todo
+    </button>
+  </div>
+</div>

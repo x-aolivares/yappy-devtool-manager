@@ -69,11 +69,32 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   {
     id: 'workflow',
     label: 'Workflow',
+    // Cuatro ítems y no uno: la pantalla era una sola con cuatro secciones
+    // apiladas, y una de 2000px de alto obliga a scrollear para encontrar la
+    // que importa. Cada sección tiene su ruta y su propio poll.
+    //
+    // Las hints dicen qué levanta cada una, no qué grupo es: es lo que el
+    // developer necesita para elegir sin abrir.
     items: [
       {
-        link: '/workflow/resources',
-        label: 'Recursos',
-        hint: 'Levanta y para túneles SSM, Kafka local y el túnel de base de datos',
+        link: '/workflow/kafka',
+        label: 'Kafka local',
+        hint: 'Levanta y para el broker KRaft y Kafdrop',
+      },
+      {
+        link: '/workflow/tunnels',
+        label: 'Túneles de cluster',
+        hint: 'El catálogo de puertos del cluster y sus túneles SSM',
+      },
+      {
+        link: '/workflow/services',
+        label: 'Servicios con destino propio',
+        hint: 'Levanta los servicios que no dependen del cluster',
+      },
+      {
+        link: '/workflow/database',
+        label: 'Base de datos',
+        hint: 'Levanta y para el túnel a Aurora',
       },
     ],
   },

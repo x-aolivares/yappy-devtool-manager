@@ -1,0 +1,59 @@
+<!--
+  La grilla. `.res-grid` es scoped acá y no global: sólo este componente la usa,
+  y las cuatro páginas la dibujan a través de él.
+-->
+<div class="res-grid">
+  @for (row of rows(); track trackRow($index, row)) {
+    <article
+      class="res-card"
+      [class.res-card--foreign]="row.foreign && row.state !== 'down'"
+      [class.res-card--conflict]="row.conflict"
+    >
+      <header class="res-card__head">
+        <span class="state-dot" [attr.data-state]="row.state" aria-hidden="true"></span>
+        <h3 class="res-card__name">
+          {{ row.name }}
+          @if (row.foreign && row.state !== 'down') {
+            <span class="foreign-tag">ajeno</span>
+          }
+        </h3>
+        @if (portMode() === 'remote' && row.remote_port) {
+          <span class="res-card__port">:{{ row.remote_port }} → :{{ row.local_port }}</span>
+        } @else {
+          <span class="res-card__port">:{{ row.local_port }}</span>
+        }
+      </header>
+
+      <span class="badge" [class]="'badge ' + badgeClass(row.state)">{{ badge(row.state) }}</span>
+      <p class="res-card__meta">{{ meta(row) }}</p>
+
+      @if (row.conflict) {
+        <p class="callout err">El puerto local {{ row.local_port }} ya lo está usando {{ row.conflict }}.</p>
+      }
+
+      <div class="res-card__actions">
+        @if (canOpenRow(row.state) && row.browser_url) {
+          <a class="secondary open-link" [href]="row.browser_url" target="_blank" rel="noopener">Abrir ↗</a>
+        }
+        @if (canStop(row)) {
+          <button type="button" class="danger-tinted" (click)="stop.emit(row)" [disabled]="busy()">Parar</button>
+        }
+        @if (row.state === 'starting') {
+          <button type="button" disabled>Levantando…</button>
+        }
+        @if (canStartRow(row.state)) {
+          <button type="button" class="secondary" (click)="start.emit(row)" [disabled]="busy()">
+            {{ startText(row.state) }}
+          </button>
+        }
+        @if (canShowLogsRow(row.state) && row.pid) {
+          <button type="button" class="secondary" (click)="logs.emit(row)">Ver logs</button>
+        }
+      </div>
+    </article>
+  } @empty {
+    <!-- Sin `@empty` la grilla desaparece sin decir nada, y el developer no sabe
+         si la sección está vacía o si el poll todavía no volvió. -->
+    <p class="muted res-grid__empty">{{ emptyText() }}</p>
+  }
+</div>
