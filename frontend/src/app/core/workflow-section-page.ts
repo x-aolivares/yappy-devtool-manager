@@ -350,6 +350,45 @@ export abstract class WorkflowSectionPage {
   }
 
   /**
+   * The remedy the backend proposed, and what it costs.
+   *
+   * Asks before doing it, and says exactly what is lost. Cleaning the Kafka storage
+   * deletes every local topic and its messages — that is the price of the fix, and
+   * a button that does it without saying so is a button that eats somebody's data
+   * by surprise.
+   *
+   * The wording lives here and not in the card because the card does not know what
+   * the action destroys; `FIXES` in `resource-cards` knows the name, this knows
+   * the consequence.
+   */
+  askFix(row: WorkflowResourceInfo): void {
+    const paragraphs = [
+      'Se borra el storage local de Kafka: todos los topics del broker, con sus mensajes y su configuración.',
+      'Después queda formateado y vacío, con un id de cluster nuevo. Es la única forma de que levante cuando quedó bloqueado un archivo de su metadata.',
+      'Los servicios que hoy no están corriendo no se ven afectados.',
+    ];
+    this.notice.set({
+      title: 'Limpiar el storage de Kafka',
+      paragraphs,
+      tone: 'danger',
+      confirmLabel: 'Limpiar y formatear',
+      onConfirm: () => void this.runFix(row),
+    });
+  }
+
+  async runFix(row: WorkflowResourceInfo): Promise<void> {
+    this.notice.set(null);
+    this.busy.set(true);
+    try {
+      await this.workflow.cleanKafkaStorage();
+    } catch (err) {
+      this.showError('No se pudo limpiar', toApiError(err).message);
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /**
    * "Parar todo" pide confirmación y el aviso dice a quién alcanza.
    *
    * El texto ya no puede decir "de esta pantalla": la acción es global y el

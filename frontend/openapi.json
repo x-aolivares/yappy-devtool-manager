@@ -1341,6 +1341,28 @@
         }
       }
     },
+    "/api/workflow/kafka/clean": {
+      "post": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Api Workflow Kafka Clean",
+        "description": "Wipe and re-format the local Kafka storage: the fix for a locked one.\n\n**This deletes data.** Everything in ``log.dirs`` — every local topic, its\nmessages and its configuration — goes, and the storage comes back empty under a\nnew cluster id. That is why it is not a row button with no confirmation: the\nscreen offers it only when a failed start's own log says this is what would fix\nit, and asks first.\n\nReachable from the web because the alternative is worse. The developer who hit\nthis failure had exactly one thing that worked — open a terminal and run\n``yappy run kafka clean`` — and a screen that knows the answer is the wrong\nplace to hide it.\n\nIt stops the broker on the way: a live process holds the very files this\ndeletes, which is the whole reason the failure happens. ``202``-shaped like the\nother actions, because reformatting takes a couple of seconds.",
+        "operationId": "clean_workflow_kafka_storage",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowActionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workflow/stop": {
       "post": {
         "tags": [
@@ -4662,6 +4684,11 @@
               }
             ],
             "title": "Conflict"
+          },
+          "fix": {
+            "type": "string",
+            "title": "Fix",
+            "default": ""
           }
         },
         "type": "object",

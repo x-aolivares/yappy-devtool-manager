@@ -585,6 +585,16 @@ class WorkflowResourceInfo(BaseModel):
     browser_url: str | None = None
     log_file: str = ""
     conflict: str | None = None
+    fix: str = ""
+    """The name of something that would make this start work, when the server knows of
+    one. ``kafka_clean_storage`` today. Empty is the common answer, and it is a real
+    answer rather than a missing field: most failures have no known remedy, and
+    inventing a button for them would be worse than not having one.
+
+    It is a name and not an instruction because the wording belongs to whoever draws
+    the button. The browser must not hardcode Kafka's error strings to decide whether
+    to offer this — the decision is made where the failure is understood.
+    """
 
 
 class WorkflowPortInfo(BaseModel):

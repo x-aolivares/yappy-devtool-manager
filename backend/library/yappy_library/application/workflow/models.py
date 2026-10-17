@@ -121,6 +121,10 @@ class ResourceRow:
     log_file: str = ""
     #: The cluster already holding this local port, when it is not this row.
     conflict: str | None = None
+    #: Name of something that would make this start work, when we know of one.
+    #: ``kafka_clean_storage`` today; empty for every other failure, which is the
+    #: honest answer rather than a missing button.
+    fix: str = ""
 
 
 @dataclass(frozen=True)

@@ -55,6 +55,8 @@ export class ResourceCards {
   readonly start = output<WorkflowResourceInfo>();
   readonly stop = output<WorkflowResourceInfo>();
   readonly logs = output<WorkflowResourceInfo>();
+  /** A row the backend says has a known remedy. See `FIXES`. */
+  readonly fix = output<WorkflowResourceInfo>();
 
   // Referencia directa a las funciones puras de `core/resources`: la regla de qué
   // botón se ofrece vive una sola vez en el repo.
@@ -66,6 +68,35 @@ export class ResourceCards {
   protected readonly canOpenRow = canOpen;
   protected readonly canShowLogsRow = canShowLogs;
   protected readonly canStopRow = canStop;
+
+  /**
+   * The known remedies, and what each one is called.
+   *
+   * A name comes from the backend and a sentence lives here, because the backend is
+   * the only side that understands the failure and this is the only side that knows
+   * how to talk to a person. The pairing is explicit rather than a computed string
+   * so that a fix the server sends and this table does not know is *ignored*, not
+   * rendered as a button with an empty label.
+   */
+  private readonly fixes: Record<string, { button: string; text: string }> = {
+    kafka_clean_storage: {
+      button: 'Limpiar el broker',
+      text: 'El storage de Kafka quedó bloqueado y por eso no arranca. Se puede limpiar y formatear de nuevo.',
+    },
+  };
+
+  /** The remedy for this row, or `''` when there is none or it is not ours. */
+  protected fixOf(row: WorkflowResourceInfo): string {
+    return row.fix && this.fixes[row.fix] ? row.fix : '';
+  }
+
+  protected fixButton(fix: string): string {
+    return this.fixes[fix]?.button ?? '';
+  }
+
+  protected fixText(fix: string): string {
+    return this.fixes[fix]?.text ?? '';
+  }
 
   protected canStop(row: WorkflowResourceInfo): boolean {
     return canStop(row.state, !!row.foreign);

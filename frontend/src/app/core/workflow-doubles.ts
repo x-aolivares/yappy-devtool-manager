@@ -69,8 +69,24 @@ export function recurso(over: Partial<WorkflowResourceInfo> = {}): WorkflowResou
     browser_url: null,
     log_file: '',
     conflict: null,
+    fix: '',
     ...over,
   };
+}
+
+/** Una fila de Kafka con el storage bloqueado: el estado que el backend señala. */
+export function kafkaBloqueada(over: Partial<WorkflowResourceInfo> = {}): WorkflowResourceInfo {
+  return recurso({
+    key: 'kafka-server',
+    group: 'kafka',
+    name: 'Kafka Server',
+    detail: 'KRaft · storage en devkit/kafka',
+    state: 'error',
+    remote_port: 9092,
+    local_port: 9092,
+    fix: 'kafka_clean_storage',
+    ...over,
+  });
 }
 
 /** Un Kafka arriba y con archivo de log: la fila que los tests de logs usan. */
@@ -163,6 +179,9 @@ export interface WorkflowCalls {
   startEnvs: Array<string | undefined>;
   stopped: Array<{ pid: number; allowForeign: boolean }>;
   stopAllCalls: boolean[];
+  /** Cuántas veces se pidió limpiar el storage de Kafka, y si falló. */
+  kafkaCleanCalls: number;
+  kafkaCleanError: Error | null;
   addedPorts: Array<{ port: number; cluster: string }>;
   renames: Array<{ cluster: string; port: number; label: string }>;
   removed: Array<{ cluster: string; port: number }>;
@@ -189,6 +208,8 @@ export function callsVacios(): WorkflowCalls {
     startEnvs: [],
     stopped: [],
     stopAllCalls: [],
+    kafkaCleanCalls: 0,
+    kafkaCleanError: null,
     addedPorts: [],
     renames: [],
     removed: [],
@@ -354,6 +375,12 @@ export function workflowProviders(calls: WorkflowCalls): Provider[] {
         stopAll: (allowForeign = false) => {
           calls.stopAllCalls.push(allowForeign);
           return Promise.resolve({ ok: true, stopped: [1], refused: [] });
+        },
+        cleanKafkaStorage: () => {
+          calls.kafkaCleanCalls += 1;
+          return calls.kafkaCleanError
+            ? Promise.reject(calls.kafkaCleanError)
+            : Promise.resolve({ ok: true, pid: 0, port: 0, state: 'down', label: 'Kafka storage' });
         },
         addPort: (port: number, _label: string, cluster: string) => {
           calls.addedPorts.push({ port, cluster });

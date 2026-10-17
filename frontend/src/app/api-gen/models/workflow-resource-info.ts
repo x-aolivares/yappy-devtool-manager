@@ -5,6 +5,7 @@ export interface WorkflowResourceInfo {
   browser_url?: (string | null);
   conflict?: (string | null);
   detail: string;
+  fix?: string;
   foreign?: boolean;
   group: string;
   key: string;

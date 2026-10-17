@@ -22,6 +22,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
+from yappy_library.adapters.kafka.service import KafkaUnavailable
 from yappy_library.adapters.process_tracker import get_tracked_processes
 from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES
 from yappy_library.adapters.state_bus import state_bus
@@ -103,6 +104,7 @@ def _resource_info(row) -> dict:
         "browser_url": row.browser_url,
         "log_file": row.log_file,
         "conflict": row.conflict,
+        "fix": row.fix,
     }
 
 
@@ -284,6 +286,38 @@ def api_workflow_port_start(req: WorkflowStartPortRequest, env: str = "dev", clu
     except actions.StartRefused as exc:
         raise HTTPException(status_code=409, detail=exc.reason) from exc
     return {"ok": True, **result}
+
+
+@router.post(
+    "/api/workflow/kafka/clean",
+    operation_id="clean_workflow_kafka_storage",
+    response_model=WorkflowActionResponse,
+)
+def api_workflow_kafka_clean():
+    """Wipe and re-format the local Kafka storage: the fix for a locked one.
+
+    **This deletes data.** Everything in ``log.dirs`` — every local topic, its
+    messages and its configuration — goes, and the storage comes back empty under a
+    new cluster id. That is why it is not a row button with no confirmation: the
+    screen offers it only when a failed start's own log says this is what would fix
+    it, and asks first.
+
+    Reachable from the web because the alternative is worse. The developer who hit
+    this failure had exactly one thing that worked — open a terminal and run
+    ``yappy run kafka clean`` — and a screen that knows the answer is the wrong
+    place to hide it.
+
+    It stops the broker on the way: a live process holds the very files this
+    deletes, which is the whole reason the failure happens. ``202``-shaped like the
+    other actions, because reformatting takes a couple of seconds.
+    """
+    from yappy_library.adapters.kafka.service import KafkaService
+
+    try:
+        KafkaService().clean()
+    except KafkaUnavailable as exc:
+        raise HTTPException(status_code=409, detail=exc.reason) from exc
+    return {"ok": True, "pid": 0, "port": 0, "state": "down", "label": "Kafka storage"}
 
 
 @router.post(

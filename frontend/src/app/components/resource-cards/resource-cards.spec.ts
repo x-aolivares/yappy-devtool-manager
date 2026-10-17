@@ -8,7 +8,7 @@
 import { TestBed } from '@angular/core/testing';
 
 import { ResourceCards } from './resource-cards';
-import { recurso } from '../../core/workflow-doubles';
+import { kafkaBloqueada, recurso } from '../../core/workflow-doubles';
 import type { WorkflowResourceInfo } from '../../api-gen/models';
 
 describe('ResourceCards', () => {
@@ -176,6 +176,69 @@ describe('ResourceCards', () => {
 
       const botones = [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')];
       expect(botones.filter((b) => b.textContent?.trim() !== 'Ver logs').every((b) => b.disabled)).toBe(true);
+    });
+  });
+
+  // --- el arreglo que propone el backend ------------------------------------
+
+  describe('el arreglo sugerido', () => {
+    /**
+     * El botón aparece cuando el backend lo dice, y **sólo** entonces.
+     *
+     * El backend calcula `fix` porque es el único lado que entiende el fallo: si el
+     * browser tuviera que reconocer el error de Kafka para offering un botón
+     * destructivo, el día que Kafka cambie el mensaje el botón desaparece sin que
+     * nadie se entere. Del lado de acá sólo hay un nombre conocido.
+     */
+    it('aparece cuando la fila trae un arreglo conocido', () => {
+      const card = tarjeta([kafkaBloqueada()], 'Kafka Server');
+
+      expect(botones(card)).toContain('Limpiar el broker');
+      expect(card.textContent).toContain('storage');
+    });
+
+    it('no aparece en una fila sin arreglo', () => {
+      const card = tarjeta([recurso({ state: 'error' })], 'Bastion');
+
+      expect(botones(card)).not.toContain('Limpiar el broker');
+    });
+
+    it('un arreglo que el navegador no conoce se ignora, no se dibuda a medias', () => {
+      // El backend puede aprender un arreglo nuevo antes de que la pantalla sepa
+      // nombrarlo. Un botón con el rótulo vacío es peor que ningún botón: ocupa
+      // lugar, parece que hace algo y no dice qué.
+      const card = tarjeta([recurso({ state: 'error', fix: 'arreglo_del_futuro' })], 'Bastion');
+
+      expect(botones(card)).not.toContain('');
+      expect(botones(card).every((t) => t.length > 0)).toBe(true);
+    });
+
+    it('se deshabilita mientras la página está ocupada', () => {
+      const fixture = TestBed.createComponent(ResourceCards);
+      fixture.componentRef.setInput('rows', [kafkaBloqueada()]);
+      fixture.componentRef.setInput('busy', true);
+      fixture.detectChanges();
+
+      const limpiar = [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')]
+        .find((b) => b.textContent?.trim() === 'Limpiar el broker');
+      expect(limpiar?.disabled).toBe(true);
+    });
+
+    it('el clic emite la fila y no ejecuta nada acá', () => {
+      // El componente no llama al backend: la página decide, porque ella sabe si
+      // hay algo en vuelo y es la que va a pedir confirmación.
+      const fila = kafkaBloqueada();
+      const fixture = TestBed.createComponent(ResourceCards);
+      const emitido: WorkflowResourceInfo[] = [];
+      fixture.componentRef.setInput('rows', [fila]);
+      fixture.componentInstance.fix.subscribe((r) => emitido.push(r));
+      fixture.detectChanges();
+
+      [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')]
+        .find((b) => b.textContent?.trim() === 'Limpiar el broker')
+        ?.click();
+
+      expect(emitido).toEqual([fila]);
     });
   });
 });

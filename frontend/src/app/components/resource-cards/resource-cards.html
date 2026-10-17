@@ -31,6 +31,17 @@
         <p class="callout err">El puerto local {{ row.local_port }} ya lo está usando {{ row.conflict }}.</p>
       }
 
+      @if (fixOf(row); as fix) {
+        <!--
+          El arreglo que el backend propone, no uno que la pantalla adivine. La fila
+          llega con `fix` ya calculado porque el backend es quien entiende el fallo:
+          que el browserijeran las cadenas de error de Kafka para decidir si ofrece
+          un botón destructivo es exactamente la forma de que el botón se rompa en
+          silencio el día que Kafka cambie el mensaje.
+        -->
+        <p class="callout warn">{{ fixText(fix) }}</p>
+      }
+
       <div class="res-card__actions">
         @if (canOpenRow(row.state) && row.browser_url) {
           <a class="secondary open-link" [href]="row.browser_url" target="_blank" rel="noopener">Abrir ↗</a>
@@ -48,6 +59,11 @@
         }
         @if (canShowLogsRow(row.state) && row.pid) {
           <button type="button" class="secondary" (click)="logs.emit(row)">Ver logs</button>
+        }
+        @if (fixOf(row)) {
+          <button type="button" class="secondary" (click)="fix.emit(row)" [disabled]="busy()">
+            {{ fixButton(fixOf(row)!) }}
+          </button>
         }
       </div>
     </article>

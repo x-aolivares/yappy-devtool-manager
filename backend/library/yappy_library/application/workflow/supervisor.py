@@ -25,9 +25,11 @@ from pathlib import Path
 from typing import Callable
 
 from yappy_library.adapters import process_identity, process_tracker
+from yappy_library.adapters.kafka.diagnose import failure_excerpt, fix_for, log_dirs
 from yappy_library.adapters.logging import error as log_error
 from yappy_library.adapters.logging import info as log_info
 from yappy_library.application.workflow.readiness import DEFAULT_TIMEOUT, probe_for
+from yappy_library.config import Config
 
 
 def _stamp() -> str:
@@ -152,6 +154,52 @@ class Supervisor:
         quoted = quoted.replace("[", "\\[")
         return f" Ultimas lineas de {self.where_to_look()}: {quoted}"
 
+    def failure_reason(self) -> str:
+        """What the process's own log says went wrong, without the stack frames.
+
+        Different from :meth:`verdict_log` on purpose. The tail is the last few
+        lines whatever they are, and for a process that died on an exception the
+        last lines are three frames of a Java stack trace — which say where some
+        file was deleted and not one thing about why. The exception line is what
+        says why, and it is not always near the end.
+
+        Empty when the log names no failure, so the caller falls back to the tail
+        instead of inventing a reason.
+        """
+        raw = self._log_bytes()
+        if not raw:
+            return ""
+        excerpt = failure_excerpt(raw.decode("utf-8", errors="replace"))
+        if not excerpt:
+            return ""
+        quoted = " | ".join(line.strip() for line in excerpt)
+        quoted = quoted.encode("ascii", "replace").decode("ascii").replace("[", "\\[")
+        return f" {quoted}"
+
+    def suggested_fix(self) -> str:
+        """What would fix this failure, or ``""`` if we know of nothing that would.
+
+        Written into the tracker next to the verdict so the row can offer it as a
+        button. It is a *name* and not a sentence: the wording belongs where the
+        button is drawn, and the decision to offer it belongs to the module that
+        knows the failure — not to the browser, which would otherwise have to
+        hardcode the strings Kafka writes.
+        """
+        if self.probe != "kafka" or not self.log_file:
+            return ""
+        try:
+            return fix_for(self.log_file, log_dirs(Path(Config().kafka_core_path)))
+        except Exception:  # noqa: BLE001 - a diagnosis must not kill the supervisor
+            return ""
+
+    def _log_bytes(self) -> bytes:
+        if not self.log_file:
+            return b""
+        try:
+            return Path(self.log_file).read_bytes()
+        except OSError:
+            return b""
+
     def verdict(self, timeout: float) -> tuple[bool, bool]:
         """Poll the probe until it answers, the process dies, or ``timeout`` runs out.
 
@@ -185,17 +233,24 @@ class Supervisor:
                 # It died before the probe could say anything. "Dead" beats
                 # "error": the process is gone, and that is the more useful
                 # thing to draw.
-                process_tracker.update_process_state(self.pid, process_tracker.STATE_ERROR)
+                process_tracker.update_process_state(
+                    self.pid,
+                    process_tracker.STATE_ERROR,
+                    fix=self.suggested_fix(),
+                )
                 log_info(
                     f"  [wf] {_stamp()} {who}: el proceso ya no esta, sin probe. "
-                    f"Queda 'error'.{self.verdict_log()}"
+                    f"Queda 'error'.{self.failure_reason() or self.verdict_log()}"
                 )
                 return
 
             ok, died = self.verdict(timeout)
             took = time.monotonic() - started
+            fix = "" if ok else self.suggested_fix()
             process_tracker.update_process_state(
-                self.pid, process_tracker.STATE_UP if ok else process_tracker.STATE_ERROR
+                self.pid,
+                process_tracker.STATE_UP if ok else process_tracker.STATE_ERROR,
+                fix=fix,
             )
             if ok:
                 # ASCII en estos logs a propósito: la consola de Windows es
@@ -211,12 +266,12 @@ class Supervisor:
                 # thing to go look at, and the process's own output is.
                 log_error(
                     f"  [wf] {_stamp()} {who} murio en {took:.1f}s sin llegar a "
-                    f"responder; queda 'error'.{self.verdict_log()}"
+                    f"responder; queda 'error'.{self.failure_reason() or self.verdict_log()}"
                 )
             else:
                 log_error(
                     f"  [wf] {_stamp()} {who} abrio el puerto {self.port} pero no respondio "
-                    f"en {timeout:g}s, queda 'error'.{self.verdict_log()}"
+                    f"en {timeout:g}s, queda 'error'.{self.failure_reason() or self.verdict_log()}"
                 )
         except Exception as exc:  # noqa: BLE001 - a supervisor must not kill the server
             log_error(f"  [wf] {_stamp()} {who}: el supervisor fallo -- {exc}")

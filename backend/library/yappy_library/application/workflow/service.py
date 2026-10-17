@@ -125,6 +125,7 @@ def snapshot(cfg: Config, cluster: str) -> WorkflowSnapshot:
                 browser_url=definition.browser_url,
                 log_file=log_file,
                 conflict=_conflict_label(candidates, entry),
+                fix=entry.get("fix", "") if entry else "",
             )
         )
 

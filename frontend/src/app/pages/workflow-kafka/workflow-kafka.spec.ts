@@ -17,7 +17,8 @@ import { TestBed } from '@angular/core/testing';
 
 import { WorkflowKafkaPage } from './workflow-kafka';
 import {
-  WorkflowCalls, callsVacios, emiteCaida, emiteEstado, kafkaArriba, recurso, workflowProviders,
+  WorkflowCalls, callsVacios, emiteCaida, emiteEstado, kafkaArriba, kafkaBloqueada, recurso,
+  workflowProviders,
 } from '../../core/workflow-doubles';
 
 describe('WorkflowKafkaPage', () => {
@@ -53,6 +54,9 @@ describe('WorkflowKafkaPage', () => {
     if (!card) throw new Error(`No está la tarjeta de ${nombre}`);
     return card;
   }
+
+  const botonesDe = (el: HTMLElement, nombre: string): string[] =>
+    [...tarjeta(el, nombre).querySelectorAll('button')].map((b) => b.textContent?.trim() ?? '');
 
   // --- el filtro de grupo ---------------------------------------------------
 
@@ -251,6 +255,77 @@ describe('WorkflowKafkaPage', () => {
       const card = tarjeta(el, 'Kafdrop UI');
       expect(card.classList).toContain('res-card--foreign');
       expect([...card.querySelectorAll('button')].map((b) => b.textContent?.trim())).not.toContain('Parar');
+    });
+  });
+
+  // --- el arreglo que propone el backend ----------------------------------
+
+  describe('el storage bloqueado', () => {
+    it('el botón aparece sólo cuando el backend lo dice', async () => {
+      // Kafdrop sin `fix` y el broker con `fix`: el mismo dibujo, dos filas, y sólo
+      // una tiene el botón. Es la diferencia entre "el backend lo sugirió" y
+      // "apareció porque la fila es de Kafka".
+      calls.answer = { ...calls.answer, resources: [kafkaArriba(), kafkaBloqueada()] };
+      const { el } = await montar();
+
+      expect(botonesDe(el, 'Kafdrop UI')).not.toContain('Limpiar el broker');
+      expect(botonesDe(el, 'Kafka Server')).toContain('Limpiar el broker');
+    });
+
+    it('pide confirmación y dice qué se pierde antes de hacerlo', async () => {
+      calls.answer = { ...calls.answer, resources: [kafkaBloqueada()] };
+      const { comp, fixture } = await montar();
+
+      comp.askFix(kafkaBloqueada());
+      fixture.detectChanges();
+
+      const aviso = comp.notice();
+      expect(aviso?.tone).toBe('danger');
+      expect(aviso?.confirmLabel).toBe('Limpiar y formatear');
+      const texto = (aviso?.paragraphs.join(' ') ?? '').toLowerCase();
+      // Sin esto el botón se comería los topics del developer sin que nadie lo diga.
+      expect(texto).toContain('se borra');
+      expect(texto).toContain('topics');
+      // Y todavía no se limpió nada: preguntar es parte de la operación.
+      expect(calls.kafkaCleanCalls).toBe(0);
+    });
+
+    it('confirmar ejecuta la limpieza y el aviso se cierra', async () => {
+      calls.answer = { ...calls.answer, resources: [kafkaBloqueada()] };
+      const { comp, fixture } = await montar();
+
+      comp.askFix(kafkaBloqueada());
+      fixture.detectChanges();
+      comp.confirmNotice();
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+
+      expect(calls.kafkaCleanCalls).toBe(1);
+      expect(comp.notice()).toBeNull();
+    });
+
+    it('cerrar el aviso no limpia nada', async () => {
+      const { comp, fixture } = await montar();
+
+      comp.askFix(kafkaBloqueada());
+      fixture.detectChanges();
+      comp.dismissNotice();
+      fixture.detectChanges();
+
+      expect(calls.kafkaCleanCalls).toBe(0);
+      expect(comp.notice()).toBeNull();
+    });
+
+    it('una limpieza que falla va al modal de error, no a la fila', async () => {
+      calls.answer = { ...calls.answer, resources: [kafkaBloqueada()] };
+      calls.kafkaCleanError = new Error('Error formateando storage');
+      const { comp, fixture } = await montar();
+
+      await comp.runFix(kafkaBloqueada());
+      fixture.detectChanges();
+
+      expect(comp.notice()?.title).toBe('No se pudo limpiar');
+      expect(comp.notice()?.paragraphs.join(' ')).toContain('Error formateando storage');
     });
   });
 

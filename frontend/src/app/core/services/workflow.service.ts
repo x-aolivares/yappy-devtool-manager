@@ -220,6 +220,22 @@ export class WorkflowService {
     );
   }
 
+  /**
+   * Wipe and re-format the local Kafka storage.
+   *
+   * Deletes every local topic. The screen only offers it when a failed start's own
+   * log says this is the fix, and asks first — but the ask lives on the screen, not
+   * here, because what it destroys is a decision a person makes.
+   */
+  cleanKafkaStorage(): Promise<WorkflowActionResponse> {
+    return firstValueFrom(
+      this.http.post<WorkflowActionResponse>(
+        `${this.api.rootUrl}/api/workflow/kafka/clean`,
+        {},
+      ),
+    );
+  }
+
   stopAll(allowForeign = false): Promise<WorkflowActionResponse> {
     return firstValueFrom(
       this.http.post<WorkflowActionResponse>(

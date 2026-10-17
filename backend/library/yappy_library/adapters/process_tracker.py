@@ -154,7 +154,7 @@ def track_process(
     state_bus.publish()
 
 
-def update_process_state(pid: int, state: str) -> None:
+def update_process_state(pid: int, state: str, fix: str = "") -> None:
     """Move an already-tracked process to another start state.
 
     Only the state moves. Rewriting the whole entry here would race with a
@@ -164,6 +164,11 @@ def update_process_state(pid: int, state: str) -> None:
     This is the one write the whole push feature is built around: it is what the
     supervisor calls when a start finally has a verdict, so publishing here is what
     makes the row move without the screen ever asking.
+
+    ``fix`` rides along for the same reason: it is the name of something that would
+    make this start work — ``kafka_clean_storage`` and whatever comes next — and the
+    screen needs it *with* the verdict, not one poll later. A name and not a
+    sentence, because the wording belongs where the button is drawn.
     """
     path = _TRACKER_DIR / f"{pid}.json"
     try:
@@ -171,6 +176,8 @@ def update_process_state(pid: int, state: str) -> None:
     except (OSError, json.JSONDecodeError):
         return
     data["state"] = state
+    if fix:
+        data["fix"] = fix
     try:
         path.write_text(json.dumps(data, indent=2))
     except OSError:
@@ -372,6 +379,9 @@ def get_tracked_processes(
         # which is the only thing they are allowed to mean.
         entry.setdefault("exe", "")
         entry.setdefault("create_time", 0.0)
+        # What would make a failed start work, when we know of something that
+        # would. Empty is the honest answer for almost every failure.
+        entry.setdefault("fix", "")
 
         results.append(entry)
 

@@ -384,6 +384,15 @@ class KafkaService:
         else:
             raise KafkaUnavailable("Error formateando storage")
 
+        # `_kill_kafka_processes` killed them by name, which knows nothing about the
+        # tracker: without this, every entry the tracker still holds for a broker
+        # that is now dead becomes a ghost that `reconcile()` has to clean up on the
+        # next `yappy web`, and the row reads `dead` instead of `down` until then.
+        # `down()` has always done this; `clean()` did not, and from the web it
+        # would have shown up immediately.
+        self._untrack("server")
+        self._untrack("ui")
+
     def _untrack(self, target: str) -> None:
         for p in process_tracker.get_tracked_processes(resource="kafka", target=target):
             pid = p.get("pid")
