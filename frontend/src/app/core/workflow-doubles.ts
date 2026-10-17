@@ -28,7 +28,7 @@ import type {
 } from '../api-gen/models';
 import { EnvironmentService } from './services/environment.service';
 import {
-  WorkflowScope, WorkflowService, WorkflowStreamEvent,
+  LogStreamEvent, WorkflowScope, WorkflowService, WorkflowStreamEvent,
 } from './services/workflow.service';
 
 export const ENVS = [
@@ -171,8 +171,10 @@ export interface WorkflowCalls {
   /** Lo que `/api/workflow/logs` rechaza. `null` = responde bien. */
   logError: HttpErrorResponse | null;
   logCalls: Array<{ pid: number; offset: number; section: string }>;
-  /** Lo que el log agrega en cada lectura. */
+  /** El texto que trae el primer frame del log, el que el server manda al abrir. */
   logText: string;
+  /** Un stream de log por panel abierto, en orden de apertura. */
+  logStreams: WorkflowLogStreamDouble[];
   /** Cuántas veces se pidió la lista de ambientes. Una sección sin selector, cero. */
   envCalls: number;
 }
@@ -194,6 +196,7 @@ export function callsVacios(): WorkflowCalls {
     logError: null,
     logCalls: [],
     logText: '',
+    logStreams: [],
     envCalls: 0,
   };
 }
@@ -215,6 +218,70 @@ export function emiteEstado(
   return calls;
 }
 
+/**
+ * Un stream de log abierto, que el test empuja.
+ *
+ * Mismo criterio que el del estado: lo que el server manda se empuja como frame, y
+ * no hay forma de escribir un test sobre "el panel cambió cuando el log creció" si
+ * no se puede hacer crecer el log.
+ */
+export class WorkflowLogStreamDouble {
+  readonly frames: LogStreamEvent[] = [];
+
+  private readonly subject = new Subject<LogStreamEvent>();
+  private isClosed = false;
+  /** El offset que el server llevaría; el doble lo usa para no mandar el mismo texto dos veces. */
+  private cursor = 0;
+
+  constructor(readonly pid: number, readonly section = 'workflow') {}
+
+  emit(frame: LogStreamEvent): void {
+    this.cursor = Math.max(this.cursor, frame.text.length);
+    this.frames.push(frame);
+    this.subject.next(frame);
+  }
+
+  get closed(): boolean {
+    return this.isClosed;
+  }
+
+  observable(): Observable<LogStreamEvent> {
+    return this.subject.asObservable().pipe(finalize(() => { this.isClosed = true; }));
+  }
+
+  /** Dónde quedó el cursor, para que un test pueda mandar "lo que se agregó". */
+  get offset(): number {
+    return this.cursor;
+  }
+}
+
+/** Empuja texto nuevo al panel, como cuando el archivo del proceso crece. */
+export function emiteLog(calls: WorkflowCalls, text: string): WorkflowCalls {
+  for (const stream of calls.logStreams) {
+    stream.emit({
+      pid: stream.pid,
+      text,
+      offset: stream.offset + text.length,
+      alive: true,
+      gone: false,
+    });
+  }
+  return calls;
+}
+
+/**
+ * Empuja el `gone`: el pid dejó de estar trackeado.
+ *
+ * Antes esto lo descubría el panel con un 404 en su próxima consulta — una request
+ * más para enterarse de algo que ya estaba escrito—. Ahora es un frame.
+ */
+export function emiteLogGone(calls: WorkflowCalls, pid?: number): WorkflowCalls {
+  for (const stream of calls.logStreams) {
+    if (pid !== undefined && stream.pid !== pid) continue;
+    stream.emit({ pid: stream.pid, text: '', offset: stream.offset, alive: false, gone: true });
+  }
+  return calls;
+}
 /** Empuja el corte de conexión: lo que el `EventSource` emite cuando se cae. */
 export function emiteCaida(
   calls: WorkflowCalls,
@@ -252,16 +319,24 @@ export function workflowProviders(calls: WorkflowCalls): Provider[] {
             return () => inner.unsubscribe();
           });
         },
-        log: (pid: number, offset: number, _lines = 60, _signal?: AbortSignal, section = 'workflow') => {
-          calls.logCalls.push({ pid, offset, section });
-          return calls.logError
-            ? Promise.reject(calls.logError)
-            : Promise.resolve({
-                pid,
-                text: calls.logText,
-                offset: offset + calls.logText.length,
-                alive: true,
-              });
+        /**
+         * Abre un stream de log y manda la cola del archivo en el acto, como el
+         * server: el panel abre "Ver logs" y ya tiene qué mostrar.
+         */
+        streamLogs: (pid: number, section = 'workflow') => {
+          const stream = new WorkflowLogStreamDouble(pid, section);
+          calls.logStreams.push(stream);
+          return new Observable<LogStreamEvent>((subscriber) => {
+            const inner = stream.observable().subscribe(subscriber);
+            stream.emit({
+              pid,
+              text: calls.logText,
+              offset: calls.logText.length,
+              alive: true,
+              gone: false,
+            });
+            return () => inner.unsubscribe();
+          });
         },
         startResource: (key: string, env?: string) => {
           calls.startedKeys.push(key);

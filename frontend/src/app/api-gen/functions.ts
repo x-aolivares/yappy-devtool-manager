@@ -67,6 +67,8 @@ export type { StopAllWorkflowProcesses$Params as StopAllWorkflowProcesses$Params
 export { stopAllWorkflowProcesses as stopAllWorkflowProcesses } from './fn/workflow/stop-all-workflow-processes';
 export type { ReadWorkflowLogs$Params as ReadWorkflowLogs$Params } from './fn/workflow/read-workflow-logs';
 export { readWorkflowLogs as readWorkflowLogs } from './fn/workflow/read-workflow-logs';
+export type { StreamWorkflowLogs$Params as StreamWorkflowLogs$Params } from './fn/workflow/stream-workflow-logs';
+export { streamWorkflowLogs as streamWorkflowLogs } from './fn/workflow/stream-workflow-logs';
 export type { GetWorkflowCatalog$Params as GetWorkflowCatalog$Params } from './fn/workflow/get-workflow-catalog';
 export { getWorkflowCatalog as getWorkflowCatalog } from './fn/workflow/get-workflow-catalog';
 export type { AddWorkflowCatalogPort$Params as AddWorkflowCatalogPort$Params } from './fn/workflow/add-workflow-catalog-port';

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -57,6 +58,18 @@ router = APIRouter(tags=["workflow"])
 #: wrong: a row that moved while nobody was looking, back on its own within one
 #: tick. Anything faster is CPU nobody asked for.
 STREAM_WATCHDOG_SECONDS = 5.0
+
+#: How often a connected log stream looks at the file.
+#:
+#: This one is NOT a watchdog in the same sense: it is the only way new bytes get
+#: noticed at all, because a child process writing to its own stdout does not tell
+#: this server anything. What it replaced was a 1,5s poll from the browser, so half
+#: a second is also twice as responsive than what it replaced — for a ``stat()``,
+#: which is the whole cost of a turn where the file did not grow.
+#:
+#: Same interval as ``readiness.POLL_INTERVAL``, and for the same reason: the log of
+#: a starting process gets written about as fast as the probe notices it is up.
+LOG_STREAM_CHECK_SECONDS = 0.5
 
 
 def _cfg(env: str) -> Config:
@@ -311,11 +324,26 @@ def api_workflow_logs(pid: int | None = None, lines: int = 60, offset: int = 0, 
     con cuatro secciones usando el mismo endpoint la línea "-GET /logs?pid=20192
     200-" no dice cuál de ellas estaba preguntando. Es diagnóstico, y por eso
     tiene default: un curl sin el parámetro sigue funcionando.
+
+    Queda igual aunque exista :func:`api_workflow_log_stream`: es la forma
+    documentada y la que sirve para un ``curl`` o para un script.
     """
-    from pathlib import Path
+    entry, path = _tracked_log_entry(pid)
+    return {
+        "pid": entry.get("pid"),
+        **_log_chunk(path, offset, lines),
+        "alive": bool(entry.get("alive")),
+    }
 
-    from yappy_library.adapters.log_tail import last_lines, read_from
 
+def _tracked_log_entry(pid: int | None) -> tuple[dict, Path]:
+    """The tracked entry behind ``pid`` and its log file, or the 404 that says why not.
+
+    Shared by the request and the stream so both answer "which file?" the same way.
+    The two 404s are different failures with the same consequence for the panel: a
+    pid the tracker doesn't know, and a process with no log to read. Both are
+    terminal — there is nothing left to ask again.
+    """
     entries = get_tracked_processes()
     if pid is not None:
         entries = [e for e in entries if e.get("pid") == pid]
@@ -326,20 +354,101 @@ def api_workflow_logs(pid: int | None = None, lines: int = 60, offset: int = 0, 
     log_file = entry.get("log_file") or ""
     if not log_file:
         raise HTTPException(status_code=404, detail="Ese proceso no tiene archivo de log.")
+    return entry, Path(log_file)
 
-    path = Path(log_file)
+
+def _log_chunk(path: Path, offset: int, lines: int) -> dict:
+    """What the file gained since ``offset``, plus the offset to ask from next time.
+
+    ``offset=0`` means "the first time": the tail, and the end of the file as the
+    cursor. From there every read is only what was appended, so a growing log does
+    not re-send what the reader already has.
+    """
+    from yappy_library.adapters.log_tail import last_lines, read_from
+
     if offset > 0:
         text, new_offset = read_from(path, offset)
     else:
         text = last_lines(path, lines)
         new_offset = path.stat().st_size if path.exists() else 0
+    return {"text": text, "offset": new_offset}
 
-    return {
-        "pid": entry.get("pid"),
-        "text": text,
-        "offset": new_offset,
-        "alive": bool(entry.get("alive")),
-    }
+
+async def _stream_log_frames(pid: int, lines: int, path: Path):
+    """Yield a frame per stretch of new log lines, and one ``gone`` at the end.
+
+    **The cursor lives here, not in the browser.** The poll made every client keep
+    its own offset and send it back on each request; that cursor was the only piece
+    of state a connection had, so holding it per connection is both simpler and
+    exactly what lets the request disappear.
+
+    **A frame goes out when the file grew, and not otherwise.** That is the whole
+    point: a poll against a process that is not logging anything is a request per
+    interval that comes back saying nothing, and twenty-eight seconds of silence
+    used to cost twenty-eight identical lines in the server console.
+
+    The bus here is a shortcut and never the source: no tracker write announces
+    that a *child process* wrote to its own stdout. The tick is what finds the new
+    bytes; the bus only makes "it was stopped" land at once instead of on the next
+    tick.
+
+    Takes the ``path`` already resolved instead of looking it up here: this is a
+    generator, so its body does not run until after the response has started, and a
+    404 raised from here is unreportable — it becomes "response already started".
+    The caller resolves it while the status line can still be written.
+    """
+    subscription = state_bus.subscribe()
+    offset = 0
+    try:
+        first = True
+        while True:
+            if not [e for e in get_tracked_processes() if e.get("pid") == pid]:
+                # El `gone` del panel: el pid salió del tracker, así que no queda nada
+                # que preguntar. Un último frame y el stream se cierra.
+                gone = {"pid": pid, "text": "", "offset": offset, "gone": True}
+                yield f"data: {json.dumps(gone)}\n\n"
+                return
+
+            chunk = await run_in_threadpool(_log_chunk, path, offset, lines)
+            if first or chunk["text"]:
+                offset = chunk["offset"]
+                frame = {"pid": pid, **chunk, "gone": False, "alive": True}
+                yield f"data: {json.dumps(frame)}\n\n"
+            first = False
+            try:
+                await asyncio.wait_for(subscription.queue.get(), LOG_STREAM_CHECK_SECONDS)
+            except TimeoutError:
+                pass
+    finally:
+        subscription.close()
+
+
+@router.get(
+    "/api/workflow/stream/logs",
+    operation_id="stream_workflow_logs",
+    response_class=StreamingResponse,
+)
+async def api_workflow_log_stream(pid: int | None = None, lines: int = 60, page: str = ""):
+    """The tail of one process's log, then whatever it writes, pushed as it happens.
+
+    Replaces a 1,5s poll whose answer was almost always "nothing new". The panel
+    opens one connection, gets the last 60 lines at once, and after that only
+    receives frames when the file actually grew.
+
+    An unknown pid still has to be a status code, so — like the state stream — the
+    check happens **here**, in the route, not in the generator. A generator's body
+    does not run until the response has started, so a 404 raised from there is not a
+    404: it is "response already started" and the client sees a stream that opens
+    and then says nothing.
+    """
+    if pid is None:
+        raise HTTPException(status_code=400, detail="Falta el pid.")
+    _entry, path = _tracked_log_entry(pid)
+    return StreamingResponse(
+        _stream_log_frames(pid, lines, path),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 # --- catalog ----------------------------------------------------------------

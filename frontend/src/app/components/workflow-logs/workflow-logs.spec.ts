@@ -1,21 +1,20 @@
 /**
  * El panel de logs, que las cuatro páginas de Workflow comparten.
  *
- * Los tests son los de la pantalla única, mudados acá. No cambiaron: el panel es
- * el mismo código con otro dueño, y lo que estaba probado es justamente lo que no
- * puede volver a rompirse sin que se note —el 404 que corta el poll, el corte de
- * red que no lo corta, el texto que se conserva cuando el proceso se fue.
+ * Los tests son los de la pantalla única, mudados acá y después mudados otra vez
+ * cuando el panel pasó de consultar a escuchar. No cambiaron las reglas: el panel
+ * sigue un pid porque alguien apretó "Ver logs", un `gone` lo corta para siempre,
+ * un corte de red no, y el texto que ya se leyó no se tira a la basura.
  *
- * Lo que cambió es quién decide *qué* se mira: antes la página knew; ahora el
- * panel recibe `rows` y ofrece el primer recurso con archivo de log. Eso es lo
- * que se prueba en "el atajo de la barra".
+ * Lo que cambió es el mecanismo, y por eso los dobles empujaron frames en vez de
+ * devolver promesas: con el stream no hay tick que disparar, así que "el log creció"
+ * es algo que el test produce con `emiteLog` y no algo que espera.
  */
 import { TestBed } from '@angular/core/testing';
 
 import { WorkflowLogs } from './workflow-logs';
 import {
-  WorkflowCalls, callsVacios, corteDeRed, kafkaArriba, pidSinTrackear,
-  workflowProviders,
+  WorkflowCalls, callsVacios, emiteLog, emiteLogGone, kafkaArriba, workflowProviders,
 } from '../../core/workflow-doubles';
 import type { WorkflowRow } from '../../core/workflow-section-page';
 
@@ -39,138 +38,137 @@ describe('WorkflowLogs', () => {
 
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
+  /** Los pids de las conexiones de log abiertas. */
+  const abiertos = () => calls.logStreams.map((s) => s.pid);
+
   // --- el ciclo de vida del panel ------------------------------------------
 
   describe('no se lee el log hasta que alguien lo pide', () => {
-    it('con una fila arriba y con archivo tampoco sale ninguna request', () => {
+    it('con una fila arriba y con archivo tampoco se abre ninguna conexión', () => {
       // La regla de dedo del developer: el panel sigue un pid porque él apretó
       // "Ver logs", no porque la pantalla esté mirando.
       const { comp } = montar([kafkaArriba()]);
 
-      expect(calls.logCalls).toHaveLength(0);
+      expect(abiertos()).toEqual([]);
       expect(comp.scope()).toBeNull();
     });
 
-    it('abrirlo pide el log del pid de la fila, una sola vez', async () => {
+    it('abrirlo abre una conexión al pid de la fila, una sola vez', async () => {
       const { comp } = montar();
       calls.logText = 'INFO Kafka Server started\n';
 
       comp.open(kafkaArriba());
       await tick();
 
-      // Y **una sola vez**: el poll se programa con `setTimeout`, no en bucle. La
-      // regresión que se vigila acá es que `appendLog` leyera el offset dentro del
-      // `effect` — el effect dependía de él, cada vuelta lo escribía y volvía a
-      // dispararse: cien requests en el tiempo de una.
-      expect(calls.logCalls).toEqual([{ pid: 21224, offset: 0, section: 'workflow' }]);
+      // Y **una sola conexión**: la regresión que se vigila acá es que el handler
+      // escribiera `text` u `offset` sin `untracked`, el efecto dependiera de eso,
+      // y cada frame disparara el efecto otra vez — el panel comiéndose sus propios
+      // streams en bucle, igual que se comía sus propios polls.
+      expect(abiertos()).toEqual([21224]);
       expect(comp.text()).toContain('Kafka Server started');
     });
 
-    it('cada lectura pide desde el offset que volvió la anterior', async () => {
+    it('cada frame se suma al texto, sin pedir nada', async () => {
       const { comp } = montar();
       calls.logText = 'uno\n';
 
       comp.open(kafkaArriba());
       await tick();
-      calls.logText = 'dos\n';
-      comp.pollForTest();
+      emiteLog(calls, 'dos\n');
       await tick();
 
-      // El offset que vuelve es el tamaño acumulado, no un cursor del backend: la
-      // segunda lectura pide desde el final exacto de la primera y así no se
-      // solapan las líneas del medio.
-      expect(calls.logCalls.map((c) => c.offset)).toEqual([0, 4]);
+      // El cursor vive en la conexión: el panel no tiene offset que mandar ni que
+      // acertar. Sólo llega lo que el archivo agrego.
       expect(comp.text()).toBe('uno\ndos\n');
     });
 
-    it('cerrar y volver a abrir vuelve a preguntar desde el principio', async () => {
+    it('cerrar y volver a abrir abre una conexión nueva desde el principio', async () => {
       const { comp } = montar();
-      calls.logError = pidSinTrackear();
 
       comp.open(kafkaArriba());
       await tick();
       comp.close();
+      await tick();
 
-      calls.logError = null;
       calls.logText = 'hola\n';
       comp.open(kafkaArriba());
       await tick();
-      comp.pollForTest();
-      await tick();
 
       expect(comp.gone()).toBe(false);
-      // El offset se reinicia al reabrir: si no, la segunda lectura pediría desde
-      // el final del archivo anterior y el log nuevo aparecería a medias.
-      expect(calls.logCalls.map((c) => c.offset)).toEqual([0, 0, 5]);
+      expect(abiertos()).toEqual([21224, 21224]);
+      expect(comp.text()).toBe('hola\n');
+    });
+
+    it('la conexión se cierra al soltar el panel', async () => {
+      const { comp, fixture } = montar();
+
+      comp.open(kafkaArriba());
+      await tick();
+      expect(calls.logStreams[0].closed).toBe(false);
+
+      fixture.destroy();
+
+      // Sin esto, abrir y cerrar "Ver logs" veinte veces dejaría veinte conexiones
+      // abiertas mirando un archivo.
+      expect(calls.logStreams[0].closed).toBe(true);
     });
   });
 
   // --- los errores ----------------------------------------------------------
 
-  describe('un 404 corta el poll para siempre', () => {
-    it('y deja de preguntar', async () => {
-      // El bug: el `catch` se tragaba el 404 como si fuera un corte de red. Un
-      // pid que dejó de estar trackeado no vuelve, así que el panel seguía
-      // golpeando /logs cada 1,5s para siempre — veinte 404s seguidos en el log
-      // del server, uno detrás de otro.
-      calls.logError = pidSinTrackear();
+  describe('un gone corta el panel para siempre', () => {
+    it('y deja de abrir conexiones', async () => {
+      // El bug: el `catch` se tragaba el 404 como si fuera un corte de red. Un pid
+      // que dejó de estar trackeado no vuelve, así que el panel seguía golpeando
+      // /logs cada 1,5s para siempre — veinte 404s seguidos en el log del server.
+      // Ahora el server avisa con un frame y cierra: no hay ni una request de sobra.
       const { comp } = montar();
 
       comp.open(kafkaArriba());
       await tick();
-      expect(comp.gone()).toBe(true);
-      expect(calls.logCalls).toHaveLength(1);
-
-      // Los ticks que sólo pueden volver a fallar.
-      comp.pollForTest();
-      comp.pollForTest();
+      emiteLogGone(calls);
       await tick();
 
-      expect(calls.logCalls).toHaveLength(1);
+      expect(comp.gone()).toBe(true);
+      expect(abiertos()).toEqual([21224]);
     });
 
-    it('un corte de red no cierra el panel ni corta el poll', async () => {
-      // Al revés del 404: acá puede contestar el tick siguiente, así que tragarse
-      // el error en silencio es lo correcto. Cerrar el panel por un corte de red
-      // sería perder el log que el developer estaba leyendo por un cable que se
-      // movió.
-      calls.logError = corteDeRed();
+    it('un corte de red no cierra el panel', async () => {
+      // Al revés del gone: una conexión que se corta puede volver, así que tragarse
+      // el corte en silencio es lo correcto. Cerrar el panel por eso sería perder el
+      // log que el developer estaba leyendo por un cable que se movió.
+      //
+      // El `EventSource` reporta un corte como un frame vacío, y un frame vacío no
+      // cambia nada: el texto sigue, el panel sigue abierto.
       const { comp, el } = montar();
 
       comp.open(kafkaArriba());
+      await tick();
+      emiteLog(calls, '');
       await tick();
 
       expect(comp.gone()).toBe(false);
       expect(comp.scope()).toBe(21224);
       expect(el.querySelector('.log-panel__note')).toBeNull();
-
-      calls.logError = null;
-      comp.pollForTest();
-      await tick();
-
-      expect(calls.logCalls).toHaveLength(2);
     });
 
-    it('un 404 de un panel viejo no mata el log del que se está mostrando', async () => {
-      // La request del panel anterior puede volver después de que el developer
-      // abrió el de otro recurso. Si el 404 llegara sin preguntar de quién es,
-      // dejaría al panel nuevo sin poll para siempre.
-      calls.logError = pidSinTrackear();
+    it('un gone de un panel viejo no mata el log del que se está mostrando', async () => {
+      // Un frame puede llegar después de que el developer abrió el de otro recurso.
+      // Si el `gone` se aplicara sin preguntar de quién es, dejaría al panel nuevo
+      // muerto sin que nadie se lo haya dicho.
       const { comp } = montar();
 
       comp.open(kafkaArriba({ pid: 21224 }));
       await tick();
+      emiteLogGone(calls, 21224);
+      await tick();
       expect(comp.gone()).toBe(true);
 
-      calls.logError = null;
       comp.open(kafkaArriba({ pid: 33940 }));
       await tick();
 
       expect(comp.gone()).toBe(false);
-      comp.pollForTest();
-      await tick();
-
-      expect(calls.logCalls.filter((c) => c.pid === 33940).length).toBeGreaterThan(0);
+      expect(abiertos()).toEqual([21224, 33940]);
     });
   });
 
@@ -178,12 +176,14 @@ describe('WorkflowLogs', () => {
 
   describe('lo que se ve en el panel', () => {
     it('un proceso que murió sin escribir una línea no dice "Buscando…" para siempre', async () => {
-      calls.logError = pidSinTrackear();
       const { comp, el } = montar();
 
       comp.open(kafkaArriba());
       await tick();
+      emiteLogGone(calls);
+      await tick();
 
+      expect(comp.loaded()).toBe(true);
       expect(el.textContent).toContain('Sin contenido todavía.');
     });
 
@@ -199,8 +199,7 @@ describe('WorkflowLogs', () => {
       fixture.detectChanges();
       expect(el.querySelector('.log-view')?.textContent).toContain('Kafka Server started');
 
-      calls.logError = pidSinTrackear();
-      comp.pollForTest();
+      emiteLogGone(calls);
       await tick();
       fixture.detectChanges();
 
@@ -262,19 +261,18 @@ describe('WorkflowLogs', () => {
 
     it('deja de ofrecer un pid que ya no está en el tracker', async () => {
       // El bug: el `pid` sobrevive al `gone`, así que el botón quedaba
-      // habilitado apuntando a un pid que el backend ya no trackea. Cada click
-      // costaba un 404 y volvía a mostrar el aviso — el mismo callejón sin
-      // salida, pedido por el developer.
-      calls.logError = pidSinTrackear();
+      // habilitado apuntando a un pid que el backend ya no trackea.
       const { comp } = montar([kafkaArriba()]);
 
       comp.open(kafkaArriba());
       await tick();
+      emiteLogGone(calls);
+      await tick();
 
-      // La fila sigue dibujándose arriba y con su `log_file`: es el snapshot del
-      // último poll. Por eso el pid muerto se filtra también de la búsqueda por
-      // filas — si no, el fallback devolvería el mismo pid y el botón quedaría
-      // habilitado igual.
+      // La fila sigue dibujándose arriba y con su `log_file`: es el último estado
+      // que llegó por el stream. Por eso el pid muerto se filtra también de la
+      // búsqueda por filas — si no, el fallback devolvería el mismo pid y el botón
+      // quedaría habilitado igual.
       expect(comp.gone()).toBe(true);
       expect(comp.firstLogPid()).toBeNull();
       expect(comp.hasFirstLog()).toBe(false);
@@ -285,35 +283,35 @@ describe('WorkflowLogs', () => {
         kafkaArriba(),
         kafkaArriba({ key: 'kafka-server', pid: 33940, log_file: 'kafka-server-33940.log' }),
       ];
-      calls.logError = pidSinTrackear();
       const { comp } = montar(rows);
 
       comp.open(kafkaArriba());
+      await tick();
+      emiteLogGone(calls);
       await tick();
 
       expect(comp.firstLogPid()).toBe(33940);
       expect(comp.hasFirstLog()).toBe(true);
 
       // Y el click lleva al panel al otro recurso, sin volver al pid muerto.
-      calls.logError = null;
       comp.openFirst();
       await tick();
 
       expect(comp.scope()).toBe(33940);
       expect(comp.gone()).toBe(false);
-      expect(calls.logCalls.filter((c) => c.pid === 21224).length).toBe(1);
+      expect(abiertos().filter((pid) => pid === 21224)).toHaveLength(1);
     });
 
     it('sin pid no hace nada', () => {
       // El botón llega deshabilitado desde la barra, pero el método no puede dar
-      // por eso: `openFirst` con un pid inventado dejaría el panel pidiendo un log
+      // por eso: `openFirst` con un pid inventado dejaría el panel siguiendo un log
       // que nadie pidió.
       const { comp } = montar([]);
 
       comp.openFirst();
 
       expect(comp.scope()).toBeNull();
-      expect(calls.logCalls).toHaveLength(0);
+      expect(abiertos()).toEqual([]);
     });
   });
 });

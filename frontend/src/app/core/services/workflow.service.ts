@@ -18,7 +18,7 @@ export interface WorkflowScope {
 }
 
 /**
- * Lo que el stream puede decir.
+ * Lo que el stream del estado puede decir.
  *
  * Dos eventos y no un `error` de RxJS, porque son dos cosas distintas para la
  * pantalla: llegó un estado nuevo, o se cortó la conexión **por ahora**. El
@@ -29,6 +29,21 @@ export type WorkflowStreamEvent =
   | { readonly kind: 'state'; readonly state: WorkflowStateResponse }
   | { readonly kind: 'error'; readonly detail: string };
 
+/**
+ * Un frame del log.
+ *
+ * `gone` es un evento y no un error: el server lo dice antes de cerrar la conexión,
+ * así que el panel no lo descubre con un 404 en su próxima consulta — que es una
+ * request más para enterarse de algo que ya estaba escrito.
+ */
+export interface LogStreamEvent {
+  readonly pid: number;
+  readonly text: string;
+  readonly offset: number;
+  readonly alive: boolean;
+  readonly gone: boolean;
+}
+
 /** El body que devuelve `GET /api/workflow/logs`. No tipado por el generador. */
 export interface LogTail {
   pid: number;
@@ -38,18 +53,17 @@ export interface LogTail {
 }
 
 /**
- * Las lecturas y los cinco endpoints con botón de las pantallas de Workflow.
+ * Las dos lecturas de las pantallas de Workflow, y los cinco endpoints con botón.
  *
- * Las cuatro páginas de Workflow —Kafka local, Túneles, Servicios y Base de
- * datos— hablan con este servicio y con ningún otro. Comparten el endpoint de
- * estado entero en vez de pedir una fila: una pantalla que preguntara por recurso
- * haría N viajes para contestarse algo que ya tiene en una respuesta.
+ * Las cuatro páginas —Kafka local, Túneles, Servicios y Base de datos— hablan con
+ * este servicio y con ningún otro.
  *
- * La lectura del estado llega empujada por `stream()` y la del log se sigue
- * leyendo por `offset`: son dos problemas distintos. El log es un archivo que
- * crece, así que "qué hay desde el byte N" es una pregunta de cursor. El estado es
- * una foto de un conjunto de procesos, así que conviene que se avise cuándo cambia
- * en vez de ir a buscarlo cada 1,5s para descubrir que no.
+ * **Las dos lecturas se empujan, y son problemas distintos.** El estado es una foto
+ * de un conjunto de procesos: el backend publica cuando cambia y la pantalla
+ * escucha. El log es un archivo que crece, y el cursor vive en la conexión —el
+ * server recuerda hasta dónde leyó—, así que el browser no vuelve a mandar "seguí
+ * desde el byte 3.433.943". Los dos reemplazan a un poll de 1,5s que, en el caso
+ * del log, gastaba 40 requests por minuto para recibir un offset idéntico.
  *
  * Los botones de start y stop no pasan por el cliente generado. No es
  * aesthetic: `ng-openapi-gen` los genera contra el `operation_id` de cada ruta, y
@@ -65,11 +79,10 @@ export class WorkflowService {
   /**
    * El estado, empujado: se abre una vez y se escucha.
    *
-   * Esto reemplaza al poll de 1,5s. La diferencia no es de transporte sino de
-   * pregunta: la pantalla ya no interroga al backend cada 1,5s si el túnel terminó,
-   * espera a que el backend le diga que terminó. Un arranque que tarda 30s son
-   * treinta actualizaciones de una fila, no veinte requests que vuelven diciendo
-   * "todavía no".
+   * La diferencia con el poll no es de transporte sino de pregunta: la pantalla ya
+   * no interroga al backend cada 1,5s si el túnel terminó, espera a que el backend
+   * le diga que terminó. Un arranque que tarda 30s son treinta actualizaciones de
+   * una fila, no veinte requests que vuelven diciendo "todavía no".
    *
    * `EventSource` reconecta solo cuando el server se cae y se levanta, así que un
    * `error` acá es "se cortó ahora", no "se rompió". El primer frame después de
@@ -90,7 +103,10 @@ export class WorkflowService {
 
       source.onmessage = (event: MessageEvent<string>) => {
         try {
-          subscriber.next({ kind: 'state', state: JSON.parse(event.data) as WorkflowStateResponse });
+          subscriber.next({
+            kind: 'state',
+            state: JSON.parse(event.data) as WorkflowStateResponse,
+          });
         } catch {
           subscriber.next({
             kind: 'error',
@@ -106,7 +122,45 @@ export class WorkflowService {
     });
   }
 
-  /** Lo que se agregó al log desde `offset`. El offset que vuelve es el siguiente. */
+  /**
+   * El log de un proceso, empujado.
+   *
+   * El primer frame trae la cola del archivo —el mismo contrato que el poll con
+   * `offset=0`—, y después sólo lo que se agregó. El cursor vive en la conexión, así
+   * que el panel no guarda offset ni lo manda de vuelta.
+   */
+  streamLogs(pid: number, section = 'workflow'): Observable<LogStreamEvent> {
+    return new Observable<LogStreamEvent>((subscriber) => {
+      const params = new URLSearchParams({ pid: String(pid), page: section });
+      const source = new EventSource(
+        `${this.api.rootUrl}/api/workflow/stream/logs?${params.toString()}`,
+      );
+
+      source.onmessage = (event: MessageEvent<string>) => {
+        try {
+          subscriber.next(JSON.parse(event.data) as LogStreamEvent);
+        } catch {
+          subscriber.error(new Error('El log llegó ilegible.'));
+        }
+      };
+      source.onerror = () => {
+        // El `EventSource` reconecta solo. Un corte es "se cortó ahora", y el
+        // siguiente frame trae el log desde el offset del server, que es el que
+        // importa: sin él, un corte perdería las líneas que se escribieron durante.
+        subscriber.next({ pid, text: '', offset: 0, alive: true, gone: false });
+      };
+
+      return () => source.close();
+    });
+  }
+
+  /**
+   * El log por cursor, en una request.
+   *
+   * Queda junto al stream porque el endpoint sigue existiendo: es la forma
+   * documentada, la que sirve para un `curl` o un script, y la que un test de
+   * contrato puede llamar sin abrir una conexión.
+   */
   log(
     pid: number,
     offset: number,
@@ -126,7 +180,7 @@ export class WorkflowService {
   /**
    * Levantar un recurso del registro.
    *
-   * `env` opcional por lo mismo que en `state`: Kafka no tiene ambiente. Omitirlo
+   * `env` opcional por lo mismo que en `stream()`: Kafka no tiene ambiente. Omitirlo
    * lo deja en el default del backend, que es el mismo que mandaría el cliente.
    */
   startResource(key: string, env?: string): Promise<WorkflowActionResponse> {
@@ -202,5 +256,4 @@ export class WorkflowService {
       ),
     );
   }
-
-  }
+}

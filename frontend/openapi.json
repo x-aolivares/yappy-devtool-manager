@@ -1431,7 +1431,7 @@
           "workflow"
         ],
         "summary": "Api Workflow Logs",
-        "description": "The last ``lines`` of a tracked process's log, or what got appended.\n\n``offset`` makes this a poll: pass the ``offset`` the previous call returned\nand only new bytes come back. Without it the screen would re-read and\nre-render the whole log every second.\n\n``page`` no cambia una sola línea de la respuesta: está porque es lo único\nque el access log de uvicorn imprime de una request que no sea el path, y\ncon cuatro secciones usando el mismo endpoint la línea \"-GET /logs?pid=20192\n200-\" no dice cuál de ellas estaba preguntando. Es diagnóstico, y por eso\ntiene default: un curl sin el parámetro sigue funcionando.",
+        "description": "The last ``lines`` of a tracked process's log, or what got appended.\n\n``offset`` makes this a poll: pass the ``offset`` the previous call returned\nand only new bytes come back. Without it the screen would re-read and\nre-render the whole log every second.\n\n``page`` no cambia una sola línea de la respuesta: está porque es lo único\nque el access log de uvicorn imprime de una request que no sea el path, y\ncon cuatro secciones usando el mismo endpoint la línea \"-GET /logs?pid=20192\n200-\" no dice cuál de ellas estaba preguntando. Es diagnóstico, y por eso\ntiene default: un curl sin el parámetro sigue funcionando.\n\nQueda igual aunque exista :func:`api_workflow_log_stream`: es la forma\ndocumentada y la que sirve para un ``curl`` o para un script.",
         "operationId": "read_workflow_logs",
         "parameters": [
           {
@@ -1489,6 +1489,69 @@
                 "schema": {}
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/stream/logs": {
+      "get": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Api Workflow Log Stream",
+        "description": "The tail of one process's log, then whatever it writes, pushed as it happens.\n\nReplaces a 1,5s poll whose answer was almost always \"nothing new\". The panel\nopens one connection, gets the last 60 lines at once, and after that only\nreceives frames when the file actually grew.\n\nAn unknown pid still has to be a status code, so — like the state stream — the\ncheck happens **here**, in the route, not in the generator. A generator's body\ndoes not run until the response has started, so a 404 raised from there is not a\n404: it is \"response already started\" and the client sees a stream that opens\nand then says nothing.",
+        "operationId": "stream_workflow_logs",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pid"
+            }
+          },
+          {
+            "name": "lines",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 60,
+              "title": "Lines"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Page"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",

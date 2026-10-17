@@ -201,7 +201,7 @@ describe('WorkflowKafkaPage', () => {
         ?.click();
       await new Promise((r) => setTimeout(r, 0));
 
-      expect(calls.logCalls).toEqual([{ pid: 21224, offset: 0, section: 'kafka' }]);
+      expect(calls.logStreams.map((s) => [s.pid, s.section])).toEqual([[21224, 'kafka']]);
     });
 
     it('se cierra al abandonar la página', async () => {
@@ -241,7 +241,7 @@ describe('WorkflowKafkaPage', () => {
       await new Promise((r) => setTimeout(r, 0));
 
       expect(comp.logs()?.scope()).toBe(21224);
-      expect(calls.logCalls).toEqual([{ pid: 21224, offset: 0, section: 'kafka' }]);
+      expect(calls.logStreams.map((s) => [s.pid, s.section])).toEqual([[21224, 'kafka']]);
     });
 
     it('una fila ajena no se puede parar desde la tarjeta', async () => {

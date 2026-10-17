@@ -88,6 +88,6 @@ describe('WorkflowDatabasePage', () => {
     await new Promise((r) => setTimeout(r, 0));
 
     expect(comp.logs()?.scope()).toBe(97);
-    expect(calls.logCalls).toEqual([{ pid: 97, offset: 0, section: 'database' }]);
+    expect(calls.logStreams.map((s) => [s.pid, s.section])).toEqual([[97, 'database']]);
   });
 });

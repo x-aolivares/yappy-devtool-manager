@@ -28,6 +28,7 @@ import asyncio
 import json
 import os
 import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -298,3 +299,189 @@ def test_un_cluster_que_no_existe_es_400():
 
     assert response.status_code == 400
     assert "cap" in response.json()["detail"]
+
+
+# --------------------------------------------------------------------------
+# El log empujado: la misma pregunta, sin el poll de 1,5s.
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def log_check(monkeypatch):
+    """A check interval short enough to be worth waiting for."""
+
+    monkeypatch.setattr(routes_workflow, "LOG_STREAM_CHECK_SECONDS", 0.1)
+
+
+async def _open_log(bus, pid: int, lines: int = 10, log_file: str | None = None):
+    """Open the log stream the way the route does: path resolved up front.
+
+    The route has to resolve it before the response starts (a generator body runs
+    after), so the test drives the generator the same way instead of pretending the
+    generator could raise.
+    """
+    path = Path(log_file) if log_file else Path(routes_workflow._tracked_log_entry(pid)[1])
+    frames = routes_workflow._stream_log_frames(pid, lines, path)
+    sink: list[dict] = []
+    pump = asyncio.ensure_future(_collect(frames, sink))
+    return frames, sink, pump
+
+
+def _write_log(path, text: str) -> None:
+    # Bytes, not text mode: on Windows text mode would translate every ``\\n`` into
+    # ``\\r\\n`` and the assertion would be about line endings instead of about what
+    # arrived. Same note as the rest of the tests that write logs.
+    with path.open("ab") as handle:
+        handle.write(text.encode("utf-8"))
+
+
+def _track_with_log(pid: int, log_file: str) -> None:
+    process_tracker.track_process(
+        pid,
+        "kafka",
+        target="server",
+        owner=process_tracker.OWNER_WEB,
+        log_file=log_file,
+    )
+
+
+def test_el_log_empieza_con_la_cola_del_archivo(bus, tmp_path, log_check):
+    """Lo primero que llega es lo que había, sin pedir nada más.
+
+    La primera lectura pide el final del archivo y el stream se queda ahí como
+    cursor. Es el mismo contrato que tenía el poll con ``offset=0``, y es lo que
+    evita que un log de tres megabytes abra la pantalla tirando tres megabytes.
+    """
+    log = tmp_path / "kafka.log"
+    log.write_text("\n".join(f"linea {i}" for i in range(100)), encoding="utf-8")
+    _track_with_log(os.getpid(), str(log))
+
+    async def main():
+        frames, sink, pump = await _open_log(bus, os.getpid(), lines=10)
+
+        assert await _until(sink, 1)
+        assert sink[0]["text"].startswith("linea 90")
+        assert sink[0]["gone"] is False
+        assert sink[0]["offset"] == log.stat().st_size
+        await _close(frames, pump)
+
+    _run(main())
+
+
+def test_el_log_llega_solo_cuando_el_archivo_crece(bus, tmp_path, log_check):
+    """El caso que dolía: un proceso que no loguea nada.
+
+    El poll preguntaba cada 1,5s y recibía un offset idéntico. Acá la conexión sigue
+    abierta, sigue mirando el archivo, y no manda un solo frame mientras no haya
+    algo nuevo.
+    """
+    log = tmp_path / "kafka.log"
+    log.write_text("arrancando\n", encoding="utf-8")
+    _track_with_log(os.getpid(), str(log))
+
+    async def main():
+        frames, sink, pump = await _open_log(bus, os.getpid())
+
+        assert await _until(sink, 1)
+        await _settle(0.8)  # muchos ticks de los 0,1s
+
+        assert len(sink) == 1, "mandó un frame con el archivo igual"
+
+        _write_log(log, "una linea nueva\n")
+
+        assert await _until(sink, 2), "la línea nueva no llegó"
+        assert sink[1]["text"] == "una linea nueva\n"
+        await _close(frames, pump)
+
+    _run(main())
+
+
+def test_el_log_manda_solo_lo_nuevo(bus, tmp_path, log_check):
+    """Dos vueltas mandan la diferencia, no el archivo entero.
+
+    Es la razón de que el cursor viva en la conexión: con el poll el cliente lo
+    guardaba y lo mandaba de vuelta, y un log que crece en 300 líneas se reenviaba
+    entero en cada lectura.
+    """
+    log = tmp_path / "kafka.log"
+    log.write_text("primera\n", encoding="utf-8")
+    _track_with_log(os.getpid(), str(log))
+
+    async def main():
+        frames, sink, pump = await _open_log(bus, os.getpid())
+
+        assert await _until(sink, 1)
+        _write_log(log, "segunda\n")
+        assert await _until(sink, 2)
+        _write_log(log, "tercera\n")
+        assert await _until(sink, 3)
+
+        assert [f["text"] for f in sink[1:]] == ["segunda\n", "tercera\n"]
+        await _close(frames, pump)
+
+    _run(main())
+
+
+def test_un_pid_que_sale_del_tracker_cierra_el_stream(bus, tmp_path, log_check):
+    """El `gone` ahora lo dice el server, en vez de que el panel lo adivine.
+
+    Antes era un 404 en el siguiente tick: una request más, y un panel que podía
+    seguir golpeando durante el tiempo entre el untrack y ese 404.
+    """
+    log = tmp_path / "kafka.log"
+    log.write_text("arrancando\n", encoding="utf-8")
+    pid = os.getpid()
+    _track_with_log(pid, str(log))
+
+    async def main():
+        frames, sink, pump = await _open_log(bus, pid)
+
+        assert await _until(sink, 1)
+        assert len(bus) == 1
+
+        process_tracker.untrack_process(pid)  # publica: no espera al tick
+
+        assert await _until(sink, 2), "no avisó que el pid se fue"
+        assert sink[-1]["gone"] is True
+        await asyncio.gather(pump, return_exceptions=True)
+        await frames.aclose()
+
+    _run(main())
+
+
+def test_el_log_se_desuscribe_al_cerrar(bus, tmp_path, log_check):
+    """Sin fuga: un panel cerrado no deja una conexión mirando un archivo."""
+
+    log = tmp_path / "kafka.log"
+    log.write_text("x\n", encoding="utf-8")
+    _track_with_log(os.getpid(), str(log))
+
+    async def main():
+        frames, sink, pump = await _open_log(bus, os.getpid())
+        assert await _until(sink, 1)
+
+        await _close(frames, pump)
+
+        assert len(bus) == 0
+
+    _run(main())
+
+
+def test_el_log_de_un_pid_desconocido_es_404_y_no_un_stream_mudo():
+    """Igual que el estado: si se puede decir antes de empezar, se dice antes."""
+
+    client = TestClient(web_app.app)
+
+    response = client.get("/api/workflow/stream/logs", params={"pid": 987654})
+
+    assert response.status_code == 404
+    assert "987654" in response.json()["detail"] or "trackeado" in response.json()["detail"]
+
+
+def test_el_log_sin_pid_es_400():
+    client = TestClient(web_app.app)
+
+    response = client.get("/api/workflow/stream/logs")
+
+    assert response.status_code == 400
+    assert "pid" in response.json()["detail"]

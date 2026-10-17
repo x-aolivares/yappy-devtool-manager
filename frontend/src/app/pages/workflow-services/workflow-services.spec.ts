@@ -94,6 +94,6 @@ describe('WorkflowServicesPage', () => {
     await new Promise((r) => setTimeout(r, 0));
 
     expect(comp.logs()?.scope()).toBe(5150);
-    expect(calls.logCalls).toEqual([{ pid: 5150, offset: 0, section: 'services' }]);
+    expect(calls.logStreams.map((s) => [s.pid, s.section])).toEqual([[5150, 'services']]);
   });
 });
