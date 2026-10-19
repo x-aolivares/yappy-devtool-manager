@@ -34,6 +34,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from yappy_api import app as web_app
+from yappy_api import shutdown
 from yappy_api.routes import workflow as routes_workflow
 from yappy_library.adapters import process_tracker
 from yappy_library.adapters.state_bus import StateBus
@@ -42,16 +43,19 @@ from yappy_library.config import Config
 
 @pytest.fixture
 def bus(monkeypatch):
-    """One bus object on **both** sides, for the test's lifetime.
+    """One bus object on **all** sides, for the test's lifetime.
 
-    Both halves matter, and getting only one of them right is a silent failure
+    All halves matter, and getting only one of them right is a silent failure
     rather than an error: the tracker importing the singleton by name means a test
     that swaps the route's bus but not the tracker's publishes to an audience of
     zero, and then times out waiting for a frame that was never addressed to it.
+    The shutdown module is the third: ``begin()`` wakes the streams through it, so
+    a test where one of them disagrees would never see the wake.
     """
     local = StateBus()
     monkeypatch.setattr(process_tracker, "state_bus", local)
     monkeypatch.setattr(routes_workflow, "state_bus", local)
+    monkeypatch.setattr(shutdown, "state_bus", local)
     return local
 
 
@@ -485,3 +489,53 @@ def test_el_log_sin_pid_es_400():
 
     assert response.status_code == 400
     assert "pid" in response.json()["detail"]
+
+
+# --------------------------------------------------------------------------
+# El apagado: los streams se cierran solos para que el Ctrl+C salga.
+# --------------------------------------------------------------------------
+
+
+def test_el_apagado_cierra_el_stream_de_estado_y_no_espera_al_watchdog(bus, monkeypatch):
+    """El Ctrl+C con la web abierta tiene que devolver la terminal sola.
+
+    Una conexión SSE nunca termina: su generator espera un cambio que puede no
+    venir nunca, y el shutdown graceful de uvicorn espera a que **todas** las
+    conexiones se cierren. Por eso el apagado se anuncia con el flag que los
+    streams miran en cada vuelta — y por eso el watchdog acá está puesto en treinta
+    segundos: el stream tiene que cerrarse por el aviso, no por el tick, o el
+    problema seguiría entero con un número distinto.
+    """
+    monkeypatch.setattr(routes_workflow, "STREAM_WATCHDOG_SECONDS", 30.0)
+
+    async def main():
+        frames, sink, pump = await _open(Config.with_env("dev"))
+        assert await _until(sink, 1)
+
+        shutdown.begin()  # lo que hace uvicorn con la señal, vía handle_exit
+
+        done, _ = await asyncio.wait({pump}, timeout=3.0)
+        assert pump in done, "el stream siguió abierto después del apagado"
+        await _close(frames, pump)
+        assert len(bus) == 0, "el apagado cerró la conexión sin desuscribirse"
+
+    _run(main())
+
+
+def test_el_apagado_cierra_el_stream_de_logs(bus, tmp_path):
+    """El otro stream, misma cuenta: el cierre es de los dos o no es.
+
+    Con el flag ya puesto y el archivo ni siquiera tocado: el generator devuelve
+    en su primera vuelta, sin leer nada — que es lo que importa, porque en el
+    apagado real no hay tiempo que gastar antes de irse.
+    """
+    async def main():
+        frames = routes_workflow._stream_log_frames(os.getpid(), 10, tmp_path / "nada.log")
+
+        shutdown.begin()
+
+        with pytest.raises(StopAsyncIteration):
+            await frames.__anext__()
+        assert len(bus) == 0
+
+    _run(main())

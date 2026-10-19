@@ -274,7 +274,7 @@ def test_reconciliation_runs_before_uvicorn(monkeypatch):
     order: list[str] = []
     monkeypatch.setattr(reconcile, "reconcile", lambda *a, **k: order.append("reconcile"))
     monkeypatch.setattr(warmup, "warm", lambda *a, **k: order.append("warm"))
-    monkeypatch.setattr(uvicorn, "run", lambda app, **k: order.append("uvicorn"))
+    monkeypatch.setattr(uvicorn.Server, "run", lambda self: order.append("uvicorn"))
 
     web_run.run(open_browser=False)
 
@@ -294,11 +294,11 @@ def test_a_failure_inside_reconciliation_never_stops_the_server(monkeypatch):
     started = []
     monkeypatch.setattr(reconcile, "reconcile", boom)
     monkeypatch.setattr(warmup, "warm", lambda *a, **k: None)
-    monkeypatch.setattr(uvicorn, "run", lambda app, **k: started.append(k))
+    monkeypatch.setattr(uvicorn.Server, "run", lambda self: started.append(True))
 
     web_run.run(open_browser=False)
 
-    assert started, "uvicorn never ran"
+    assert started, "the server never ran"
 
 
 # --- the rules on their own, with no OS and no tracker -------------------------

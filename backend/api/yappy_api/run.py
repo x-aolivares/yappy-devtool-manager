@@ -10,6 +10,18 @@ from copy import deepcopy
 from yappy_library.adapters.logging import LOG_TIME_FORMAT, error, info
 from yappy_library.config import Config
 
+from . import shutdown
+
+#: How long the shutdown waits for a connection that did not close on its own.
+#:
+#: Los streams SSE se cierran solos apenas la señal llega (ver ``_Server`` y
+#: :mod:`yappy_api.shutdown`), así que un apagado normal no llega acá: esto es
+#: el respaldo para lo que sí se puede clavar de verdad — un request de DB que
+#: no vuelve — donde esperar para siempre es peor que cancelar. Sin él uvicorn
+#: espera a que **todas** las conexiones se cierren, y "todas" incluía una que
+#: nunca se cierra.
+GRACEFUL_SHUTDOWN_SECONDS = 5
+
 
 def log_config() -> dict:
     """Uvicorn's logging config with a timestamp on every line.
@@ -95,6 +107,39 @@ def run(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) ->
     if open_browser:
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
     _log_shutdown_signal()
+    _serve(host=host, port=port)
+
+
+def _serve(host: str, port: int) -> None:
+    """Levantar uvicorn con el Ctrl+C cableado a los streams SSE.
+
+    Hecho a mano en vez de un ``uvicorn.run(app, ...)`` por una sola razón:
+    ``uvicorn.run`` crea el ``Server`` adentro suyo y no deja forma de tocarlo,
+    y el ``handle_exit`` de ese server es el único lugar donde este proceso se
+    entera de la señal — uvicorn instala su propio handler mientras sirve y no
+    lo encadena con el que ya había (``capture_signals``). Sin ese gancho, la
+    terminal moría pegada en ``Waiting for connections to close. (CTRL+C to
+    force quit)``: ver ``_Server`` abajo y :mod:`yappy_api.shutdown`.
+    """
+    import uvicorn
+
+    from .app import app
+
+    class _Server(uvicorn.Server):
+        """Uvicorn, con la señal de salida conectada al flag de apagado.
+
+        ``handle_exit`` es lo primero que corre con el Ctrl+C, y corre antes de
+        que uvicorn empiece a cerrar conexiones. Ahí se levanta el flag que los
+        dos streams SSE miran en cada vuelta: los generadores se cierran solos,
+        las conexiones se van, y el shutdown graceful encuentra el camino despejado
+        en vez de esperar a una conexión SSE — que no se cierra sola, espera un
+        cambio que puede no venir nunca.
+        """
+
+        def handle_exit(self, sig, frame):
+            shutdown.begin()
+            super().handle_exit(sig, frame)
+
     # `lifespan="off"` y no un try/except alrededor del arranque.
     #
     # El protocolo lifespan de uvicorn levanta una tarea que se queda esperando
@@ -105,15 +150,32 @@ def run(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) ->
     # (`uvicorn/lifespan/on.py`). De ahí salían veinte líneas de stack trace al
     # final de cada `yappy web`.
     #
-    # Un `except KeyboardInterrupt` alrededor de `uvicorn.run` no lo arregla:
-    # `uvicorn.run` ya tiene el suyo (`uvicorn/main.py`) y traga la excepción
-    # antes de que llegue acá. El traceback se loguea adentro, no se propaga.
-    #
-    # Esta app no usa el protocolo: no hay startup hooks, ni shutdown hooks, ni
-    # context manager de lifespan. El calentamiento de clientes se dispara acá
-    # mismo, antes de que uvicorn levante nada. Hay un test que falla si alguien
-    # agrega uno — con `lifespan="off"` se ignoraría en silencio.
-    uvicorn.run(app, host=host, port=port, log_config=log_config(), lifespan="off")
+    # Un `except KeyboardInterrupt` alrededor del arranque no lo arregla: eso
+    # tapa ruido de verdad también. Esta app no usa el protocolo: no hay startup
+    # hooks, ni shutdown hooks, ni context manager de lifespan. El calentamiento
+    # de clientes se dispara en `run()`, antes de que uvicorn levante nada. Hay un
+    # test que falla si alguien agrega uno — con `lifespan="off"` se ignoraría en
+    # silencio.
+    config = uvicorn.Config(
+        app,
+        host=host,
+        port=port,
+        log_config=log_config(),
+        lifespan="off",
+        timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
+    )
+    try:
+        _Server(config).run()
+    except KeyboardInterrupt:
+        # Uvicorn traga esto adentro de `uvicorn.run`; al correr el Server a mano
+        # hay que tragácelo acá. No llega del Ctrl+C — ese lo consume
+        # `handle_exit` y termina en un exit limpio — sino del SIGINT que uvicorn
+        # **relanza** al terminar el shutdown, para que el handler que había antes
+        # del suyo haga lo suyo (`capture_signals` lo re-levanta después de
+        # restaurar los handlers; ver `_log_shutdown_signal`). Un error real de
+        # arranque, como un puerto ocupado, no es un KeyboardInterrupt y sigue
+        # subiendo — lo testea `test_web_shutdown.py`.
+        pass
 
 
 def _log_shutdown_signal():

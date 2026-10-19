@@ -19,9 +19,22 @@ uvicorn lo registra como "el protocolo lifespan falló" con `exc_info`
 
 Por eso la solución es no levantar esa tarea: `lifespan="off"`. Y por eso esta app
 puede hacerlo — no usa el protocolo para nada.
+
+**La otra cara del apagado: la terminal colgada.** Un Ctrl+C con la web abierta
+dejaba la terminal esperando en "Waiting for connections to close. (CTRL+C to
+force quit)" — para siempre. La causa eran los streams SSE: su generator nunca
+termina, y el shutdown graceful de uvicorn espera a que **todas** las
+conexiones se cierren. La solución no es apurar a uvicorn: es que los streams
+se cierren solos cuando llega la señal, cableados en el `handle_exit` del
+Server — y por eso el launcher corre un `uvicorn.Server` propio en vez de un
+`uvicorn.run`: éste crea el Server adentro suyo y no deja tocarlo. Estos
+tests fijan las dos cosas que ese gancho no puede perder: `lifespan="off"` y
+que un error real de arranque siga subiendo.
 """
 
 from __future__ import annotations
+
+import signal
 
 import pytest
 
@@ -32,8 +45,9 @@ def test_el_servidor_se_levanta_sin_protocolo_lifespan(monkeypatch):
     Es lo único que se puede verificar de este bug: el evento de consola de
     Windows no se le manda a un proceso hijo desde el entorno de tests, así que la
     reproducción end-to-end no existe acá. Lo que sí es comprobable es que
-    uvicorn arranque sin la tarea del lifespan — que es la tarea que se cancela y
-    la que loguea el error."""
+    uvicorn levante sin la tarea del lifespan — que es la tarea que se cancela y
+    la que loguea el error — y con un tope para el shutdown, que es lo que
+    garantiza que la terminal nunca se quede esperando para siempre."""
     import uvicorn
 
     from yappy_api import run as web_run
@@ -41,15 +55,17 @@ def test_el_servidor_se_levanta_sin_protocolo_lifespan(monkeypatch):
 
     captured = {}
 
-    def fake_run(app, **kwargs):
-        captured.update(kwargs)
+    def fake_run(self):
+        captured["lifespan"] = self.config.lifespan
+        captured["timeout_graceful_shutdown"] = self.config.timeout_graceful_shutdown
 
-    monkeypatch.setattr(uvicorn, "run", fake_run)
+    monkeypatch.setattr(uvicorn.Server, "run", fake_run)
     monkeypatch.setattr(warmup, "warm", lambda *a, **k: None)
 
     web_run.run(open_browser=False)
 
     assert captured["lifespan"] == "off"
+    assert captured["timeout_graceful_shutdown"] == web_run.GRACEFUL_SHUTDOWN_SECONDS
 
 
 def test_la_app_no_registra_hooks_de_lifespan():
@@ -89,7 +105,7 @@ def test_calentar_sigue_pasando_por_antes_de_uvicorn(monkeypatch):
 
     order: list[str] = []
 
-    monkeypatch.setattr(uvicorn, "run", lambda app, **k: order.append("uvicorn"))
+    monkeypatch.setattr(uvicorn.Server, "run", lambda self: order.append("uvicorn"))
     monkeypatch.setattr(warmup, "warm", lambda *a, **k: order.append("warm"))
 
     web_run.run(open_browser=False)
@@ -104,11 +120,41 @@ def test_un_error_real_de_arranque_sigue_subiendo(monkeypatch):
     from yappy_api import run as web_run
     from yappy_api import warmup
 
-    def boom(app, **kwargs):
+    def boom(self):
         raise RuntimeError("el puerto 8765 está ocupado")
 
-    monkeypatch.setattr(uvicorn, "run", boom)
+    monkeypatch.setattr(uvicorn.Server, "run", boom)
     monkeypatch.setattr(warmup, "warm", lambda *a, **k: None)
 
     with pytest.raises(RuntimeError, match="ocupado"):
         web_run.run(open_browser=False)
+
+
+def test_el_ctrl_c_levanta_el_flag_que_cierra_los_streams(monkeypatch):
+    """El gancho que evita la terminal colgada, en el momento exacto.
+
+    `handle_exit` es lo primero que corre con el Ctrl+C — uvicorn lo instala como
+    handler de señales mientras sirve — y corre **antes** de que uvicorn empiece a
+    cerrar conexiones. Llamarla acá es lo mismo que un Ctrl+C, con la misma cadena
+    que recorre uvicorn. Lo que se fija es el efecto: el flag que los dos streams
+    SSE miran en cada vuelta, que los cierra y devuelve la terminal.
+    """
+    import uvicorn
+
+    from yappy_api import run as web_run
+    from yappy_api import shutdown
+    from yappy_api import warmup
+
+    def fake_run(self):
+        # Dos veces, como el segundo Ctrl+C que uvicorn usa para forzar: tiene
+        # que ser un no-op, no un segundo apagado.
+        self.handle_exit(signal.SIGINT, None)
+        self.handle_exit(signal.SIGINT, None)
+        assert self.force_exit, "el segundo Ctrl+C no llegó a forzar la salida"
+
+    monkeypatch.setattr(uvicorn.Server, "run", fake_run)
+    monkeypatch.setattr(warmup, "warm", lambda *a, **k: None)
+
+    web_run.run(open_browser=False)
+
+    assert shutdown.is_set(), "el Ctrl+c no levantó el flag que cierra los streams"

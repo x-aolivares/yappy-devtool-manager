@@ -30,6 +30,7 @@ from yappy_library.application.workflow import actions, catalog, catalog_write
 from yappy_library.application.workflow import service as workflow_service
 from yappy_library.config import Config
 
+from .. import shutdown
 from ..schemas import (
     WorkflowActionResponse,
     WorkflowCatalogAddRequest,
@@ -180,6 +181,14 @@ async def _stream_frames(cfg: Config, cluster: str):
     last: str | None = None
     try:
         while True:
+            if shutdown.is_set():
+                # El server se está apagando. Cerrar el stream desde adentro es
+                # lo que hace que el Ctrl+C salga limpio: una conexión SSE no
+                # termina sola, y el shutdown graceful de uvicorn espera a que
+                # todas se cierren — la terminal moría pegada en "Waiting for
+                # connections to close" hasta un segundo Ctrl+C. Ver
+                # `yappy_api.shutdown`.
+                return
             snap = await run_in_threadpool(workflow_service.snapshot, cfg, cluster)
             body = _state_body(snap)
             signature = _signature(body)
@@ -436,6 +445,11 @@ async def _stream_log_frames(pid: int, lines: int, path: Path):
     try:
         first = True
         while True:
+            if shutdown.is_set():
+                # Mismo cierre que en `_stream_frames`, y por la misma razón:
+                # el apagado no puede esperar a una conexión SSE que no se
+                # cierra sola.
+                return
             if not [e for e in get_tracked_processes() if e.get("pid") == pid]:
                 # El `gone` del panel: el pid salió del tracker, así que no queda nada
                 # que preguntar. Un último frame y el stream se cierra.
