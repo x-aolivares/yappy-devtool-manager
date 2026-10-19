@@ -109,6 +109,7 @@ export function estado(over: Partial<WorkflowStateResponse> = {}): WorkflowState
     env: 'dev',
     generated_at: 1757000000,
     remote_host: 'nlbcapabilities.dev.yappycloud.com',
+    is_local: false,
     resources: [],
     ports: [],
     unattributed: [],

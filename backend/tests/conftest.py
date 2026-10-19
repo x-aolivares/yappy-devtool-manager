@@ -15,12 +15,26 @@ from the blast radius.
 
 from __future__ import annotations
 
+import os
 import threading
 
 import pytest
 
 from yappy_api import shutdown
 from yappy_library.adapters import process_tracker
+
+#: Antes de que nada importe `yappy_api.app`.
+#:
+#: Sin esto, un `frontend/dist/browser` que exista en el checkout —basta con
+#: haber compilado una vez— hace que la app registre la SPA y su catch-all, y
+#: toda la suite de `TestClient` pasa a hablar con Angular en vez de con la API.
+#: El síntoma es engañoso: un `POST` a un endpoint real contesta `index.html` con
+#: un 405, y se lee como un endpoint roto.
+#:
+#: El valor es un directorio vacío a propósito: `_create_app` registra la SPA
+#: cuando el directorio existe, así que el camino de "no hay build" se prueba
+#: con un directorio que no existe (los tests lo setean por su cuenta).
+os.environ.setdefault("YAPPY_WEB_DIST", os.path.join(os.path.dirname(__file__), "empty-dist"))
 
 
 @pytest.fixture(autouse=True)

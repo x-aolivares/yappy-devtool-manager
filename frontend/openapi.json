@@ -4754,6 +4754,12 @@
             "type": "number",
             "title": "Generated At"
           },
+          "is_local": {
+            "type": "boolean",
+            "title": "Is Local",
+            "description": "True when the environment is reached over TCP (`Config.is_local`). The screen says so instead of drawing AWS tables that have nothing to show: a local environment has no SSM, no ECS and no Aurora tunnel.",
+            "default": false
+          },
           "catalog_configured": {
             "type": "boolean",
             "title": "Catalog Configured",

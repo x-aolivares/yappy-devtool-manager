@@ -96,6 +96,11 @@ def _definition(cfg: Config, key: str):
     for definition in resources_for(cfg):
         if definition.key == key:
             return definition
+    if getattr(cfg, "is_local", False):
+        raise StartRefused(
+            f"El ambiente {cfg.env or ''} es local: no tiene el recurso '{key}'. "
+            "Sólo Kafka corre sin AWS."
+        )
     raise StartRefused(f"No conozco el recurso '{key}'")
 
 
@@ -141,6 +146,13 @@ def _spawn_tunnel(
     except ToolUnavailable as exc:
         raise StartRefused(
             f"No se pudo levantar {label or 'el túnel'}: {exc.reason}"
+        ) from exc
+    except ValueError as exc:
+        # `cfg.require` raises ValueError for a missing AWS_INSTANCE/AWS_REGION.
+        # It used to escape into the worker thread as a 500 with a traceback;
+        # the row knows how to show a refusal, so let it.
+        raise StartRefused(
+            f"No se pudo levantar {label or 'el túnel'}: {exc}"
         ) from exc
 
 
@@ -219,14 +231,19 @@ def _start_db(cfg: Config, port: int) -> subprocess.Popen:
 
     try:
         write_local_env(generate_token(cfg))
+        remote_host = cfg.require("AWS_HOST")
     except SystemExit as exc:
+        raise StartRefused(f"No se pudo generar el token de RDS: {exc}") from exc
+    except ValueError as exc:
+        # A missing AWS_HOST is a configuration refusal, not a server crash.
+        # The route already knows how to show a `StartRefused` (409 + reason).
         raise StartRefused(f"No se pudo generar el token de RDS: {exc}") from exc
 
     return _spawn_tunnel(
         cfg,
         port=int(cfg.get("AWS_PORT", "53360")),
         local_port=port,
-        remote_host=cfg.require("AWS_HOST"),
+        remote_host=remote_host,
         cluster="",
         label="Tunnel Aurora",
         env=cfg.env or "",
@@ -235,6 +252,14 @@ def _start_db(cfg: Config, port: int) -> subprocess.Popen:
 
 def start_port(cfg: Config, cluster: str, port: int, label: str = "") -> dict:
     """Start one catalog row: a tunnel to ``port`` on ``cluster``."""
+    if getattr(cfg, "is_local", False):
+        # The catalog is hidden for local environments, but the endpoint is
+        # reachable by a stale tab or a curl. Refusing here is what keeps "local
+        # means no AWS" true on every path instead of only on the happy one.
+        raise StartRefused(
+            f"El ambiente {cfg.env or ''} es local: se conecta por TCP y no abre "
+            "túneles SSM."
+        )
     ensure_port_free(port, cluster=cluster)
 
     remote_host = _remote_host_for(cfg, None, cluster)

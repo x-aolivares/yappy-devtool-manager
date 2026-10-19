@@ -6,6 +6,9 @@ JS pages are intentionally not served anymore.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
@@ -13,7 +16,21 @@ from yappy_library.paths import project_root
 
 from .routes import db, deployments, envs, params, sessions, workflow
 
-FRONTEND_DIST = project_root() / "frontend" / "dist" / "browser"
+#: Los assets compilados por Angular.
+#:
+#: Dónde se busca el build es una elección, y esta es la que permite correr los
+#: tests sin él. Antes era sólo `<repo>/frontend/dist/browser`: en un checkout de
+#: desarrollo ese directorio existe en cuanto alguien compila una vez, y desde
+#: ese momento toda la suite —`TestClient` incluido— pasa a ser servida por la
+#: app de Angular en vez de por su propia API. Un `POST` a un endpoint real
+#: contesta el `index.html` con un 405, que se lee como un endpoint roto cuando
+#: el roto es el entorno de test.
+#:
+#: Con `YAPPY_WEB_DIST` apuntando a un directorio **vacío**, la ruta de la SPA no
+#: se registra y el catch-all `/{full_path:path}` no se come nada. Es lo que
+#: `backend/tests/conftest.py` setea para toda la suite: los tests que prueban el
+#: camino de "no hay build" setean `FRONTEND_DIST` a un directorio inexistente.
+FRONTEND_DIST = Path(os.environ["YAPPY_WEB_DIST"]) if os.environ.get("YAPPY_WEB_DIST") else project_root() / "frontend" / "dist" / "browser"
 
 
 def _serve_spa(app: FastAPI) -> None:

@@ -28,22 +28,30 @@
     <span class="muted">no dependen del cluster</span>
   </div>
 
-  <app-resource-cards
-    [rows]="rows()"
-    [busy]="busy()"
-    portMode="remote"
-    emptyText="No hay servicios con destino propio en este ambiente."
-    (start)="startResource($event)"
-    (stop)="stopOne($event)"
-    (logs)="logs()?.open($event)"
-    (fix)="askFix($event)"
-  />
+  @if (isLocal()) {
+    <p class="callout warn">
+      <strong>{{ env() }} es un ambiente local.</strong>
+      Databricks y Bastion se alcanzan por sesiones SSM, y este ambiente no tiene
+      AWS. Cambiá a un ambiente remoto para verlos.
+    </p>
+  } @else {
+    <app-resource-cards
+      [rows]="rows()"
+      [busy]="busy()"
+      portMode="remote"
+      emptyText="No hay servicios con destino propio en este ambiente."
+      (start)="startResource($event)"
+      (stop)="stopOne($event)"
+      (logs)="logs()?.open($event)"
+      (fix)="askFix($event)"
+    />
 
-  <p class="callout err">
-    <strong><code>yappy stop tunnel</code> mata todas las sesiones SSM.</strong>
-    Incluye las que levantaste desde la terminal y las de otro proyecto. Por eso las ajenas van con
-    borde punteado y la etiqueta <em>ajeno</em>: la lista no las mezcla con las que arrancó la web.
-  </p>
+    <p class="callout err">
+      <strong><code>yappy stop tunnel</code> mata todas las sesiones SSM.</strong>
+      Incluye las que levantaste desde la terminal y las de otro proyecto. Por eso las ajenas van con
+      borde punteado y la etiqueta <em>ajeno</em>: la lista no las mezcla con las que arrancó la web.
+    </p>
+  }
 </section>
 
 <app-workflow-summary

@@ -13,6 +13,11 @@ export interface WorkflowStateResponse {
   cluster: string;
   env: string;
   generated_at: number;
+
+  /**
+   * True when the environment is reached over TCP (`Config.is_local`). The screen says so instead of drawing AWS tables that have nothing to show: a local environment has no SSM, no ECS and no Aurora tunnel.
+   */
+  is_local?: boolean;
   ports: Array<WorkflowPortInfo>;
   remote_host: string;
   resources: Array<WorkflowResourceInfo>;

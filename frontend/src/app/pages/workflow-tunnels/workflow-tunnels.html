@@ -28,6 +28,14 @@
     <span class="muted">port-forwarding · <code>yappy run tunnel</code></span>
   </div>
 
+  @if (isLocal()) {
+    <p class="callout warn">
+      <strong>{{ env() }} es un ambiente local.</strong>
+      Los túneles del catálogo son sesiones SSM contra el cluster, y este ambiente
+      no tiene AWS: se conecta directo por TCP. Cambiá a un ambiente remoto para
+      ver el catálogo y levantarlos.
+    </p>
+  } @else {
   <div class="columns">
     <div class="field">
       <div class="field-label">Cluster</div>
@@ -180,6 +188,7 @@
     conexiones que no producen un byte. Por eso la fila queda en <em>levantando…</em> hasta un
     readiness check de verdad, y no sólo hasta que el proceso existe.
   </p>
+  }
 </section>
 
 <!--

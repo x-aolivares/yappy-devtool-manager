@@ -102,6 +102,8 @@ def snapshot(cfg: Config, cluster: str) -> WorkflowSnapshot:
     """One consistent read of every resource and every catalog row."""
     tracked = get_tracked_processes()
     holders = _holders_by_port(tracked)
+    # `getattr` for the same reason as the registry: trimmed configs in tests.
+    is_local = bool(getattr(cfg, "is_local", False))
 
     resources: list[ResourceRow] = []
     for definition in resources_for(cfg):
@@ -130,7 +132,11 @@ def snapshot(cfg: Config, cluster: str) -> WorkflowSnapshot:
         )
 
     ports: list[PortRow] = []
-    for catalog_entry in entries_for(cfg, cluster):
+    # Cluster tunnels are SSM sessions. A local environment inherits
+    # `CLUSTER_PORTS` from `env.base`, but there is no AWS to open it against,
+    # so the catalog is not offered rather than offered and refused.
+    catalog = [] if is_local else entries_for(cfg, cluster)
+    for catalog_entry in catalog:
         candidates = holders.get(catalog_entry.port, [])
         entry = _owner(candidates, cluster)
         state, pid, since, foreign, log_file = _attributed(entry)
@@ -161,6 +167,7 @@ def snapshot(cfg: Config, cluster: str) -> WorkflowSnapshot:
         cluster=cluster,
         remote_host=remote_host_for(cfg, cluster),
         generated_at=time.time(),
+        is_local=is_local,
         catalog_configured=is_configured(cfg),
         resources=resources,
         ports=ports,

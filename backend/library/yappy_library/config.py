@@ -196,10 +196,18 @@ class Config:
         Manager: anything AWS-shaped must be refused instead of silently falling
         back to the inherited `base-profile` credentials.
 
-        The flag is the `DB_MODE=local` key already declared in
-        `backend/config/env.local`.
+        **Two keys say it, because two have said it over time.** `DB_MODE=local`
+        is the explicit one. `AWS_ENVIRONMENT=local` is what
+        `backend/config/env.environment.example` documented as "use the machine's
+        native MySQL", and a real `env.local` declared that and nothing else.
+        Reading only `DB_MODE` made that file behave as an AWS environment — it
+        warmed AWS clients, offered the Aurora row and reached `AWS_HOST` at click
+        time. Accepting both is what makes the template true again.
         """
-        return (self.get("DB_MODE") or "").strip().lower() == "local"
+        return any(
+            (self.get(key) or "").strip().lower() == "local"
+            for key in ("DB_MODE", "AWS_ENVIRONMENT")
+        )
 
     @property
     def instance(self) -> str | None:

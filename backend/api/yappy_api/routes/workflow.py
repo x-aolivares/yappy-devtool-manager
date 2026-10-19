@@ -147,6 +147,7 @@ def _state_body(snap) -> dict:
         "cluster": snap.cluster,
         "remote_host": snap.remote_host,
         "generated_at": snap.generated_at,
+        "is_local": snap.is_local,
         "catalog_configured": snap.catalog_configured,
         "resources": [_resource_info(r) for r in snap.resources],
         "ports": [_port_info(p) for p in snap.ports],

@@ -156,6 +156,13 @@ export abstract class WorkflowSectionPage {
   protected readonly state = signal<WorkflowStateResponse>(EMPTY_STATE);
 
   readonly remoteHost = computed<string>(() => this.state().remote_host);
+  /**
+   * El ambiente elegido se alcanza por TCP: no tiene SSM, ECS ni Aurora.
+   *
+   * El backend ya no manda esas filas; esto es para que el vacío diga *por qué*
+   * está vacío en vez de ofrecer un botón que sólo puede fallar.
+   */
+  readonly isLocal = computed<boolean>(() => this.state().is_local ?? false);
   /** False cuando `CLUSTER_PORTS` no está seteado: el vacío se arregla distinto. */
   readonly catalogConfigured = computed<boolean>(
     () => this.state().catalog_configured ?? false,
@@ -461,6 +468,6 @@ export abstract class WorkflowSectionPage {
 }
 
 export const EMPTY_STATE: WorkflowStateResponse = {
-  cluster: '', env: '', generated_at: 0, catalog_configured: false,
+  cluster: '', env: '', generated_at: 0, is_local: false, catalog_configured: false,
   ports: [], remote_host: '', resources: [], unattributed: [],
 };

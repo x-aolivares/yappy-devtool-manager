@@ -42,13 +42,21 @@ def _kafka_server_port(cfg: Config) -> int:
 
 
 def resources_for(cfg: Config) -> list[ResourceDef]:
-    """Every resource, in the order the screen groups them."""
+    """Every resource, in the order the screen groups them.
+
+    A local environment (`Config.is_local`) only gets the two Kafka rows. The
+    other four are SSM tunnels or an Aurora token: a local environment has no
+    AWS to point them at, so a button there could only fail. It is the same rule
+    the params pages follow — a control that cannot work is worse than no
+    control — applied where the registry is read, so ``start_resource`` inherits
+    the refusal instead of having to re-derive it.
+    """
     env = cfg.env or "dev"
     kafdrop_port = _kafdrop_port(cfg, env)
     databricks_port = _databricks_port(cfg, env)
     broker_port = _kafka_server_port(cfg)
 
-    return [
+    definitions = [
         ResourceDef(
             key="kafka-server",
             group="kafka",
@@ -103,3 +111,10 @@ def resources_for(cfg: Config) -> list[ResourceDef]:
             probe="mysql",
         ),
     ]
+
+    # `getattr` because several callers pass a trimmed config object (the
+    # workflow tests build one from a `SimpleNamespace`); production `Config`
+    # always has the property.
+    if getattr(cfg, "is_local", False):
+        return [definition for definition in definitions if definition.group == "kafka"]
+    return definitions

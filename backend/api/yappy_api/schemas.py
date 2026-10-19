@@ -627,6 +627,12 @@ class WorkflowStateResponse(BaseModel):
     cluster: str
     remote_host: str
     generated_at: float
+    is_local: bool = Field(
+        False,
+        description="True when the environment is reached over TCP (`Config.is_local`). "
+        "The screen says so instead of drawing AWS tables that have nothing to show: "
+        "a local environment has no SSM, no ECS and no Aurora tunnel.",
+    )
     catalog_configured: bool = Field(
         True,
         description="False when `CLUSTER_PORTS` is not set. The empty table means different "

@@ -156,6 +156,9 @@ class WorkflowSnapshot:
     cluster: str
     remote_host: str
     generated_at: float
+    #: True for an environment reached over TCP (`Config.is_local`). The screen
+    #: uses it to say "no hay AWS acá" instead of drawing empty AWS tables.
+    is_local: bool = False
     #: False when `CLUSTER_PORTS` is not set. The empty table means different
     #: things depending on this: "nadie configuró el catálogo" is an edit to
     #: `env.base`, while "este cluster no tiene puertos" is a click.

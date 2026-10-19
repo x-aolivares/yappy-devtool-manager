@@ -57,6 +57,34 @@ def test_is_local_false_for_another_db_mode(tmp_path, monkeypatch):
     assert cfg.is_local is False
 
 
+def test_is_local_true_when_aws_environment_is_local(tmp_path, monkeypatch):
+    """`env.environment.example` documenta `AWS_ENVIRONMENT=local`, no `DB_MODE`.
+
+    Un `env.local` escrito según el template tiene que contar como local. Cuando
+    no contaba, la web le calentaba clientes de AWS, le ofrecía la fila de Aurora
+    y el click moría en `AWS_HOST` con un 500.
+    """
+    cfg = _cfg(tmp_path, monkeypatch, "AWS_ENVIRONMENT=local\n")
+    assert cfg.is_local is True
+
+
+@pytest.mark.parametrize("value", ["LOCAL", "  Local  ", "LoCaL\n"])
+def test_aws_environment_tolerates_case_and_whitespace(tmp_path, monkeypatch, value):
+    cfg = _cfg(tmp_path, monkeypatch, f"AWS_ENVIRONMENT={value}\n")
+    assert cfg.is_local is True
+
+
+def test_is_local_false_for_a_remote_aws_environment(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, monkeypatch, "AWS_ENVIRONMENT=qa\n")
+    assert cfg.is_local is False
+
+
+def test_either_key_is_enough(tmp_path, monkeypatch):
+    """No hace falta declarar las dos: una sola alcanza para ser local."""
+    cfg = _cfg(tmp_path, monkeypatch, "DB_MODE=local\nAWS_ENVIRONMENT=qa\n")
+    assert cfg.is_local is True
+
+
 # --- La guarda de params ---------------------------------------------------
 
 
