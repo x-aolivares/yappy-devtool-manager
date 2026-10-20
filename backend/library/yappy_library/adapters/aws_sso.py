@@ -29,6 +29,12 @@ from botocore.exceptions import ClientError
 from .aws_ini import aws_dir, read_ini, write_atomic
 from .logging import die, info, success
 
+#: Cuánto vive un device code de SSO si AWS no dice otra cosa.
+#:
+#: Es el deadline del polling: sin él, un login que el developer nunca
+#: completa en el navegador deja el comando esperando para siempre.
+DEFAULT_DEVICE_CODE_SECONDS = 600
+
 
 def sso_cache_path(session_name: str) -> Path:
     """La carpeta del cache de SSO para una sesión, con el nombre que usa AWS CLI."""
@@ -39,20 +45,34 @@ def sso_cache_path(session_name: str) -> Path:
 
 
 def _sso_oidc_client(region: str):
-    """Create a botocore SSO-OIDC client without triggering credential_process."""
-    saved = {}
-    for var in ("AWS_PROFILE", "AWS_DEFAULT_PROFILE", "AWS_SHARED_CREDENTIALS_FILE"):
-        if var in os.environ:
-            saved[var] = os.environ.pop(var)
-    try:
-        bc_session = botocore.session.Session()
-        return bc_session.create_client(
-            "sso-oidc",
-            region_name=region,
-            config=BotoConfig(signature_version=UNSIGNED),
-        )
-    finally:
-        os.environ.update(saved)
+    """A botocore SSO-OIDC client that ignores the environment's AWS profile.
+
+    The device flow does not sign requests, but botocore still resolves the
+    profile when it builds the client. With a profile that carries a
+    ``credential_process`` that means running an external command to get a
+    credential this client will never use — and with a profile that does not
+    exist it is a ``ProfileNotFound`` and no login at all.
+
+    The old implementation popped ``AWS_PROFILE``, ``AWS_DEFAULT_PROFILE`` and
+    ``AWS_SHARED_CREDENTIALS_FILE`` from ``os.environ`` and put them back in a
+    ``finally``. That is process-global state: between the pop and the
+    restore, every other thread sees a different AWS profile — and the server
+    is multi-threaded. The override below belongs to one session, so only this
+    client sees it.
+    """
+    session = botocore.session.Session()
+    # `Session.set_config_variable` no sirve acá: escribe en los
+    # `_session_instance_vars`, que no alimentan a
+    # `get_config_variable('profile')` — el profile se resuelve de otro lado
+    # y el override ahí no se ve.
+    store = session.get_component("config_store")
+    store.set_config_variable("profile", None)
+    store.set_config_variable("credentials_file", str(aws_dir() / "credentials"))
+    return session.create_client(
+        "sso-oidc",
+        region_name=region,
+        config=BotoConfig(signature_version=UNSIGNED),
+    )
 
 
 def _sso_settings(profile: str) -> tuple[str, str, str]:
@@ -122,6 +142,11 @@ def login(profile: str) -> Path:
 
     # 4 — Poll for token
     interval = auth.get("interval", 5)
+    # El device code tiene vencimiento. Sin deadline, un developer que nunca
+    # completa el login en el navegador deja el comando esperando para
+    # siempre: el polling no termina nunca y el proceso no vuelve.
+    expires_in = auth.get("expiresIn", DEFAULT_DEVICE_CODE_SECONDS)
+    deadline = time.monotonic() + expires_in
     info(f"Waiting for authorization (polling every {interval}s)...")
     while True:
         try:
@@ -135,6 +160,12 @@ def login(profile: str) -> Path:
         except ClientError as e:
             code = e.response.get("Error", {}).get("Code", "")
             if code == "AuthorizationPendingException":
+                if time.monotonic() >= deadline:
+                    die(
+                        f"El login de SSO expiró después de {expires_in}s. "
+                        "Volvé a correr el comando y completá la autorización "
+                        "en el navegador."
+                    )
                 time.sleep(interval)
             else:
                 die(f"SSO authorization failed: {e}")
