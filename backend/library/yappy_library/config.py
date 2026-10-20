@@ -62,6 +62,41 @@ def default_kafka_path() -> str:
     return str(project_root() / "devkit" / "kafka")
 
 
+#: El puerto local donde escucha el túnel SSM a la base.
+DEFAULT_DB_PORT = "8100"
+
+#: El puerto MySQL de una conexión directa, sin túnel.
+DEFAULT_MYSQL_PORT = "3306"
+
+#: El puerto de Aurora que reenvía el túnel SSM.
+DEFAULT_AWS_PORT = "53360"
+
+
+def aws_port_of(cfg) -> int:
+    """El puerto de Aurora que reenvía el túnel SSM, para una config.
+
+    La constante vive acá y no repetida en los ocho lugares que la usaban: un
+    literal copiado se desincroniza sin que nadie lo note, y el default
+    duplicado en la library y en el CLI son dos números que van a divergir.
+    """
+    return int(cfg.get("AWS_PORT", DEFAULT_AWS_PORT))
+
+
+def mysql_port_of(cfg) -> int:
+    """El puerto MySQL de la conexión directa, sin túnel SSM.
+
+    ``DB_PORT`` es el puerto **local** del túnel SSM, que es otra cosa. Los dos
+    usaban la misma clave con defaults distintos —8100 y 3306—, y sólo
+    funcionaba porque las dos rutas son excluyentes: una o la otra. El
+    template declaraba las dos en el mismo archivo, con la misma clave.
+
+    La directa usa ``DB_MYSQL_PORT``. ``DB_PORT`` se sigue aceptando, porque
+    un environment que ya lo tenía cargado no puede dejar de funcionar.
+    """
+    raw = cfg.get("DB_MYSQL_PORT") or cfg.get("DB_PORT") or DEFAULT_MYSQL_PORT
+    return int(raw)
+
+
 class Config:
     _config_dir: Path | None = None
 
@@ -172,8 +207,16 @@ class Config:
         # Precedence: (1) config files, (2) explicit YAPPY_* overrides,
         # (3) plain os.environ as a last resort when the key is not defined
         # in any config file.
-        if key in self._values:
-            return self._values[key]
+        #
+        # El valor del archivo se mira con `is not None` y no con
+        # `key in self._values`: una clave escrita **sin valor** —`AWS_PROFILE=`
+        # sin nada atrás— vale `None` en el dotenv, y con la otra forma el
+        # `get` devolvía `None` sin llegar a los overrides. O sea, `require()`
+        # fallaba con "Missing required config" aunque la variable estuviera
+        # seteada en el entorno, que es justo lo que el override existe para.
+        value = self._values.get(key)
+        if value is not None:
+            return value
         yappy_val = os.environ.get(f"YAPPY_{key}")
         if yappy_val is not None:
             return yappy_val
@@ -241,11 +284,13 @@ class Config:
 
     @property
     def db_port(self) -> int:
-        return int(self.get("DB_PORT", "8100"))
+        """El puerto **local** donde escucha el túnel SSM a la base."""
+        return int(self.get("DB_PORT", DEFAULT_DB_PORT))
 
     @property
     def aws_port(self) -> int:
-        return int(self.get("AWS_PORT", "53360"))
+        """El puerto de Aurora que reenvía el túnel SSM."""
+        return aws_port_of(self)
 
     @property
     def kafka_path(self) -> str:

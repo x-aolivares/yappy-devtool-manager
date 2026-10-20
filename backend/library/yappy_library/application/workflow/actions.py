@@ -30,7 +30,7 @@ from yappy_library.application.workflow.models import is_foreign, is_live, state
 from yappy_library.application.workflow.registry import resources_for
 from yappy_library.application.workflow.service import _owner
 from yappy_library.application.workflow.supervisor import stop_pid, supervise
-from yappy_library.config import Config
+from yappy_library.config import Config, aws_port_of
 
 
 class StartRefused(Exception):
@@ -246,7 +246,7 @@ def _start_db(cfg: Config, port: int) -> subprocess.Popen:
 
     return _spawn_tunnel(
         cfg,
-        port=int(cfg.get("AWS_PORT", "53360")),
+        port=aws_port_of(cfg),
         local_port=port,
         remote_host=remote_host,
         cluster="",

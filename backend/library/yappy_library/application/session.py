@@ -8,7 +8,7 @@ from yappy_library.adapters.database.credentials import generate_token, write_lo
 from yappy_library.adapters.logging import die, info, success, warn
 from yappy_library.adapters.processes import BaseCommand, _aws_cmd
 from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES, cluster_domain
-from yappy_library.config import Config
+from yappy_library.config import Config, aws_port_of
 from yappy_library.domain.models import DBResult, PFResult
 
 #: How long to wait for MySQL to answer on the freshly opened tunnel. The same
@@ -116,7 +116,7 @@ class Session:
 
         proc = cmd.ssm_tunnel(
             instance=cfg.require("AWS_INSTANCE"),
-            port=int(cfg.get("AWS_PORT", "53360")),
+            port=aws_port_of(cfg),
             local_port=cfg.db_port,
             region=cfg.require("AWS_REGION"),
             profile=cfg.profile,

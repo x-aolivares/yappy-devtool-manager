@@ -21,9 +21,9 @@ from typing import Iterator
 import pymysql
 from dotenv import dotenv_values
 
-from yappy_library.adapters.database.credentials import generate_token
+from yappy_library.adapters.database.credentials import generate_token, resolve_db_user
 from yappy_library.adapters.processes import BaseCommand, ToolUnavailable, tunnel_log_path
-from yappy_library.config import Config
+from yappy_library.config import Config, mysql_port_of
 from yappy_library.paths import project_config_dir
 
 
@@ -37,13 +37,7 @@ def _local_env_values() -> dict[str, str]:
 
 
 def _resolve_user(cfg: Config, local: dict[str, str]) -> str:
-    return (
-        cfg.get("DB_USER")
-        or local.get("DB_USER")
-        or cfg.aws_user
-        or cfg.get("AWS_USER")
-        or ""
-    )
+    return resolve_db_user(cfg, local)
 
 
 #: The MySQL handshake starts with a 4-byte little-endian payload length, a
@@ -152,7 +146,7 @@ def connect(cfg: Config) -> Iterator[pymysql.connections.Connection]:
                 "(DB_HOST está configurado pero no hay usuario)."
             )
         password = cfg.get("DB_PASSWORD") or local.get("DB_PASSWORD") or ""
-        conn = _open(direct_host, int(cfg.get("DB_PORT", "3306")), user, password)
+        conn = _open(direct_host, mysql_port_of(cfg), user, password)
         try:
             yield conn
         finally:

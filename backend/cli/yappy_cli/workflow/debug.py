@@ -10,7 +10,7 @@ from yappy_library.adapters.database.credentials import generate_token as _gener
 from yappy_library.adapters.database.credentials import write_local_env as _write_local_env
 from yappy_library.adapters.kafka.service import KafkaService, KafkaUnavailable
 from yappy_library.adapters.processes import BaseCommand, _aws_cmd
-from yappy_library.config import Config, win_to_posix
+from yappy_library.config import Config, aws_port_of, win_to_posix
 from yappy_library.adapters.logging import die, info, success, warn
 from ..deprecation import warn_deprecated
 
@@ -84,7 +84,7 @@ def debug_local(
     _write_local_env(token)
     db_proc = wf_cmd.ssm_tunnel(
         instance=cfg.require("AWS_INSTANCE"),
-        port=int(cfg.get("AWS_PORT", "53360")),
+        port=aws_port_of(cfg),
         local_port=cfg.db_port,
         region=cfg.require("AWS_REGION"),
         profile=cfg.profile,

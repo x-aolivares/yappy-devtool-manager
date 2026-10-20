@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from yappy_library.adapters.kafka.service import _broker_port
 from yappy_library.adapters.kafka.service import KAFDROP_UI_PORT
-from yappy_library.config import Config
+from yappy_library.config import Config, aws_port_of
 from yappy_library.application.workflow.models import ResourceDef
 
 
@@ -106,7 +106,7 @@ def resources_for(cfg: Config) -> list[ResourceDef]:
             group="db",
             name="Tunnel Aurora",
             detail="Token RDS + port-forward al MySQL",
-            remote_port=int(cfg.get("AWS_PORT", "53360")),
+            remote_port=aws_port_of(cfg),
             local_port=cfg.db_port,
             probe="mysql",
         ),

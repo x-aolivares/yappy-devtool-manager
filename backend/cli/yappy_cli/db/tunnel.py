@@ -14,7 +14,7 @@ from yappy_library.adapters.database.credentials import (
     write_local_env as _write_local_env,
 )
 from yappy_library.adapters.processes import BaseCommand, detached_popen_kwargs
-from yappy_library.config import Config
+from yappy_library.config import Config, aws_port_of
 from ..deprecation import warn_deprecated
 from yappy_library.adapters.logging import die, info, success, warn
 
@@ -128,7 +128,7 @@ def up(
     try:
         proc = db_cmd.ssm_tunnel(
             instance=cfg.require("AWS_INSTANCE"),
-            port=int(cfg.get("AWS_PORT", "53360")),
+            port=aws_port_of(cfg),
             local_port=cfg.db_port,
             region=cfg.require("AWS_REGION"),
             profile=cfg.profile,
@@ -144,7 +144,7 @@ def up(
         _write_local_env(new_token)
         return db_cmd.ssm_tunnel(
             instance=cfg.require("AWS_INSTANCE"),
-            port=int(cfg.get("AWS_PORT", "53360")),
+            port=aws_port_of(cfg),
             local_port=cfg.db_port,
             region=cfg.require("AWS_REGION"),
             profile=cfg.profile,
