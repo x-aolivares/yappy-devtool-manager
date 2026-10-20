@@ -132,6 +132,43 @@ def test_starting_a_cluster_port_on_a_local_env_is_refused():
     assert "local" in excinfo.value.reason
 
 
+def test_starting_a_cluster_port_without_an_environment_is_refused():
+    """Sin ambiente no hay a qué apuntar.
+
+    El ámbito vacío es el de la pantalla de Kafka: full local, sin cluster y sin
+    AWS. Un túnel se abre contra un ambiente, así que sin ambiente la respuesta
+    es una refusal con el motivo —y no un ``ssm start-session`` apuntando a un
+    host que no existe.
+    """
+    cfg = FakeConfig(is_local=False)
+    cfg.env = ""
+
+    with pytest.raises(StartRefused) as excinfo:
+        actions.start_port(cfg, "cap", 8403)
+
+    assert "ambiente" in excinfo.value.reason
+
+
+def test_starting_a_resource_without_an_environment_only_knows_kafka():
+    """El registro sin ambiente ofrece Kafka y nada más.
+
+    Es la misma regla que en un ambiente local —no hay AWS— y por eso la
+    pantalla de Kafka nunca ofrece un túnel que no puede abrir.
+    """
+    cfg = FakeConfig(is_local=False)
+    cfg.env = ""
+
+    assert {definition.key for definition in resources_for(cfg)} == {
+        "kafka-server",
+        "kafka-ui",
+    }
+
+    with pytest.raises(StartRefused) as excinfo:
+        actions.start_resource(cfg, "bastion")
+
+    assert "bastion" in excinfo.value.reason
+
+
 def test_a_missing_aws_host_is_a_refusal_not_a_500(monkeypatch):
     """La otra mitad del bug: `cfg.require` lanzaba ValueError y escapaba."""
 

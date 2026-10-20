@@ -24,7 +24,7 @@ import type { Provider } from '@angular/core';
 import { Observable, Subject, finalize } from 'rxjs';
 
 import type {
-  WorkflowPortInfo, WorkflowResourceInfo, WorkflowStateResponse,
+  EnvironmentInfo, WorkflowPortInfo, WorkflowResourceInfo, WorkflowStateResponse,
 } from '../api-gen/models';
 import { EnvironmentService } from './services/environment.service';
 import {
@@ -137,6 +137,7 @@ export class WorkflowStreamDouble {
   /** Los frames que salieron, para poder afirmar que no salió alguno. */
   readonly frames: WorkflowStreamEvent[] = [];
 
+
   private readonly subject = new Subject<WorkflowStreamEvent>();
   private isClosed = false;
 
@@ -197,6 +198,13 @@ export interface WorkflowCalls {
   logStreams: WorkflowLogStreamDouble[];
   /** Cuántas veces se pidió la lista de ambientes. Una sección sin selector, cero. */
   envCalls: number;
+  /**
+   * Los ambientes que la lista devuelve.
+   *
+   * Cambiable por test: es lo que decide con qué ambiente se abre el stream, y
+   * una máquina puede no tener el que la página trae por defecto.
+   */
+  envs: EnvironmentInfo[];
 }
 
 /** Un `WorkflowCalls` limpio. Cada spec tiene el suyo en una variable propia. */
@@ -220,6 +228,7 @@ export function callsVacios(): WorkflowCalls {
     logText: '',
     logStreams: [],
     envCalls: 0,
+    envs: ENVS,
   };
 }
 
@@ -402,7 +411,7 @@ export function workflowProviders(calls: WorkflowCalls): Provider[] {
       useValue: {
         list: () => {
           calls.envCalls += 1;
-          return Promise.resolve({ environments: ENVS });
+          return Promise.resolve({ environments: calls.envs });
         },
       },
     },

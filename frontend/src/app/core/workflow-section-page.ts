@@ -95,6 +95,23 @@ export abstract class WorkflowSectionPage {
   readonly envList = signal<{ env: string }[]>([]);
 
   /**
+   * Si esta página ya sabe con qué ambiente habla.
+   *
+   * Las páginas con selector lo aprenden de la lista de ambientes, y la lista es
+   * una request: hasta que llega, `env` es una **sospecha** —"dev"—, no un
+   * ambiente. Mandarla antes de tiempo es lo que producía un
+   * `GET /api/workflow/stream?env=dev` que el backend contestaba con `400` en
+   * cualquier máquina donde ese ambiente no existe: un 400 que la pantalla no
+   * sabe explicar y que el error-box lee como "no se pudo conectar con el
+   * servidor".
+   *
+   * Por eso el stream no se abre hasta que la lista llegó. Kafka no tiene
+   * lista —es full local y su `scope` no tiene ambiente—, así que para esa
+   * página esto es `true` desde el principio y el stream abre en el acto.
+   */
+  private readonly envKnown = signal(this.scope.env === undefined);
+
+  /**
    * Con qué ambiente y cluster pide esta página el estado.
    *
    * Es un `get` y no un campo por la misma razón que `sectionRows`: los
@@ -223,14 +240,25 @@ export abstract class WorkflowSectionPage {
         .then((res) => {
           const list = res.environments.map((e: { env: string }) => ({ env: e.env }));
           this.envList.set(list);
-          if (list.length && !list.some((e: { env: string }) => e.env === this.env())) {
+          if (!list.length) {
+            // No hay ambientes: no hay contra qué hablar. Decirlo es mejor que
+            // abrir un stream preguntando por uno que no existe.
+            this.readError.set('No hay ambientes configurados.');
+            return;
+          }
+          // El ambiente elegido tiene que existir: si la máquina no lo tiene, el
+          // primero de la lista es el que sí.
+          if (!list.some((e: { env: string }) => e.env === this.env())) {
             this.env.set(list[0].env);
           }
+          this.envKnown.set(true);
         })
         .catch(() => {
-          // El error lo muestra el `error-box` de `resource()` o el aviso; acá sólo
-          // se deja la lista vacía y el `<select>` con el valor actual.
+          // El error lo muestra el `error-box`; acá sólo se deja la lista vacía
+          // y el stream sin abrir: sin la lista no se sabe con qué ambiente
+          // hablar, y adivinar es lo que producía el 400.
           this.envList.set([]);
+          this.readError.set('No se pudo leer la lista de ambientes.');
         });
     }
 
@@ -253,6 +281,9 @@ export abstract class WorkflowSectionPage {
    */
   private listen(): void {
     effect((onCleanup) => {
+      // Sin ambiente conocido no hay stream. Preguntar por un ambiente que
+      // puede no existir es un 400 que la pantalla no sabe explicar.
+      if (!this.envKnown()) return;
       const scope = this.scope;
       const subscription: Subscription = this.workflow
         .stream(scope)

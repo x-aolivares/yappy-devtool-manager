@@ -95,6 +95,13 @@ def _definition(cfg: Config, key: str):
     for definition in resources_for(cfg):
         if definition.key == key:
             return definition
+    if not getattr(cfg, "env", None):
+        # El ámbito sin ambiente —la pantalla de Kafka—: no hay AWS, y por lo
+        # tanto no hay nada que abrir más que el broker local.
+        raise StartRefused(
+            f"Sin ambiente no hay el recurso '{key}'. "
+            "Sólo Kafka corre sin AWS."
+        )
     if getattr(cfg, "is_local", False):
         raise StartRefused(
             f"El ambiente {cfg.env or ''} es local: no tiene el recurso '{key}'. "
@@ -250,7 +257,18 @@ def _start_db(cfg: Config, port: int) -> subprocess.Popen:
 
 
 def start_port(cfg: Config, cluster: str, port: int, label: str = "") -> dict:
-    """Start one catalog row: a tunnel to ``port`` on ``cluster``."""
+    """Start a catalog row: a tunnel to ``port`` on ``cluster``.
+
+    **Sin ambiente no hay túnel.** Un túnel se abre contra un ambiente, y el
+    ámbito vacío es el de la pantalla de Kafka —que es full local—. Esta
+    refusal es la que contesta a una pestaña vieja o a un `curl` que no mandó
+    un ambiente.
+    """
+    if not getattr(cfg, "env", None):
+        raise StartRefused(
+            "Falta el ambiente: un túnel de cluster se abre contra un ambiente, "
+            "no contra la máquina local."
+        )
     if getattr(cfg, "is_local", False):
         # The catalog is hidden for local environments, but the endpoint is
         # reachable by a stale tab or a curl. Refusing here is what keeps "local

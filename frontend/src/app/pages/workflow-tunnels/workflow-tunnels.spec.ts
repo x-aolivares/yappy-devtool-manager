@@ -594,6 +594,29 @@ describe('WorkflowTunnelsPage', () => {
       expect(comp.ports()).toHaveLength(1);
     });
 
+    it('se abre con un ambiente que existe, no con el que trae por defecto', async () => {
+      // 'dev' es el ambiente que la página trae por defecto, pero es un ambiente
+      // *real*: si la máquina no lo tiene, el backend contesta 400 y la pantalla
+      // lo lee como "no se pudo conectar con el servidor". Con la lista de
+      // ambientes, el que se pide es uno que existe.
+      calls.envs = [{ env: 'local' }, { env: 'qa' }];
+      const { comp } = await montar();
+
+      expect(comp.env()).toBe('local');
+      expect(calls.streams.at(-1)?.scope).toEqual({ env: 'local', cluster: 'cap' });
+    });
+
+    it('no abre el stream antes de saber qué ambientes hay', async () => {
+      // El stream se abre cuando la lista llegó, no antes: antes es una
+      // pregunta por un ambiente que puede no existir.
+      calls.envs = [{ env: 'qa' }];
+      const { comp } = await montar();
+
+      expect(calls.envCalls).toBe(1);
+      expect(calls.streams.at(-1)?.scope?.env).toBe('qa');
+      expect(comp.env()).toBe('qa');
+    });
+
     it('se cierra al abandonar la página', async () => {
       const { fixture } = await montar();
 
