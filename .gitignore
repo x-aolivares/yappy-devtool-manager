@@ -10,6 +10,9 @@ config/env.*
 !config/env.*.example
 backend/config/env.*
 !backend/config/env.*.example
+# Renombres locales de un env durante la migración (env.dev -> deprecated.env.dev):
+# son de la máquina, no del repo.
+backend/config/deprecated.env.*
 *.egg-info/
 dist/
 build/
