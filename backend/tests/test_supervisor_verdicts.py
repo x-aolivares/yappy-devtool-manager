@@ -189,6 +189,44 @@ def test_a_wait_ends_as_soon_as_the_process_is_gone(tracker, never_up, monkeypat
     assert elapsed < 5.0, f"tardo {elapsed:.1f}s en descubrir que el proceso no estaba"
 
 
+# --- un puerto que contesta no dice de quien es --------------------------------
+
+
+def test_un_probe_que_contesta_no_alcanza_a_un_proceso_que_murio(tracker, monkeypatch):
+    """El puerto es el puerto: no dice de quién es.
+
+    Dos brokers sobre el mismo —que es justamente lo que corrompe el storage— y
+    el probe habla con el que está escuchando, no con el que arrancó este
+    supervisor. La fila decía "up" para un proceso que hacía minutos estaba
+    muerto, y el developer miraba una fila verde mientras su broker no corría.
+    """
+    _track(local_port=DEAD_PORT)
+    sup = Supervisor(pid=os.getpid(), port=DEAD_PORT, probe="http")
+    monkeypatch.setattr(
+        supervisor_mod, "probe_for", lambda kind: (lambda port, timeout=5.0: True)
+    )
+    monkeypatch.setattr(sup, "still_running", lambda: False)
+
+    ok, died = sup.verdict(timeout=30.0)
+
+    assert ok is False
+    assert died is True
+
+
+def test_un_proceso_vivo_que_contesta_sigue_siendo_up(tracker, monkeypatch):
+    """La otra mitad: la confirmación no puede romper el camino feliz."""
+    _track(local_port=DEAD_PORT)
+    sup = Supervisor(pid=os.getpid(), port=DEAD_PORT, probe="http")
+    monkeypatch.setattr(
+        supervisor_mod, "probe_for", lambda kind: (lambda port, timeout=5.0: True)
+    )
+
+    ok, died = sup.verdict(timeout=30.0)
+
+    assert ok is True
+    assert died is False
+
+
 # --- el motivo esta en el log del proceso -------------------------------------
 
 

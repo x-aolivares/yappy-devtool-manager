@@ -208,6 +208,14 @@ class Supervisor:
         different failures with different fixes, and collapsing them into one
         False is what made this module report that a dead process had opened a
         port it never reached.
+
+        **A probe that answers is not proof that *this* process answered.** The
+        port is the port: two brokers on the same one —which is exactly what
+        corrupts the storage— and the probe talks to whichever of the two is
+        listening. The row then says "up" for a process that died two minutes
+        ago, and the developer looks at a green row while the broker he started
+        is not running. So a successful probe is confirmed against the process
+        before it is believed.
         """
         from yappy_library.application.workflow.readiness import wait_for
 
@@ -216,9 +224,11 @@ class Supervisor:
             timeout=timeout,
             abort=lambda: not self.still_running(),
         )
-        if ok:
+        if not ok:
+            return False, not self.still_running()
+        if self.still_running():
             return True, False
-        return False, not self.still_running()
+        return False, True
 
     def run(self, timeout: float = DEFAULT_TIMEOUT) -> None:
         started = time.monotonic()
