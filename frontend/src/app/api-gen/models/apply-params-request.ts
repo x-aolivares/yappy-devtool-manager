@@ -9,7 +9,7 @@ export interface ApplyParamsRequest {
   new_value: string;
   service: string;
   target?: string;
-  value_type?: string;
+  value_type?: 'String' | 'StringList' | 'SecureString';
   with_secret?: boolean;
   write_param?: boolean;
   write_secret?: boolean;

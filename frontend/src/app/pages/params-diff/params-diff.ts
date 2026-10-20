@@ -8,6 +8,7 @@ import { toApiError } from '../../core/services/api-error';
 import { CancelSlot, isCancellation } from '../../core/cancel';
 import { awsEnvironments, formatValue } from '../../core/format';
 import { serializeMerged } from '../../core/params-merge';
+import { toValueType } from '../../core/ssm';
 import type { ChangeRow } from '../../core/params-merge';
 import { ParamsDiffResponse, UpdateSessionItemRequest } from '../../api-gen/models';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
@@ -399,7 +400,7 @@ export class ParamsDiffPage {
           service: d.service,
           name: d.name,
           new_value: this.serialized(),
-          value_type: d.value_type_b || 'String',
+          value_type: toValueType(d.value_type_b),
         })
         .then(
           (body) => {
@@ -450,7 +451,7 @@ export class ParamsDiffPage {
           write_secret: ps.secret.include,
           write_param: ps.param.include,
           new_value: ps.param.include ? ps.param.text : (d.value_a ?? ''),
-          value_type: d.value_type_b || 'String',
+          value_type: toValueType(d.value_type_b),
           new_secret_value: ps.secret.include ? ps.secret.text : (d.secret_value_a ?? ''),
         })
         .then(
@@ -483,7 +484,7 @@ export class ParamsDiffPage {
         service: d.service,
         name: d.name,
         new_value: value,
-        value_type: d.value_type_b || 'String',
+        value_type: toValueType(d.value_type_b),
         target: this.createTarget(),
       })
       .then(

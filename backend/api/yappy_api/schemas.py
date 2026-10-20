@@ -7,7 +7,7 @@ client (Angular) generates its types from them.
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,7 +36,7 @@ class ApplyParamsRequest(BaseModel):
     service: str  # "ssm" | "secretsmanager"
     name: str
     new_value: str
-    value_type: str = "String"
+    value_type: Literal["String", "StringList", "SecureString"] = "String"
     with_secret: bool = False
     new_secret_value: str = ""
     write_secret: bool = False
@@ -54,7 +54,7 @@ class ExecuteParamsRequest(BaseModel):
     op: str = "update"  # "update" | "delete"
     name: str
     new_value: str = ""
-    value_type: str = "String"
+    value_type: Literal["String", "StringList", "SecureString"] = "String"
     confirm: bool = False
     with_secret: bool = False
     new_secret_value: str = ""
@@ -69,7 +69,7 @@ class ExecuteParamsRequest(BaseModel):
 class CreateMultiParamsRequest(BaseModel):
     name: str
     value: str = ""
-    value_type: str = "String"
+    value_type: Literal["String", "StringList", "SecureString"] = "String"
     service: str = "ssm"
     secret_name: str = ""
     secret_value: str = ""

@@ -101,9 +101,27 @@ def test_build_ssm_script():
 
     assert "--profile 'dev-profile'" in script
     assert "--region 'us-west-2'" in script
-    assert "--type String" in script
+    # El tipo va quotado: este comando se le muestra al developer para que lo
+    # corra, y un valor sin quotear ahí es un `;` esperando.
+    assert "--type 'String'" in script
     assert "--overwrite" in script
     assert "--name '/app/rate'" in script
+
+
+def test_build_ssm_script_quotes_the_value_type():
+    """El `--type` no puede romperse con un valor que se cuele por ahí.
+
+    El schema lo limita a tres valores, pero el script se arma en otro lado y
+    se lo muestra al developer para que lo corra: la defense va en el quote.
+    """
+    class FakeCfg:
+        profile = "dev-profile"
+        region = "us-west-2"
+
+    script = p.build_ssm_script("/app/rate", "20", "String; rm -rf ~", FakeCfg())
+
+    assert "--type 'String; rm -rf ~'" in script
+    assert "--type String;" not in script
 
 
 def test_build_secret_script():

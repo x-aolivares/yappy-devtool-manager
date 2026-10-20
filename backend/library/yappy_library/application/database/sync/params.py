@@ -102,7 +102,10 @@ def build_ssm_script(name: str, value: str, value_type: str, cfg_a) -> str:
         "aws ssm put-parameter "
         f"--name {_shell_quote(name)} "
         f"--value {_shell_quote(value)} "
-        f"--type {value_type or 'String'} "
+        # El tipo va quotado aunque el schema lo limite a tres valores: este
+        # comando se le muestra al developer para que lo corra, y un valor sin
+        # quotear ahí es un `;` esperando.
+        f"--type {_shell_quote(value_type or 'String')} "
         "--overwrite "
         f"--profile {_shell_quote(cfg_a.profile)} "
         f"--region {_shell_quote(cfg_a.region)}"

@@ -11,6 +11,7 @@ import { SessionService } from '../../core/services/session.service';
 import { toApiError } from '../../core/services/api-error';
 import { CancelSlot, isCancellation } from '../../core/cancel';
 import { awsEnvironments, formatValue, isJsonDocument } from '../../core/format';
+import { SsmValueType, toValueType } from '../../core/ssm';
 import { EnvControls, PARAM_SERVICES } from '../../components/env-controls/env-controls';
 import { StatusBadge } from '../../components/status-badge/status-badge';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
@@ -22,7 +23,7 @@ interface EnvPanel {
   profile?: string | null;
   /** Contenido tal como está el cuadro de edición. */
   value: string;
-  valueType: string;
+  valueType: SsmValueType;
   /** El valor crudo es un documento JSON: va en `textarea`, no en `input`. */
   isJson: boolean;
   ok: boolean;
@@ -202,7 +203,7 @@ export class ParamsReadPage {
             region: meta?.region,
             profile: meta?.profile,
             value: rawValue,
-            valueType: r.value_type ?? 'String',
+            valueType: toValueType(r.value_type),
             isJson: r.ok && isJsonDocument(r.value),
             ok: r.ok,
             error: r.error ?? null,
@@ -274,7 +275,7 @@ export class ParamsReadPage {
         : {
             name,
             value,
-            value_type: panel.valueType || 'String',
+            value_type: toValueType(panel.valueType),
             service: 'ssm',
             envs: [panel.env],
             dry_run: false,

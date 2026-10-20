@@ -11,5 +11,5 @@ export interface CreateMultiParamsRequest {
   secret_value?: string;
   service?: string;
   value?: string;
-  value_type?: string;
+  value_type?: 'String' | 'StringList' | 'SecureString';
 }

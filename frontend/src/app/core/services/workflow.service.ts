@@ -42,6 +42,8 @@ export interface LogStreamEvent {
   readonly offset: number;
   readonly alive: boolean;
   readonly gone: boolean;
+  /** El server manda esto cuando el stream se cae por dentro. */
+  readonly error?: string;
 }
 
 /** El body que devuelve `GET /api/workflow/logs`. No tipado por el generador. */
@@ -103,10 +105,16 @@ export class WorkflowService {
 
       source.onmessage = (event: MessageEvent<string>) => {
         try {
-          subscriber.next({
-            kind: 'state',
-            state: JSON.parse(event.data) as WorkflowStateResponse,
-          });
+          const payload = JSON.parse(event.data) as WorkflowStateResponse & { error?: string };
+          // El server manda `{"error": "..."}` cuando el stream se cae por
+          // dentro —el generator ya no puede responder con un status code—.
+          // Sin esto, el cliente veía una conexión abierta que no decía nada
+          // y no podía distinguirla de "no está pasando nada".
+          if (payload && typeof payload.error === 'string') {
+            subscriber.next({ kind: 'error', detail: payload.error });
+            return;
+          }
+          subscriber.next({ kind: 'state', state: payload as WorkflowStateResponse });
         } catch {
           subscriber.next({
             kind: 'error',
@@ -138,7 +146,12 @@ export class WorkflowService {
 
       source.onmessage = (event: MessageEvent<string>) => {
         try {
-          subscriber.next(JSON.parse(event.data) as LogStreamEvent);
+          const payload = JSON.parse(event.data) as LogStreamEvent & { error?: string };
+          if (payload && typeof payload.error === 'string') {
+            subscriber.next({ ...payload, error: payload.error });
+            return;
+          }
+          subscriber.next(payload);
         } catch {
           subscriber.error(new Error('El log llegó ilegible.'));
         }

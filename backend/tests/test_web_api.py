@@ -700,7 +700,7 @@ def test_api_params_apply_builds_ssm_script(monkeypatch):
     )
 
     assert payload["script"].startswith("aws ssm put-parameter")
-    assert "--type SecureString" in payload["script"]
+    assert "--type 'SecureString'" in payload["script"]
     assert "--profile 'prof-dev'" in payload["script"]
     assert "'{\"name\": 1}'" in payload["script"]
 

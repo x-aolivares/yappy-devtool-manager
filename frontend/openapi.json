@@ -1479,6 +1479,8 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 5000,
+              "minimum": 1,
               "default": 60,
               "title": "Lines"
             }
@@ -1489,6 +1491,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "default": 0,
               "title": "Offset"
             }
@@ -1557,6 +1560,8 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 5000,
+              "minimum": 1,
               "default": 60,
               "title": "Lines"
             }
@@ -1862,6 +1867,11 @@
           },
           "value_type": {
             "type": "string",
+            "enum": [
+              "String",
+              "StringList",
+              "SecureString"
+            ],
             "title": "Value Type",
             "default": "String"
           },
@@ -2059,6 +2069,11 @@
           },
           "value_type": {
             "type": "string",
+            "enum": [
+              "String",
+              "StringList",
+              "SecureString"
+            ],
             "title": "Value Type",
             "default": "String"
           },
@@ -2718,6 +2733,11 @@
           },
           "value_type": {
             "type": "string",
+            "enum": [
+              "String",
+              "StringList",
+              "SecureString"
+            ],
             "title": "Value Type",
             "default": "String"
           },
