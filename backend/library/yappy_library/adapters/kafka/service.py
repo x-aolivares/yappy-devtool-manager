@@ -11,8 +11,20 @@ from pathlib import Path
 
 from yappy_library.adapters import process_tracker
 from yappy_library.adapters.logging import info, raw, success, warn
-from yappy_library.adapters.processes import detached_popen_kwargs, open_url
+from yappy_library.adapters.processes import (
+    jvm_shim_command,
+    open_url,
+    own_console_popen_kwargs,
+    stop_gracefully,
+)
 from yappy_library.config import Config
+
+#: How long a broker gets to leave by itself before it is killed.
+#:
+#: Kafka's shutdown closes the metadata log, and that is the whole point: a log
+#: closed is a log that is not corrupt. Thirty seconds is generous for a local
+#: broker and short enough that a developer does not think the button is stuck.
+GRACEFUL_STOP_SECONDS = 30.0
 
 
 class KafkaUnavailable(Exception):
@@ -64,7 +76,28 @@ def _on_rm_error(func, path, exc_info):
     func(path)
 
 
+def _stop_tracked_brokers() -> None:
+    """Ask the brokers this project started to leave, one by one.
+
+    The tracker knows them by the pid of their shim —the process that watches
+    the JVM— and that shim's console *is* the broker's console, so the event
+    reaches the JVM. The shim lives exactly as long as the JVM, so waiting for
+    the shim to go is waiting for the broker to have finished closing.
+    """
+    for entry in process_tracker.get_tracked_processes(resource="kafka", target="server"):
+        pid = entry.get("pid")
+        if pid:
+            _stop_java(str(pid))
+
+
 def _kill_kafka_processes():
+    """Stop the brokers: the ones we started, politely; the rest, as before.
+
+    The sweep by name is the hard kill it has always been, and it is left that
+    way on purpose: a broker somebody started by hand lives in *their* console,
+    and a ``CTRL_C`` there would land in the middle of whatever they were doing.
+    """
+    _stop_tracked_brokers()
     try:
         result = subprocess.run(["jps", "-l"], capture_output=True, text=True, check=False)
         for line in result.stdout.strip().splitlines():
@@ -79,6 +112,29 @@ def _kill_kafka_processes():
         warn("jps no encontrado, no se pudieron buscar procesos Java")
 
 
+def _stop_java(pid: str) -> bool:
+    """Ask a JVM to leave, and kill it only if it doesn't.
+
+    **A broker that is killed hard leaves its metadata log half-written.** The
+    next start finds the invalid offset, deletes the segment and dies with an
+    NPE — and from there on every start fails the same way, until somebody wipes
+    the storage. Asking first is what keeps the storage usable.
+
+    The graceful way needs a console to send the event to, which is why the
+    broker is spawned with one (see
+    :func:`~yappy_library.adapters.processes.own_console_popen_kwargs`).
+    """
+    try:
+        pid_number = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if stop_gracefully(pid_number, timeout=GRACEFUL_STOP_SECONDS):
+        raw(f"  - el proceso {pid} se cerró solo")
+        return True
+    subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
+    return False
+
+
 def _kill_ui_process():
     try:
         result = subprocess.run(["jps", "-l"], capture_output=True, text=True, check=False)
@@ -89,7 +145,7 @@ def _kill_ui_process():
                 pid, name = parts
                 if "main.jar" in name:
                     raw(f"  - matando UI (PID {pid})")
-                    subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
+                    _stop_java(pid)
                     killed = True
         if not killed:
             warn("No se encontró proceso de Kafka UI")
@@ -193,6 +249,15 @@ class KafkaService:
         (`db/tunnel.py::_start_detached_refresher`) ya lo hacía así; esta función
         tenía el nombre pero no el comportamiento. Los flags viven hoy en un solo
         lugar, `processes.detached_popen_kwargs`, que también los usa `open_url`.
+
+        **El broker, en cambio, tiene consola propia.** Es lo que le permite
+        irse solo cuando se le pide: un ``CTRL_C`` es lo que corre los shutdown
+        hooks del JVM, los que cierran el metadata log, y un ``CTRL_C`` sólo
+        llega a un proceso que es el único de su consola. Un broker al que se lo
+        mata a la fuerza deja el storage a medio escribir, y del arranque
+        siguiente en adelante todos fallan igual. El costo está anotado en
+        `processes.own_console_popen_kwargs`: la consola es invisible y el
+        broker vive en su propio grupo, así que no le llega el Ctrl+C.
         """
         self._log_dir.mkdir(parents=True, exist_ok=True)
         placeholder = self._log_dir / f"kafka-{target}.log"
@@ -201,9 +266,9 @@ class KafkaService:
             "stdout": handle,
             "stderr": subprocess.STDOUT,
             "cwd": str(self._log_dir),
-            **detached_popen_kwargs(),
+            **own_console_popen_kwargs(),
         }
-        proc = subprocess.Popen(cmd, **kwargs)
+        proc = subprocess.Popen(jvm_shim_command(cmd), **kwargs)
         handle.close()
 
         log_path = self._log_dir / f"kafka-{target}-{proc.pid}.log"
@@ -454,7 +519,11 @@ class KafkaService:
         _ensure_windows()
         if target == "server":
             info("Waiting for Kafka to stop...")
-            # Kill Kafka Java process directly
+            # The broker is asked to leave first: its shutdown closes the
+            # metadata log, and a log closed is a log that is not corrupt. The
+            # hard kill stays as the fallback for a broker that does not take
+            # the hint.
+            _stop_tracked_brokers()
             try:
                 result = subprocess.run(["jps", "-l"], capture_output=True, text=True, check=False)
                 for line in result.stdout.strip().splitlines():

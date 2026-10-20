@@ -242,6 +242,9 @@ def _win_recorder(monkeypatch):
         lambda cmd, *a, **k: (calls.append(cmd), SimpleNamespace(returncode=0))[1],
     )
     monkeypatch.setattr(base.sys, "platform", "win32")
+    # El matón es el último recurso: antes se le pide al proceso que se vaya
+    # solo. Estos tests fijan el matón, así que el proceso "no hace caso".
+    monkeypatch.setattr(base, "stop_gracefully", lambda pid, timeout=30.0: False)
     return calls
 
 

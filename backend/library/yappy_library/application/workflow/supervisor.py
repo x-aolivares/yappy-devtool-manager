@@ -25,7 +25,12 @@ from pathlib import Path
 from typing import Callable
 
 from yappy_library.adapters import process_identity, process_tracker
-from yappy_library.adapters.kafka.diagnose import failure_excerpt, fix_for, log_dirs
+from yappy_library.adapters.kafka.diagnose import (
+    FIX_CLEAN_STORAGE,
+    failure_excerpt,
+    fix_for,
+    log_dirs,
+)
 from yappy_library.adapters.logging import error as log_error
 from yappy_library.adapters.logging import info as log_info
 from yappy_library.application.workflow.readiness import DEFAULT_TIMEOUT, probe_for
@@ -47,7 +52,8 @@ LOG_TAIL_LINES = 3
 class Supervisor:
     """Polls one readiness probe and records the verdict in the tracker."""
 
-    def __init__(self, pid: int, port: int, probe: str, label: str = "", log_file: str = ""):
+    def __init__(self, pid: int, port: int, probe: str, label: str = "", log_file: str = "",
+                 allow_recovery: bool = True):
         self.pid = pid
         self.port = port
         self.probe = probe
@@ -58,10 +64,24 @@ class Supervisor:
         #: the tunnel path for a Kafka failure sends the reader to a file that
         #: does not exist.
         self.log_file = log_file
+        #: Whether this supervisor may rescue a broken storage by itself.
+        #:
+        #: Only the first attempt gets to. The one it starts is supervised with
+        #: this off, so a storage that does not get fixed stays visible with the
+        #: button that cleans it instead of turning into a loop that wipes and
+        #: starts every few seconds.
+        self.allow_recovery = allow_recovery
         self.done = threading.Event()
 
     def where_to_look(self) -> str:
         return self.log_file or "el log del proceso"
+
+    def _entry(self) -> dict | None:
+        """The tracker's entry for this pid, if it is still there."""
+        return next(
+            (e for e in process_tracker.get_tracked_processes() if e.get("pid") == self.pid),
+            None,
+        )
 
     def still_running(self) -> bool:
         """Whether this pid is still the process that was spawned.
@@ -79,10 +99,7 @@ class Supervisor:
         recycles aggressively. Same pair ``_kill_pid`` gates on, for the same
         reason — this module never signals a pid it cannot identify.
         """
-        entry = next(
-            (e for e in process_tracker.get_tracked_processes() if e.get("pid") == self.pid),
-            None,
-        )
+        entry = self._entry()
         if entry is None:
             # Nothing left to resolve: the row this supervisor was going to
             # write a verdict into is gone.
@@ -243,15 +260,20 @@ class Supervisor:
                 # It died before the probe could say anything. "Dead" beats
                 # "error": the process is gone, and that is the more useful
                 # thing to draw.
+                fix = self.suggested_fix()
                 process_tracker.update_process_state(
                     self.pid,
                     process_tracker.STATE_ERROR,
-                    fix=self.suggested_fix(),
+                    fix=fix,
                 )
                 log_info(
                     f"  [wf] {_stamp()} {who}: el proceso ya no esta, sin probe. "
                     f"Queda 'error'.{self.failure_reason() or self.verdict_log()}"
                 )
+                if fix == FIX_CLEAN_STORAGE:
+                    # El storage también se rompe sin que el proceso llegue a
+                    # escuchar: es lo mismo y se rescata igual.
+                    self.recover_broken_storage()
                 return
 
             ok, died = self.verdict(timeout)
@@ -283,21 +305,54 @@ class Supervisor:
                     f"  [wf] {_stamp()} {who} abrio el puerto {self.port} pero no respondio "
                     f"en {timeout:g}s, queda 'error'.{self.failure_reason() or self.verdict_log()}"
                 )
+
+            if not ok and fix == FIX_CLEAN_STORAGE:
+                # La falla que el arreglo conocido arregla: el storage. El
+                # supervisor la resuelve solo, para que el developer no tenga
+                # que adivinar que el storage era el problema.
+                self.recover_broken_storage()
         except Exception as exc:  # noqa: BLE001 - a supervisor must not kill the server
             log_error(f"  [wf] {_stamp()} {who}: el supervisor fallo -- {exc}")
         finally:
             self.done.set()
 
+    def recover_broken_storage(self) -> bool:
+        """Wipe the storage that broke the start and start it again.
+
+        Only Kafka has a storage with that shape, and only Kafka has a fix we
+        know how to apply, so this is the only thing that gets rescued here.
+
+        The supervisor that watches the new broker is **not** allowed to rescue
+        it again: a storage that does not get fixed has to stay on the screen
+        with its button, not turn into a loop of wipes and restarts.
+        """
+        if self.probe != "kafka" or not self.allow_recovery:
+            return False
+
+        from yappy_library.application.workflow.recovery import recover_broken_kafka_storage
+
+        entry = self._entry() or {}
+        owner = entry.get("owner") or process_tracker.OWNER_CLI
+        try:
+            return recover_broken_kafka_storage(owner)
+        except Exception as exc:  # noqa: BLE001 - a rescue must not kill the server
+            log_error(f"  [wf] {_stamp()} no se pudo recuperar el storage de Kafka -- {exc}")
+            return False
+
 
 def supervise(pid: int, port: int, probe: str, label: str = "",
-              timeout: float = DEFAULT_TIMEOUT, log_file: str = "") -> Supervisor:
+              timeout: float = DEFAULT_TIMEOUT, log_file: str = "",
+              allow_recovery: bool = True) -> Supervisor:
     """Start a supervisor thread and return it immediately.
 
     Daemon, so it cannot keep the interpreter alive: a server shutting down with
     a probe in flight is fine, and the tracker entry stays ``starting``, which
     reads as "never finished" rather than as a false success.
+
+    ``allow_recovery`` is the switch for the rescue of a broken storage: the
+    first supervisor may do it, and the one it starts may not.
     """
-    supervisor = Supervisor(pid, port, probe, label, log_file)
+    supervisor = Supervisor(pid, port, probe, label, log_file, allow_recovery=allow_recovery)
     thread = threading.Thread(
         target=supervisor.run,
         kwargs={"timeout": timeout},

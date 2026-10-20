@@ -132,12 +132,19 @@ def test_the_kafdrop_opener_goes_through_the_shared_helper(monkeypatch):
     assert seen == [f"http://localhost:{KAFDROP_UI_PORT}"]
 
 
-def test_the_kafka_spawn_and_the_browser_share_one_set_of_flags(spawned, monkeypatch, tmp_path):
-    """`_spawn_detached` used to carry its own copy of these four lines.
+def test_the_kafka_spawn_uses_the_flags_that_let_it_leave_by_itself(
+    spawned, monkeypatch, tmp_path
+):
+    """El broker tiene consola propia; el navegador no.
 
-    Two copies of the detach flags is two chances to forget one, and a broker
-    that shares the server's console group is a defect that only shows up when
-    somebody presses Ctrl+C. It now reads from the same helper the browser does.
+    La diferencia es deliberada y es lo que hace posible el apagado limpio:
+    un ``CTRL_C`` no se puede dirigir a un grupo de procesos, así que el
+    broker —al que hay que poder pedirle que salga— tiene que ser el único en
+    su consola. Un navegador no tiene nada que cerrar, así que sigue detachado
+    como antes.
+
+    Y lo que sigue siendo verdad: los flags no están copiados en el call site,
+    cada spawn lee de su helper.
     """
     monkeypatch.setattr(api_kafka.sys, "platform", "win32")
     monkeypatch.setattr(api_kafka.time, "sleep", lambda s: None)
@@ -170,7 +177,17 @@ def test_the_kafka_spawn_and_the_browser_share_one_set_of_flags(spawned, monkeyp
 
     open_url("http://localhost:8080")
 
-    assert calls[0][1]["creationflags"] == calls[1][1]["creationflags"]
+    broker_cmd, broker_kwargs = calls[0]
+    browser_cmd, browser_kwargs = calls[1]
+
+    # El broker tiene consola propia —no DETACHED_PROCESS— y la ventana
+    # escondida; y lo lanza un shim, que es lo que rehabilita el Ctrl+C.
+    assert broker_kwargs["creationflags"] & subprocess.CREATE_NEW_CONSOLE
+    assert not broker_kwargs["creationflags"] & subprocess.DETACHED_PROCESS
+    assert broker_kwargs["startupinfo"].wShowWindow == subprocess.SW_HIDE
+    assert "SetConsoleCtrlHandler(None, False)" in broker_cmd[3]
+    # El navegador sigue como estaba: sin consola.
+    assert browser_kwargs["creationflags"] & subprocess.DETACHED_PROCESS
 
 
 def _backend_sources() -> list[Path]:

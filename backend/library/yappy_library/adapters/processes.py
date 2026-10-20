@@ -112,6 +112,151 @@ def detached_popen_kwargs() -> dict:
     return {"start_new_session": True}
 
 
+def own_console_popen_kwargs() -> dict:
+    """The ``Popen`` keywords for a child with **its own console**, hidden.
+
+    A child that has to be stopped *politely* needs a console of its own: a
+    ``CTRL_C`` cannot be aimed at a process group —it goes to every process
+    attached to the console— so the process that has to be asked politely has to
+    be the only one in its console.
+
+    The window is hidden: a console that nobody asked for does not deserve a
+    window on the developer's desktop. The child is in a new group, so a
+    ``Ctrl+C`` in the developer's terminal does not reach it.
+
+    The child also needs :func:`jvm_shim_command` in front of it, because a new
+    group has its ``Ctrl+C`` disabled and a JVM would never see the event.
+    """
+    if sys.platform != "win32":
+        return {"start_new_session": True}
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = subprocess.SW_HIDE
+    return {
+        "creationflags": subprocess.CREATE_NEW_CONSOLE,
+        "startupinfo": startupinfo,
+    }
+
+
+#: The shim that makes a JVM stoppable.
+#:
+#: A console created with ``CREATE_NEW_CONSOLE`` is a new process group, and in
+#: a new group the ``Ctrl+C`` is disabled: the JVM would never see the event
+#: that makes it close its logs. ``SetConsoleCtrlHandler(NULL, FALSE)`` turns it
+#: back on, and the JVM —a child of the shim, in the same group— inherits that.
+#:
+#: The shim then installs a handler that does nothing, so the ``Ctrl+C`` that
+#: stops the broker does not stop the shim: the shim lives exactly as long as
+#: the JVM it watches, and "the broker stopped" means "the broker finished
+#: closing".
+#:
+#: On POSIX there is nothing to shim: ``SIGTERM`` runs the shutdown hooks and
+#: the command is the command.
+_SHIM = """
+import ctypes, subprocess, sys
+
+kernel = ctypes.windll.kernel32
+handler_type = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_ulong)
+kernel.SetConsoleCtrlHandler.argtypes = [ctypes.POINTER(handler_type), ctypes.c_int]
+kernel.SetConsoleCtrlHandler.restype = ctypes.c_int
+
+# El grupo vuelve a aceptar el Ctrl+C.
+kernel.SetConsoleCtrlHandler(None, False)
+
+
+def _ignore(_code):
+    return 1
+
+
+# Y el shim no se muere con el Ctrl+C que para al broker.
+_ignore_handler = handler_type(_ignore)
+kernel.SetConsoleCtrlHandler(_ignore_handler, True)
+
+sys.exit(subprocess.Popen(sys.argv[1:]).wait())
+"""
+
+#: The program that sends the ``CTRL_C`` to another console.
+#:
+#: A ``CTRL_C`` cannot be aimed at a process group, so the sender has to be
+#: *in* the target's console —and a process can only be attached to one console
+#: at a time. The web server has its own and is not giving it up for a button,
+#: so the event goes from a throwaway process.
+_CTRL_C_SENDER = """
+import ctypes, sys, time
+
+kernel = ctypes.windll.kernel32
+kernel.FreeConsole()
+if not kernel.AttachConsole(int(sys.argv[1])):
+    sys.exit(2)
+kernel.SetConsoleCtrlHandler(None, True)
+kernel.GenerateConsoleCtrlEvent(0, 0)
+time.sleep(1)
+kernel.FreeConsole()
+"""
+
+
+def jvm_shim_command(cmd: list[str]) -> list[str]:
+    """The command that launches ``cmd`` in a way a JVM can be stopped politely.
+
+    On Windows that is the shim, which turns the group's ``Ctrl+C`` back on and
+    then runs the command. Everywhere else it is the command itself.
+    """
+    if sys.platform != "win32":
+        return list(cmd)
+    return [sys.executable, "-u", "-c", _SHIM, *cmd]
+
+
+def stop_gracefully(pid: int, timeout: float = 30.0) -> bool:
+    """Ask a process to leave by itself, the way a JVM has to.
+
+    A ``CTRL_C`` on Windows, a ``SIGTERM`` on POSIX: both are the signal whose
+    *handler* runs, so the process gets to close what it opened. Kafka closes its
+    logs there, and a log closed is a log that is not corrupt.
+
+    Returns whether the process was gone before the timeout. ``False`` is not a
+    failure to stop it — it is "it did not take the hint", and the caller has a
+    hard kill as the fallback.
+
+    The identity of the pid is not checked here: the callers do that already, and
+    a second check in a lower layer would be a second place to get it wrong.
+    """
+    if not pid:
+        return False
+    if sys.platform == "win32":
+        if not _send_ctrl_c(pid):
+            return False
+    else:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            return False
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if process_identity.identity(pid) is None:
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def _send_ctrl_c(pid: int) -> bool:
+    """Send a ``CTRL_C`` to the console of that process, from a throwaway process.
+
+    ``False`` when the process has no console of its own —the common case for
+    everything this project detaches— and also when the event could not be
+    generated. Either way, the caller has the hard kill.
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", _CTRL_C_SENDER, str(pid)],
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
 def open_url(url: str) -> None:
     """Open ``url`` in the default browser, from wherever we happen to be running.
 
@@ -545,15 +690,21 @@ class BaseCommand:
             )
 
         if sys.platform == "win32":
+            # Se le pide primero que salga sola, y el matón queda como último
+            # recurso: una JVM que se mata a la fuerza deja los archivos a
+            # medio escribir, y para Kafka eso es el metadata log corrupto.
+            if stop_gracefully(pid):
+                return True
             subprocess.run(
                 ["taskkill", "/pid", str(pid), "/t", "/f"],
                 capture_output=True,
             )
         else:
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except (ProcessLookupError, OSError):
-                pass
+            # Igual que en Windows: primero se le pide que salga —SIGTERM es lo
+            # que dispara los shutdown hooks— y el matón queda para cuando no
+            # hace caso. Mandar los dos juntos hacía inútil el primero.
+            if stop_gracefully(pid):
+                return True
             try:
                 os.kill(pid, signal.SIGKILL)
             except (ProcessLookupError, OSError):
