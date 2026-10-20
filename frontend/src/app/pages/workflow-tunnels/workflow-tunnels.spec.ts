@@ -583,6 +583,31 @@ describe('WorkflowTunnelsPage', () => {
     });
   });
 
+  // --- el ambiente ------------------------------------------------------------
+
+  describe('el ambiente que ofrece', () => {
+    it('no ofrece los ambientes locales', async () => {
+      // `local` es un ambiente de *base de datos*: se alcanza por TCP contra el
+      // MySQL de la máquina, y no tiene SSM ni Parameter Store. Los túneles del
+      // catálogo son sesiones SSM contra el cluster, así que ofrecerlo acá es
+      // ofrecer una opción que la pantalla misma dice que no sirve.
+      //
+      // Es el mismo filtro que usan las páginas de parámetros, y por el mismo
+      // motivo: `local` es un ambiente de base de datos, no de AWS.
+      calls.envs = [
+        { env: 'local', is_local: true },
+        { env: 'qa' },
+        { env: 'uat' },
+      ];
+      const { comp } = await montar();
+
+      expect(comp.envList()).toEqual([{ env: 'qa' }, { env: 'uat' }]);
+      // Y el ambiente con el que se abre el stream es uno de los que existen.
+      expect(comp.env()).toBe('qa');
+      expect(calls.streams.at(-1)?.scope?.env).toBe('qa');
+    });
+  });
+
   // --- el stream ------------------------------------------------------------
 
   describe('la conexión', () => {

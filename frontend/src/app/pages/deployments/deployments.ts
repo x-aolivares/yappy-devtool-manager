@@ -5,6 +5,7 @@ import { DeploymentService } from '../../core/services/deployment.service';
 import { EnvironmentService } from '../../core/services/environment.service';
 import { toApiError } from '../../core/services/api-error';
 import { explainDeploymentFailure, FailureExplained } from '../../core/deployment-help';
+import { awsEnvironments } from '../../core/format';
 import { CancelSlot, isCancellation } from '../../core/cancel';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { CopyButton } from '../../components/copy-button/copy-button';
@@ -64,7 +65,14 @@ export class DeploymentsPage {
     });
     // La lista de ambientes es la de `config/`, sin hardcodear nada. Si falla,
     // el `error-box` del EnvironmentService ya lo dice en la pantalla.
-    this.environmentService.list().then((res) => this.environments.set(res.environments));
+    //
+    // Sin los locales: esto pregunta por lo desplegado en ECS, y `local` es un
+    // ambiente de base de datos —se alcanza por TCP contra el MySQL de la
+    // máquina—. Ofrecerme un ambiente contra el que no hay nada desplegado es
+    // ofrecer una consulta que no puede responder.
+    this.environmentService.list().then((res) =>
+      this.environments.set(awsEnvironments(res.environments)),
+    );
   }
 
   toggleAll(): void {

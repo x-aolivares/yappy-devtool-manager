@@ -70,6 +70,9 @@ describe('DeploymentsPage', () => {
     { env: 'dev', region: 'us-west-2', profile: 'base-profile' },
     { env: 'qa', region: 'us-west-1', profile: 'base-profile' },
     { env: 'uat', region: 'us-east-2', profile: 'base-profile' },
+    // Un ambiente local, que la lista tiene que filtrar: esto pregunta por lo
+    // desplegado en ECS y `local` no tiene nada desplegado.
+    { env: 'local', is_local: true },
   ];
 
   beforeEach(async () => {
@@ -174,6 +177,19 @@ describe('DeploymentsPage', () => {
     await settle(fixture);
 
     expect(comp.envs()).toEqual([]);
+  });
+
+  it('no ofrece los ambientes locales', async () => {
+    // `local` es un ambiente de *base de datos*: se alcanza por TCP contra el
+    // MySQL de la máquina. Esto pregunta por lo que está desplegado en ECS, así
+    // que ofrecerlo es ofrecer una consulta que no puede responder.
+    const { comp } = await consultar('repo');
+
+    expect((comp.environments() as { env: string }[]).map((e) => e.env)).toEqual([
+      'dev',
+      'qa',
+      'uat',
+    ]);
   });
 
   it('no manda un ambiente que no está en la lista', async () => {

@@ -31,6 +31,7 @@ import {
   WorkflowScope, WorkflowService, WorkflowStreamEvent,
 } from './services/workflow.service';
 import { toApiError } from './services/api-error';
+import { awsEnvironments } from './format';
 import {
   canOpen, canShowLogs, canStart, canStop, resourceMeta, startLabel,
   stateAnnouncement, stateBadge, stateBadgeClass,
@@ -238,7 +239,15 @@ export abstract class WorkflowSectionPage {
       this.environmentService
         .list()
         .then((res) => {
-          const list = res.environments.map((e: { env: string }) => ({ env: e.env }));
+          // **Sin los locales.** `local` es un ambiente de base de datos: se
+          // alcanza por TCP contra el MySQL de la máquina, y no tiene SSM ni
+          // Parameter Store. Todo lo que esta sección abre —los túneles del
+          // catálogo, la fila de Aurora, Databricks— es de AWS, así que
+          // ofrecerlo acá es ofrecer una opción que la pantalla misma dice que
+          // no sirve. Es el mismo filtro que usan las páginas de parámetros.
+          const list = (awsEnvironments(res.environments) ?? []).map(
+            (e: { env: string }) => ({ env: e.env }),
+          );
           this.envList.set(list);
           if (!list.length) {
             // No hay ambientes: no hay contra qué hablar. Decirlo es mejor que
