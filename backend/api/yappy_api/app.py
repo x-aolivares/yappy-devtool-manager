@@ -42,8 +42,22 @@ def _serve_spa(app: FastAPI) -> None:
     def spa(full_path: str = ""):
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="Not found")
-        candidate = FRONTEND_DIST / full_path
-        if full_path and candidate.is_file():
+        # `full_path` viene de una URL, o sea que puede traer `..`. Sin esta
+        # comparación contra la raíz del build, el catch-all sirve cualquier
+        # archivo del disco —`../../config/env.base`, que tiene el profile de
+        # AWS, o `.env.local`, que tiene el token de RDS—. El server escucha en
+        # `127.0.0.1`, así que alcanza con que un proceso local, o una página
+        # web que el dev visite, haga un GET.
+        #
+        # `resolve()` antes de comparar porque `..` no se normaliza solo: sin
+        # esto, `/%2e%2e/secret.txt` sale de la raíz y el `is_file()` lo
+        # encuentra igual.
+        candidate = (FRONTEND_DIST / full_path).resolve()
+        if (
+            full_path
+            and candidate.is_relative_to(FRONTEND_DIST.resolve())
+            and candidate.is_file()
+        ):
             return FileResponse(str(candidate))
         return FileResponse(str(index))
 
