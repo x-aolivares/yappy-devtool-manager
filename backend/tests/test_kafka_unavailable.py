@@ -421,6 +421,7 @@ def test_the_executor_script_still_exits(tmp_path, monkeypatch, die_calls):
 def test_a_healthy_start_is_untouched(tmp_path, tracker, monkeypatch):
     monkeypatch.setattr(api_kafka.sys, "platform", "win32")
     monkeypatch.setattr(api_kafka.time, "sleep", lambda s: None)
+    monkeypatch.setattr(api_kafka, "_port_in_use", lambda port, **kw: False)
     spawned = []
     monkeypatch.setattr(
         KafkaService, "_spawn_detached",
@@ -444,6 +445,7 @@ def test_the_tracked_entry_of_a_healthy_start_is_still_written(tmp_path, tracker
     """
     monkeypatch.setattr(api_kafka.sys, "platform", "win32")
     monkeypatch.setattr(api_kafka.time, "sleep", lambda s: None)
+    monkeypatch.setattr(api_kafka, "_port_in_use", lambda port, **kw: False)
     monkeypatch.setattr(
         api_kafka.subprocess, "Popen",
         lambda *a, **k: SimpleNamespace(pid=os.getpid(), poll=lambda: None),
@@ -457,3 +459,69 @@ def test_the_tracked_entry_of_a_healthy_start_is_still_written(tmp_path, tracker
     )
     assert entry["owner"] == process_tracker.OWNER_WEB
     assert entry["local_port"] == 9092
+
+
+# --- a second broker is what corrupts the storage --------------------------------
+
+
+def test_no_se_puede_levantar_un_segundo_broker(tmp_path, tracker, monkeypatch):
+    """El motivo de la falla que se repite: dos brokers sobre el mismo storage.
+
+    El segundo JVM abre el mismo ``log.dirs`` y su recuperación borra lo que el
+    primero está escribiendo —"Found invalid offset during recovery. Deleting
+    the corrupt segment"— y después se muere con un NPE porque el índice que
+    acaba de crear está vacío. El storage queda roto y **todos** los arranques
+    siguientes fallan igual, hasta que alguien lo borra a mano.
+
+    Por eso el registro alcanza: el broker que ya está vivo está trackeado, y el
+    que está por bindear el puerto también.
+    """
+    monkeypatch.setattr(api_kafka.sys, "platform", "win32")
+    monkeypatch.setattr(api_kafka, "_port_in_use", lambda port, **kw: False)
+    process_tracker.track_process(
+        os.getpid(), "kafka", target="server", owner=process_tracker.OWNER_WEB,
+    )
+
+    with pytest.raises(KafkaUnavailable) as excinfo:
+        _service(tmp_path).up("server", detach=True, owner=process_tracker.OWNER_WEB)
+
+    assert "segundo" in excinfo.value.reason
+
+
+def test_un_puerto_ocupado_tambien_lo_impide(tmp_path, tracker, monkeypatch):
+    """El puerto alcanza cuando el tracker no sabe del broker.
+
+    Alguien puede haber levantado el broker a mano —con otra herramienta o con
+    otra versión de esta— y el tracker no lo tiene. El puerto sí.
+    """
+    monkeypatch.setattr(api_kafka.sys, "platform", "win32")
+    monkeypatch.setattr(api_kafka, "_port_in_use", lambda port, **kw: True)
+
+    with pytest.raises(KafkaUnavailable) as excinfo:
+        _service(tmp_path).up("server", detach=True, owner=process_tracker.OWNER_WEB)
+
+    assert "9092" in excinfo.value.reason
+
+
+def test_la_web_convierte_el_segundo_broker_en_un_409(tmp_path, tracker, monkeypatch):
+    """La fila dice por qué no se levantó, en vez de morirse en silencio.
+
+    Es la misma forma de respuesta que el resto de los refusals: el endpoint
+    contesta 409 con el motivo y la fila lo muestra.
+    """
+    from fastapi.testclient import TestClient
+
+    from yappy_api.app import app
+
+    monkeypatch.setattr(api_kafka.sys, "platform", "win32")
+    monkeypatch.setattr(api_kafka, "_port_in_use", lambda port, **kw: True)
+    monkeypatch.setattr(actions, "Config", lambda: _fake_cfg(tmp_path))
+    monkeypatch.setattr(api_kafka, "KafkaService", lambda *a, **k: _service(tmp_path))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/workflow/resources/start?env=dev", json={"key": "kafka-server"}
+        )
+
+    assert response.status_code == 409
+    assert "9092" in response.json()["detail"]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import socket
 import stat
 import subprocess
 import sys
@@ -106,6 +107,18 @@ KAFDROP_UI_PORT = 8080
 #: Only used when `server.properties` is missing or unreadable. It is not a
 #: default to configure the broker with — see `_broker_port`.
 DEFAULT_BROKER_PORT = 9092
+
+
+def _port_in_use(port: int, host: str = "127.0.0.1", timeout: float = 1.0) -> bool:
+    """Whether something is already listening on ``port``.
+
+    A connection attempt and not a scan: the question is not "who holds the
+    port" but "is somebody there", and the answer only has to be good enough to
+    not start a second broker.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(timeout)
+        return sock.connect_ex((host, port)) == 0
 
 
 def _broker_port(props: Path) -> int:
@@ -214,6 +227,18 @@ class KafkaService:
         self._procs.append(proc)
         return proc
 
+    def _tracked_broker_alive(self) -> bool:
+        """Whether this project already started a broker that is still running.
+
+        The tracker knows about the brokers *we* started, including one that has
+        not bound its port yet —which is exactly the window in which a second
+        click used to slip a second JVM onto the same storage.
+        """
+        for entry in process_tracker.get_tracked_processes(resource="kafka", target="server"):
+            if entry.get("alive"):
+                return True
+        return False
+
     def _start_server(self, detach: bool, owner: str = "cli") -> subprocess.Popen | None:
         props = self._kafka_core / "config" / "kraft" / "server.properties"
         libs_dir = self._kafka_core / "libs"
@@ -221,6 +246,32 @@ class KafkaService:
             raise KafkaUnavailable(f"Kafka properties not found: {props}")
         if not libs_dir.exists():
             raise KafkaUnavailable(f"Kafka libs not found: {libs_dir}")
+
+        port = _broker_port(props)
+
+        # **Two brokers on one storage are what corrupt it.** The second JVM
+        # opens the same ``log.dirs`` and its recovery deletes what the first
+        # one is writing —"Found invalid offset during recovery. Deleting the
+        # corrupt segment"— and then dies with an NPE because the index it just
+        # created is empty. The storage is left broken and *every* start from
+        # then on fails the same way, until somebody wipes it.
+        #
+        # So the check is in the service and not in the screen: the web and the
+        # CLI both come through here, and the CLI is the one that has no button
+        # to hide behind.
+        if self._tracked_broker_alive():
+            raise KafkaUnavailable(
+                "Ya hay un broker de Kafka corriendo. No se puede levantar un "
+                "segundo: los dos escribirían el mismo storage y lo dejarían "
+                "corrupto. Paralo primero."
+            )
+        if _port_in_use(port):
+            raise KafkaUnavailable(
+                f"El puerto {port} ya está en uso. Si ese proceso es un broker de "
+                "Kafka, no se puede levantar un segundo: los dos escribirían el "
+                "mismo storage y lo dejarían corrupto."
+            )
+
         info("Starting Kafka server (KRaft)...")
 
         # Build classpath from all JARs in libs/
@@ -242,7 +293,7 @@ class KafkaService:
         ]
 
         if detach:
-            proc = self._spawn_detached(cmd, "server", _broker_port(props), owner)
+            proc = self._spawn_detached(cmd, "server", port, owner)
             success("Kafka server started (background)")
             time.sleep(2)
             return proc

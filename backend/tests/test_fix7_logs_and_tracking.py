@@ -89,6 +89,9 @@ def test_kafka_service_detach_tracks_process_with_log_file(monkeypatch, tmp_path
     fake_proc = SimpleNamespace(pid=4321)
     monkeypatch.setattr(api_kafka.subprocess, "Popen", lambda cmd, **kw: fake_proc)
     monkeypatch.setattr(api_kafka.time, "sleep", lambda seconds: None)
+    # El puerto del broker es el de la máquina: si hay uno corriendo, el servicio
+    # se niega a levantar un segundo —correcto, y nada que ver con este test—.
+    monkeypatch.setattr(api_kafka, "_port_in_use", lambda port, **kw: False)
 
     core = tmp_path / "kafka-core"
     (core / "libs").mkdir(parents=True)

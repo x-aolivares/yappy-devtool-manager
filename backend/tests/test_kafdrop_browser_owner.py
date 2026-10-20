@@ -64,6 +64,9 @@ def navegador(monkeypatch):
     monkeypatch.setattr(api_kafka.time, "sleep", lambda s: None)
     monkeypatch.setattr(KafkaService, "_spawn_detached", fake_spawn)
     monkeypatch.setattr(api_kafka.sys, "platform", "win32")
+    # Que haya un broker corriendo en el puerto de la máquina no tiene que ver
+    # con quién abre el navegador.
+    monkeypatch.setattr(api_kafka, "_port_in_use", lambda port, **kw: False)
     return opened, spawned
 
 

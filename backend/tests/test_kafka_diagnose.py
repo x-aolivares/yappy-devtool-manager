@@ -39,6 +39,19 @@ java.nio.file.AccessDeniedException: C:\\tmp\\kraft-combined-logs\\__cluster_met
 SELF_RESOLVING = """[2026-10-16 23:27:11,540] INFO [QuorumController id=1] registerBroker: event failed with DuplicateBrokerRegistrationException in 2714 microseconds. Exception message: Another broker is registered with that broker id. If the broker was recently restarted this should self-resolve once the heartbeat manager expires the broker's session.
 """
 
+# El storage ya roto: la recuperación de Kafka borra el segmento, crea uno
+# vacío y se muere con un NPE porque el índice vacío no tiene mapping.
+CORRUPT_INDEX = """[2026-10-19 20:39:23,955] WARN [LogLoader partition=__cluster_metadata-0, dir=C:\\tmp\\kraft-combined-logs] Found invalid offset during recovery. Deleting the corrupt segment and creating an empty one with starting offset 0 (org.apache.kafka.storage.internals.log.LogLoader)
+[2026-10-19 20:39:23,955] ERROR [SharedServer id=1] Got exception while starting SharedServer (kafka.server.SharedServer)
+java.lang.NullPointerException: Cannot invoke "java.nio.MappedByteBuffer.duplicate()" because the return value of "org.apache.kafka.storage.internals.log.OffsetIndex.mmap()" is null
+\tat org.apache.kafka.storage.internals.log.OffsetIndex.lambda$lookup$0(OffsetIndex.java:99)
+"""
+
+# El registro que no se pudo leer, que sí nombra el archivo en el que estaba.
+CORRUPT_RECORD = """[2026-10-19 16:01:27,261] ERROR Encountered fatal fault: Unexpected error in raft IO thread (org.apache.kafka.server.fault.ProcessTerminatingFaultHandler)
+org.apache.kafka.common.errors.CorruptRecordException: Found record size 0 smaller than minimum record overhead (14) in file C:\\tmp\\kraft-combined-logs\\__cluster_metadata-0\\00000000000000000000.log.
+"""
+
 KRAFT_DIRS = [r"C:\tmp\kraft-combined-logs"]
 
 
@@ -148,6 +161,54 @@ def test_un_access_denied_en_otro_archivo_no_pide_la_limpieza():
     )
 
     assert needs_clean(otro, KRAFT_DIRS) is False
+
+
+def test_un_metadata_log_corrupto_pide_la_limpieza():
+    """La falla que faltaba: el storage ya está roto y *cada* arranque falla igual.
+
+    La recuperación de Kafka borra el segmento corrupto, crea uno vacío y se
+    muere con un NPE porque el índice vacío no tiene mapping que duplicar. Esta
+    detección sólo buscaba un ``AccessDeniedException``, así que el botón de
+    limpiar no aparecía y el developer tenía que ir a la terminal a hacer lo
+    único que servía.
+    """
+    assert needs_clean(CORRUPT_INDEX, KRAFT_DIRS) is True
+
+
+def test_un_registro_corrupto_pide_la_limpieza():
+    """La otra mitad de la misma historia: el registro que no se pudo leer.
+
+    Esta sí nombra el archivo, y el archivo está dentro del ``log.dirs``: es el
+    mismo storage y el mismo arreglo.
+    """
+    assert needs_clean(CORRUPT_RECORD, KRAFT_DIRS) is True
+
+
+def test_un_npe_que_no_es_del_storage_no_pide_la_limpieza():
+    """Un NPE de otro índice no es el de la recuperación del metadata log.
+
+    El botón borra los topics: ofrecerlo por una excepción que no es del
+    storage es perderlos sin arreglar nada.
+    """
+    otro = (
+        "ERROR [SharedServer id=1] Got exception while starting SharedServer\n"
+        'java.lang.NullPointerException: Cannot invoke "java.nio.Buffer.limit()" '
+        'because the return value of "org.apache.kafka.common.utils.Utils.unwrap()" is null\n'
+    )
+
+    assert needs_clean(otro, KRAFT_DIRS) is False
+
+
+def test_el_boton_aparece_con_el_log_de_la_falla(tmp_path):
+    """La puerta de entrada real: el log del proceso y la pregunta "¿qué lo arregla?".
+
+    Es el camino que sigue el supervisor, así que es el que tiene que devolver el
+    nombre del arreglo.
+    """
+    log = tmp_path / "kafka-server.log"
+    log.write_text(CORRUPT_INDEX, encoding="utf-8")
+
+    assert fix_for(str(log), KRAFT_DIRS) == FIX_CLEAN_STORAGE
 
 
 def test_sin_log_dirs_no_se_ofrece_nada():

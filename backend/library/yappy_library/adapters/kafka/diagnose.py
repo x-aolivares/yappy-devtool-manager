@@ -22,6 +22,13 @@ the storage and re-formatting is not a workaround, it is the fix — and it is t
 only fix, which is why the web should be able to offer it instead of sending the
 developer to a terminal.
 
+**And there is a second failure with the same fix**, which is what the broken
+storage looks like from the next day on: the recovery of that metadata log
+deletes the corrupt segment, creates an empty one, and dies with an NPE because
+the empty index has no mapping to duplicate. From then on *every* start fails
+the same way. It used to be invisible here, which made it a terminal errand:
+the button that fixes this existed and did not appear.
+
 What it is **not**: ``DuplicateBrokerRegistrationException``, which shows up in
 ``controller.log`` after an unclean restart and says, in Kafka's own words, "this
 should self-resolve once the heartbeat manager expires the broker's session". A
@@ -48,6 +55,18 @@ READ_LIMIT_BYTES = 16 * 1024 * 1024
 #: The fix we know how to apply. A name and not a sentence: it travels to the
 #: browser as a field the row renders, and the wording belongs where the button is.
 FIX_CLEAN_STORAGE = "kafka_clean_storage"
+
+#: The NPE of a metadata log that Kafka's own recovery could not repair.
+#:
+#: "Found invalid offset during recovery. Deleting the corrupt segment and
+#: creating an empty one" leaves an **empty index file** behind, and an empty
+#: index has no mapping to duplicate: ``OffsetIndex.mmap()`` returns ``null`` and
+#: the broker dies. It names no path, so it is recognised by the exception
+#: itself.
+_CORRUPT_INDEX = "OffsetIndex.mmap()"
+
+#: The record that could not be read, which does name the file it was in.
+_CORRUPT_RECORD = "CorruptRecordException"
 
 #: A line of a Java stack trace. Pure noise for this purpose, and there can be
 #: dozens of them between two lines that actually say something.
@@ -152,12 +171,32 @@ def needs_clean(text: str | list[str], dirs: list[str]) -> bool:
     asymmetric. Offer the button on something else and the developer clicks it,
     loses their topics, and the broker still does not start. Miss it and they do the
     one thing that works, from a terminal, as they do today.
+
+    **There are two failures that the same fix repairs**, and they are two steps
+    of the same story:
+
+    1. The log directory "fails" because a ``.todo`` file could not be deleted
+       (Windows has it open) — ``AccessDeniedException`` naming a file inside
+       ``log.dirs``. The broker shuts down in the middle of a write and leaves
+       the metadata log inconsistent.
+    2. The next start tries to recover that log: Kafka deletes the corrupt
+       segment, creates an empty one, and dies with an NPE because the new
+       index file is empty (``OffsetIndex.mmap()`` returns ``null``). From here
+       on **every** start fails the same way, and the only fix is to wipe the
+       storage.
+
+    The second one names no file — the NPE is about an index, not about a path —
+    so it cannot be matched by "the exception names a file inside ``log.dirs``".
+    It is matched by the exception itself, which is just as specific: nothing
+    else produces an ``OffsetIndex`` that is null.
     """
     if not dirs:
         return False
     needles = [_normalised(d) for d in dirs if d]
     for line in failure_excerpt(text):
-        if "AccessDeniedException" not in line:
+        if _CORRUPT_INDEX in line:
+            return True
+        if "AccessDeniedException" not in line and _CORRUPT_RECORD not in line:
             continue
         haystack = _normalised(line)
         if any(needle in haystack for needle in needles):

@@ -141,6 +141,9 @@ def test_the_kafka_spawn_and_the_browser_share_one_set_of_flags(spawned, monkeyp
     """
     monkeypatch.setattr(api_kafka.sys, "platform", "win32")
     monkeypatch.setattr(api_kafka.time, "sleep", lambda s: None)
+    # El puerto del broker es el de la máquina: que haya uno corriendo no tiene
+    # que ver con los flags del spawn.
+    monkeypatch.setattr(api_kafka, "_port_in_use", lambda port, **kw: False)
     calls: list[tuple[list, dict]] = []
     monkeypatch.setattr(
         api_kafka.subprocess, "Popen",
