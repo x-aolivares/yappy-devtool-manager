@@ -13,7 +13,7 @@ from yappy_library.application.database.sync import migrate as dbmig
 from yappy_library.application.database.sync import query as dbquery
 from yappy_library.application.database.sync import schema_sync as dbschema
 from yappy_library.application.database.sync import table_migrate as dbtablemig
-from ..deps import env_config
+from ..deps import db_errors, env_config
 from ..schemas import (
     CompileRequest,
     CompileResponse,
@@ -53,7 +53,7 @@ def api_db_diff(req: DbDiffRequest):
     cfg_a = env_config(req.env_a)
     cfg_b = env_config(req.env_b)
 
-    try:
+    with db_errors():
         with connect(cfg_a) as conn_a, connect(cfg_b) as conn_b:
             schema, name = req.schema_name, req.object_name
 
@@ -138,23 +138,15 @@ def api_db_diff(req: DbDiffRequest):
                 "script": script,
                 "notes": notes,
             }
-    except SyncError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
 
 
 @router.get("/api/db/schemas", operation_id="list_db_schemas", response_model=SchemasResponse)
 def api_db_schemas(env: str):
     """List the user schemas of an environment, to feed the schema picker."""
     cfg = env_config(env)
-    try:
+    with db_errors():
         with connect(cfg) as conn:
             return {"env": env, "schemas": obj.list_schemas(conn)}
-    except SyncError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
 
 
 @router.get("/api/db/objects", operation_id="list_db_objects", response_model=DbObjectsResponse)
@@ -172,7 +164,7 @@ def api_db_objects(env: str, schema: str, object_type: str):
     schema = schema.strip()
     cfg = env_config(env)
     lister = obj.list_tables if object_type == "table" else obj.list_procedures
-    try:
+    with db_errors():
         with connect(cfg) as conn:
             return {
                 "env": env,
@@ -180,10 +172,6 @@ def api_db_objects(env: str, schema: str, object_type: str):
                 "object_type": object_type,
                 "objects": lister(conn, schema),
             }
-    except SyncError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
 
 
 @router.get(
@@ -207,13 +195,9 @@ def api_db_date_columns(env: str, schema: str, table: str):
 
     schema, table = schema.strip(), table.strip()
     cfg = env_config(env)
-    try:
+    with db_errors():
         with connect(cfg) as conn:
             columns = obj.date_columns(conn, schema, table)
-    except SyncError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
 
     return {
         "env": env,
@@ -247,12 +231,8 @@ def api_execute_sql(req: ExecuteRequest):
 
     cfg = env_config(req.env)
 
-    try:
+    with db_errors():
         results = syncexec.execute_sql(cfg, req.schema_name.strip(), req.code)
-    except syncexec.SyncError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
 
     return {
         "env": req.env,
@@ -305,7 +285,7 @@ def api_compile(req: CompileRequest):
     schema, name = req.schema_name.strip(), req.object_name.strip()
     code_a = None
 
-    try:
+    with db_errors():
         with connect(cfg_b) as conn_b, connect(cfg_a) as conn_a:
             if req.object_type == "procedure":
                 code_b = obj.show_create_procedure(conn_b, schema, name)
@@ -395,16 +375,6 @@ def api_compile(req: CompileRequest):
             "script": script,
             "notes": notes,
         }
-    except HTTPException:
-        # Los rechazos por precondición (origen == destino, objeto inexistente en el
-        # origen, tabla referenciada por una FK) ya son 400 con su propio mensaje.
-        # Sin esta línea el `except Exception` de abajo los reempaquetaría como
-        # "Error de base de datos: 400: ...".
-        raise
-    except SyncError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
 
 
 @router.post(
@@ -460,7 +430,7 @@ def api_compile_schema(req: SchemaCompileRequest):
     cfg_b = env_config(req.env_b)  # origen
     cfg_a = env_config(req.env_a)  # destino
 
-    try:
+    with db_errors():
         with connect(cfg_b) as conn_b, connect(cfg_a) as conn_a:
             schema_plan = dbschema.plan(
                 conn_b,
@@ -485,12 +455,6 @@ def api_compile_schema(req: SchemaCompileRequest):
             "script": script,
             "notes": schema_plan.notes,
         }
-    except SyncError as exc:
-        # Preconditions land here too: a schema that is not in the origin, or an
-        # object that disappeared between the listing and the SHOW CREATE.
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
 
 
 @router.post("/api/query", operation_id="query_db", response_model=QueryResponse)
@@ -505,12 +469,8 @@ def api_query(req: QueryRequest):
     section's copy says out loud that a procedure can write.
     """
     cfg = env_config(req.env)
-    try:
+    with db_errors():
         result = dbquery.run_select(cfg, req.code, limit=req.limit)
-    except (dbquery.QueryError, SyncError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
 
     return {
         "env": req.env,
@@ -542,15 +502,9 @@ def api_migrate(req: MigrationRequest):
     cfg_b = env_config(req.env_b)  # origen
     cfg_a = env_config(req.env_a)  # destino
 
-    try:
+    with db_errors():
         plan = dbmig.parse_select(req.code, default_schema=req.default_schema)
         results = dbmig.migrate(cfg_b, cfg_a, plan, dry_run=req.dry_run)
-    except (dbmig.MigrationError, dbquery.QueryError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except SyncError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
 
     return {
         "env_b": req.env_b,
@@ -604,7 +558,7 @@ def api_migrate_tables(req: TableMigrateRequest):
     cfg_b = env_config(req.env_b)  # origen
     cfg_a = env_config(req.env_a)  # destino
 
-    try:
+    with db_errors():
         with connect(cfg_b) as conn_b:
             plan = dbtablemig.build_plan(
                 conn_b,
@@ -615,12 +569,6 @@ def api_migrate_tables(req: TableMigrateRequest):
                 ],
             )
         results = dbmig.migrate(cfg_b, cfg_a, plan, dry_run=req.dry_run)
-    except SyncError as exc:
-        # Preconditions land here: schema or table missing in the origin, or a date
-        # column that is not one. All of them while nothing has been written.
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Error de base de datos: {exc}") from exc
 
     return {
         "env_b": req.env_b,

@@ -7,10 +7,11 @@ JS pages are intentionally not served anymore.
 from __future__ import annotations
 
 import os
+import sqlite3
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
 
 from yappy_library.paths import project_root
 
@@ -93,6 +94,22 @@ def _create_app() -> FastAPI:
     app.include_router(sessions.router)
     app.include_router(deployments.router)
     app.include_router(workflow.router)
+
+    @app.exception_handler(sqlite3.Error)
+    async def _sqlite_error(request: Request, exc: sqlite3.Error) -> JSONResponse:
+        """Los errores de SQLite no son del cliente.
+
+        La base de sesiones es local, y sus fallos —base bloqueada, disco lleno,
+        sistema de archivos de sólo lectura— son del servidor. Antes cada ruta
+        de sesiones capturaba sólo ``ValueError``, así que un
+        ``sqlite3.OperationalError`` salía como un 500 sin cuerpo, y el
+        ``UNIQUE(session_id, name)`` salía como un 500 en vez de como el
+        conflicto que es.
+        """
+        if isinstance(exc, sqlite3.IntegrityError):
+            return JSONResponse(status_code=409, content={"detail": f"Error de sesión: {exc}"})
+        return JSONResponse(status_code=503, content={"detail": f"Error de sesión: {exc}"})
+
     if FRONTEND_DIST.is_dir():
         _serve_spa(app)
     else:
