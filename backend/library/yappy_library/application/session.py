@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 
+from yappy_library.adapters.aws_sso import login as sso_login
 from yappy_library.adapters.database.connection import SyncError, _wait_for_port
 from yappy_library.adapters.database.credentials import generate_token, write_local_env
 from yappy_library.adapters.logging import die, info, success, warn
@@ -89,8 +90,12 @@ class Session:
         )
         if result.returncode != 0:
             warn("No active AWS session. Starting SSO login...")
-            from ..aws.session import session as _aws_session
-            _aws_session()
+            # El login vive en la library y no en el CLI: esta línea antes
+            # importaba `..aws.session`, que desde `yappy_library/application`
+            # apunta a `yappy_library.aws` —un paquete que no existe— así que
+            # el camino que se toma justamente cuando falta la sesión moría con
+            # `ModuleNotFoundError` en vez de abrir el navegador.
+            sso_login(self._cfg.profile)
             result = self._cmd.run(
                 [*_aws_cmd(), "sts", "get-caller-identity", "--profile", self._cfg.profile],
                 capture=True,
