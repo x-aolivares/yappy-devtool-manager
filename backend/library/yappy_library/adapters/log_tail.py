@@ -82,16 +82,33 @@ def read_from(path: Path, offset: int, max_bytes: int = MAX_CHUNK_BYTES) -> tupl
     return chunk.decode("utf-8", errors="replace"), new_offset
 
 
-def last_lines(path: Path, lines: int = 60) -> str:
+def last_lines(path: Path, lines: int = 60, max_bytes: int = MAX_CHUNK_BYTES) -> str:
     """The last ``lines`` lines of a log file, oldest first.
 
-    Reads the whole file once to find where the tail begins. That is fine here
-    and only here: this is the first read of a file the browser has not seen.
-    Every read after it goes through :func:`read_from` with an offset.
+    Reads at most ``max_bytes`` from the end of the file, not the whole file.
+    The whole file was a bomb: a Kafka log of 2 GB meant 2 GB en memoria por
+    conexión de stream abierta, y el camino incremental ya estaba capado —
+    sólo la primera lectura no lo estaba.
+
+    When the file is bigger than the cap, the chunk arranca en medio de una
+    línea: esa primera línea parcial se descarta, porque no es una línea y
+    mostrarla cortada confunde más de lo que ayuda.
     """
     try:
-        raw = path.read_bytes()
+        size = path.stat().st_size
+        with path.open("rb") as handle:
+            start = max(0, size - max_bytes)
+            handle.seek(start)
+            raw = handle.read(max_bytes)
     except OSError:
         return ""
+
+    if start > 0:
+        first_newline = raw.find(b"\n")
+        if first_newline == -1:
+            # Ninguna línea completa en el chunk: no hay cola que mostrar.
+            return ""
+        raw = raw[first_newline + 1:]
+
     offset = tail_start_offset(raw, lines)
     return raw[offset:].decode("utf-8", errors="replace")

@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from yappy_library.adapters import process_tracker
 from yappy_library.adapters.logging import info as log_info
 from yappy_library.adapters.processes import BaseCommand, ToolUnavailable, tunnel_log_path
-from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES
+from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES, cluster_domain
 from yappy_library.application.workflow.models import is_foreign, is_live, state_of
 from yappy_library.application.workflow.registry import resources_for
 from yappy_library.application.workflow.service import _owner
@@ -169,8 +169,7 @@ def _remote_host_for(cfg: Config, definition, cluster: str) -> str | None:
     host = CLUSTER_ALIASES.get(cluster)
     if not host:
         return None
-    domain = cfg.get("CLUSTER_DOMAIN", "yappycloud.com")
-    return f"{host}.{cfg.env}.{domain}"
+    return f"{host}.{cfg.env}.{cluster_domain(cfg)}"
 
 
 def start_resource(cfg: Config, key: str) -> dict:

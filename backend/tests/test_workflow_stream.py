@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -69,6 +70,12 @@ def watchdog(monkeypatch):
 async def _collect(frames, sink: list) -> None:
     async for raw in frames:
         sink.append(json.loads(raw[len("data: ") :]))
+
+
+async def _collect_raw(frames, sink: list) -> None:
+    """Los frames sin interpretar, para poder ver los comentarios SSE."""
+    async for raw in frames:
+        sink.append(raw)
 
 
 async def _until(sink: list, count: int, timeout: float = 3.0) -> bool:
@@ -552,6 +559,123 @@ def test_el_log_sin_pid_es_400():
 
     assert response.status_code == 400
     assert "pid" in response.json()["detail"]
+
+
+# --------------------------------------------------------------------------
+# Un stream que se rompe tiene que decirlo, y uno que no cambia tiene que
+# seguir hablando.
+# --------------------------------------------------------------------------
+
+
+def test_un_fallo_dentro_del_stream_se_reporta_como_un_frame(bus, monkeypatch):
+    """El stream ya empezó: no hay status code con el que responder.
+
+    Lo que sí se puede es cerrar el stream **diciendo por qué**. Si no, el
+    cliente ve una conexión abierta que no dice nada, y eso es
+    indistinguible de "no está pasando nada": la pantalla queda mostrando la
+    última fila conocida como si fuera el estado actual.
+    """
+    def _boom(cfg, cluster):
+        raise RuntimeError("el tracker se rompió")
+
+    monkeypatch.setattr(routes_workflow.workflow_service, "snapshot", _boom)
+
+    async def main():
+        frames = routes_workflow._stream_frames(Config.with_env("dev"), "cap")
+        raw = await frames.__anext__()
+        body = json.loads(raw[len("data: ") :])
+        assert "el tracker se rompió" in body["error"]
+        await frames.aclose()
+
+    _run(main())
+
+
+def test_un_fallo_en_el_log_se_reporta_como_un_frame(bus, tmp_path, monkeypatch):
+    """El mismo contrato en el stream de logs."""
+    def _boom(*args):
+        raise RuntimeError("no se pudo leer el archivo")
+
+    monkeypatch.setattr(routes_workflow, "_log_chunk", _boom)
+
+    log = tmp_path / "kafka.log"
+    log.write_text("arrancando\n", encoding="utf-8")
+    # El pid tiene que estar trackeado: si no, el stream manda el frame `gone`
+    # y se cierra antes de llegar a leer el archivo.
+    _track_with_log(os.getpid(), str(log))
+
+    async def main():
+        frames = routes_workflow._stream_log_frames(os.getpid(), 10, log)
+        raw = await frames.__anext__()
+        body = json.loads(raw[len("data: ") :])
+        assert "no se pudo leer el archivo" in body["error"]
+        await frames.aclose()
+
+    _run(main())
+
+
+def test_un_stream_que_no_cambia_manda_un_ping(bus, monkeypatch):
+    """Un stream que no manda un byte durante minutos lo cortan los proxies.
+
+    El comentario no le llega al cliente —el `EventSource` ignora lo que no es
+    `data:`— pero mantiene viva la conexión y delata que el server sigue ahí.
+    """
+    monkeypatch.setattr(routes_workflow, "STREAM_PING_SECONDS", 0.05)
+    monkeypatch.setattr(routes_workflow, "STREAM_WATCHDOG_SECONDS", 0.05)
+
+    async def main():
+        frames = routes_workflow._stream_frames(Config.with_env("dev"), "cap")
+        raw: list[str] = []
+        pump = asyncio.ensure_future(_collect_raw(frames, raw))
+
+        deadline = time.monotonic() + 3.0
+        while not any(r.startswith(": ping") for r in raw) and time.monotonic() < deadline:
+            await asyncio.sleep(0.02)
+
+        assert any(r.startswith(": ping") for r in raw), "no mandó ningún ping"
+        await _close(frames, pump)
+
+    _run(main())
+
+
+def test_la_lectura_del_tracker_no_corre_en_el_event_loop(bus, tmp_path, log_check, monkeypatch):
+    """`get_tracked_processes()` es trabajo bloqueante, y va al threadpool.
+
+    En Windows esa llamada recorre la tabla de procesos: son varios
+    milisegundos. Inline en el event loop, frenaba a *todas* las demás
+    conexiones del server —no sólo a este stream— cada medio segundo.
+    """
+    threads: list[threading.Thread] = []
+    original = routes_workflow.get_tracked_processes
+
+    def _spy(*args, **kwargs):
+        threads.append(threading.current_thread())
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(routes_workflow, "get_tracked_processes", _spy)
+
+    log = tmp_path / "kafka.log"
+    log.write_text("arrancando\n", encoding="utf-8")
+    _track_with_log(os.getpid(), str(log))
+
+    async def main():
+        # La resolución del path también lee el tracker, y esa corre en el hilo
+        # del test: es la ruta, no el generator. Lo que se mide es lo que pasa
+        # adentro del stream.
+        path = Path(routes_workflow._tracked_log_entry(os.getpid())[1])
+        threads.clear()
+
+        frames = routes_workflow._stream_log_frames(os.getpid(), 10, path)
+        sink: list[dict] = []
+        pump = asyncio.ensure_future(_collect(frames, sink))
+        assert await _until(sink, 1)
+        await _close(frames, pump)
+
+    _run(main())
+
+    assert threads, "la lectura no se midió"
+    assert all(t is not threading.main_thread() for t in threads), (
+        "la lectura del tracker corrió en el hilo del event loop"
+    )
 
 
 # --------------------------------------------------------------------------

@@ -25,7 +25,9 @@ from yappy_api.schemas import (
 from yappy_library.adapters import process_tracker
 from yappy_library.adapters.processes import BaseCommand
 from yappy_library.application.workflow import catalog_write
+from yappy_library.application.workflow import service as workflow_service
 from yappy_library.application.workflow.actions import StartRefused, StopRefused
+from yappy_library.config import Config
 
 
 class FakeConfig:
@@ -133,6 +135,33 @@ def test_clusters_lists_the_aliases_the_registry_uses():
     body = workflow.api_workflow_clusters()
 
     assert set(body["clusters"]) == {"cap", "cap2", "int"}
+
+
+def test_clusters_reports_the_domain_from_the_config(tmp_path, monkeypatch):
+    """El dominio sale de la config, no de un literal.
+
+    Con un `CLUSTER_DOMAIN` custom, la web informaba un dominio y los túneles
+    usaban otro: el browser abría un host que no era el que el túnel servía.
+    """
+    monkeypatch.setattr(Config, "_config_dir", tmp_path)
+    (tmp_path / "env.base").write_text(
+        "KAFKA_PATH=C:/kafka\nCLUSTER_DOMAIN=midominio.com\n", encoding="utf-8"
+    )
+    workflow_service._cached_environmentless = None
+
+    body = workflow.api_workflow_clusters()
+
+    assert body["domain"] == "midominio.com"
+
+
+def test_clusters_falls_back_to_the_default_domain(tmp_path, monkeypatch):
+    monkeypatch.setattr(Config, "_config_dir", tmp_path)
+    (tmp_path / "env.base").write_text("KAFKA_PATH=C:/kafka\n", encoding="utf-8")
+    workflow_service._cached_environmentless = None
+
+    body = workflow.api_workflow_clusters()
+
+    assert body["domain"] == "yappycloud.com"
 
 
 # --- state ------------------------------------------------------------------

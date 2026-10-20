@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from yappy_library.adapters.process_tracker import get_tracked_processes
-from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES
+from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES, cluster_domain
 from yappy_library.application.workflow.catalog import entries_for, is_configured
 from yappy_library.application.workflow.models import (
     STATE_DOWN,
@@ -44,8 +44,7 @@ def remote_host_for(cfg: Config, cluster: str) -> str:
     host = CLUSTER_ALIASES.get(cluster)
     if not host or not cfg.env:
         return ""
-    domain = cfg.get("CLUSTER_DOMAIN", "yappycloud.com")
-    return f"{host}.{cfg.env}.{domain}"
+    return f"{host}.{cfg.env}.{cluster_domain(cfg)}"
 
 
 def _holders_by_port(entries: list[dict]) -> dict[int, list[dict]]:

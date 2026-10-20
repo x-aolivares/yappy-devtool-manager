@@ -16,15 +16,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from yappy_library.adapters.kafka.service import KafkaUnavailable
 from yappy_library.adapters.process_tracker import get_tracked_processes
-from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES
+from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES, cluster_domain
 from yappy_library.adapters.state_bus import state_bus
 from yappy_library.application.workflow import actions, catalog, catalog_write
 from yappy_library.application.workflow import service as workflow_service
@@ -72,6 +74,15 @@ STREAM_WATCHDOG_SECONDS = 5.0
 #: Same interval as ``readiness.POLL_INTERVAL``, and for the same reason: the log of
 #: a starting process gets written about as fast as the probe notices it is up.
 LOG_STREAM_CHECK_SECONDS = 0.5
+
+#: Cada cuánto mandar un comentario SSE aunque no haya nada nuevo.
+#:
+#: Un stream que no manda un byte durante minutos lo cortan los proxies que
+#: tienen timeout de lectura o que bufferean la respuesta, y el corte se ve
+#: como una desconexión sin explicación. El comentario no le llega al cliente
+#: —el `EventSource` ignora lo que no es `data:`— pero mantiene viva la
+#: conexión y delata que el server sigue ahí.
+STREAM_PING_SECONDS = 15.0
 
 
 def _cfg(env: str) -> Config:
@@ -187,9 +198,15 @@ async def _stream_frames(cfg: Config, cluster: str):
     The snapshot goes through :func:`run_in_threadpool` because it is blocking work —
     file reads and, on Windows, a process-table walk — and doing it inline would
     stall every other connection for its duration.
+
+    Un fallo dentro del generador no se puede reportar con un status code: la
+    respuesta ya empezó. Lo que se puede es cerrar el stream **diciendo por
+    qué**, porque si no el cliente ve una conexión abierta que no dice nada, y
+    eso es indistinguible de "no está pasando nada".
     """
     subscription = state_bus.subscribe()
     last: str | None = None
+    last_sent = time.monotonic()
     try:
         while True:
             if shutdown.is_set():
@@ -206,6 +223,10 @@ async def _stream_frames(cfg: Config, cluster: str):
             if signature != last:
                 last = signature
                 yield f"data: {json.dumps(body)}\n\n"
+                last_sent = time.monotonic()
+            elif time.monotonic() - last_sent >= STREAM_PING_SECONDS:
+                yield ": ping\n\n"
+                last_sent = time.monotonic()
             try:
                 await asyncio.wait_for(
                     subscription.queue.get(), STREAM_WATCHDOG_SECONDS
@@ -214,6 +235,8 @@ async def _stream_frames(cfg: Config, cluster: str):
                 # Nothing published. Go around: re-read, and send only if the OS
                 # says something moved.
                 pass
+    except Exception as exc:
+        yield f"data: {json.dumps({'error': str(exc)})}\n\n"
     finally:
         # Reached when the client disconnects and the generator is closed. Without
         # it the bus would keep a dead connection's queue for the process's life.
@@ -226,7 +249,13 @@ async def _stream_frames(cfg: Config, cluster: str):
     response_model=WorkflowClustersResponse,
 )
 def api_workflow_clusters():
-    return {"clusters": list(CLUSTER_ALIASES), "domain": "yappycloud.com"}
+    return {
+        "clusters": list(CLUSTER_ALIASES),
+        # El dominio sale de la config, no de un literal: con un
+        # `CLUSTER_DOMAIN` custom la web informaba un dominio y los túneles
+        # usaban otro.
+        "domain": cluster_domain(workflow_service._environmentless_config()),
+    }
 
 
 @router.get(
@@ -265,7 +294,7 @@ async def api_workflow_stream(env: str = "", cluster: str = "cap"):
     status line can still be written. Inside the generator it could not be reported
     at all; the client would see a stream that opens and then says nothing forever.
     """
-    cfg = _cfg(env)
+    cfg = await run_in_threadpool(_cfg, env)
     cluster = _cluster(cluster)
     return StreamingResponse(
         _stream_frames(cfg, cluster),
@@ -374,7 +403,12 @@ def api_workflow_stop_all(allow_foreign: bool = False):
     "/api/workflow/logs",
     operation_id="read_workflow_logs",
 )
-def api_workflow_logs(pid: int | None = None, lines: int = 60, offset: int = 0, page: str = ""):
+def api_workflow_logs(
+    pid: int | None = None,
+    lines: Annotated[int, Query(ge=1, le=5000)] = 60,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    page: str = "",
+):
     """The last ``lines`` of a tracked process's log, or what got appended.
 
     ``offset`` makes this a poll: pass the ``offset`` the previous call returned
@@ -461,6 +495,7 @@ async def _stream_log_frames(pid: int, lines: int, path: Path):
     """
     subscription = state_bus.subscribe()
     offset = 0
+    last_sent = time.monotonic()
     try:
         first = True
         while True:
@@ -469,7 +504,13 @@ async def _stream_log_frames(pid: int, lines: int, path: Path):
                 # el apagado no puede esperar a una conexión SSE que no se
                 # cierra sola.
                 return
-            if not [e for e in get_tracked_processes() if e.get("pid") == pid]:
+            # La lista de procesos trackeados requiere, en Windows, recorrer la
+            # tabla de procesos: son varios milisegundos de trabajo bloqueante
+            # que, inline en el event loop, frenan a *todas* las demás
+            # conexiones del server. Por eso va al threadpool, igual que el
+            # snapshot del stream de estado.
+            entries = await run_in_threadpool(get_tracked_processes)
+            if not [e for e in entries if e.get("pid") == pid]:
                 # El `gone` del panel: el pid salió del tracker, así que no queda nada
                 # que preguntar. Un último frame y el stream se cierra.
                 gone = {"pid": pid, "text": "", "offset": offset, "gone": True}
@@ -481,11 +522,30 @@ async def _stream_log_frames(pid: int, lines: int, path: Path):
                 offset = chunk["offset"]
                 frame = {"pid": pid, **chunk, "gone": False, "alive": True}
                 yield f"data: {json.dumps(frame)}\n\n"
+                last_sent = time.monotonic()
+            elif time.monotonic() - last_sent >= STREAM_PING_SECONDS:
+                yield ": ping\n\n"
+                last_sent = time.monotonic()
             first = False
             try:
                 await asyncio.wait_for(subscription.queue.get(), LOG_STREAM_CHECK_SECONDS)
             except TimeoutError:
                 pass
+    except Exception as exc:
+        yield (
+            "data: "
+            + json.dumps(
+                {
+                    "pid": pid,
+                    "text": "",
+                    "offset": offset,
+                    "gone": False,
+                    "alive": True,
+                    "error": str(exc),
+                }
+            )
+            + "\n\n"
+        )
     finally:
         subscription.close()
 
@@ -495,7 +555,11 @@ async def _stream_log_frames(pid: int, lines: int, path: Path):
     operation_id="stream_workflow_logs",
     response_class=StreamingResponse,
 )
-async def api_workflow_log_stream(pid: int | None = None, lines: int = 60, page: str = ""):
+async def api_workflow_log_stream(
+    pid: int | None = None,
+    lines: Annotated[int, Query(ge=1, le=5000)] = 60,
+    page: str = "",
+):
     """The tail of one process's log, then whatever it writes, pushed as it happens.
 
     Replaces a 1,5s poll whose answer was almost always "nothing new". The panel
@@ -510,7 +574,10 @@ async def api_workflow_log_stream(pid: int | None = None, lines: int = 60, page:
     """
     if pid is None:
         raise HTTPException(status_code=400, detail="Falta el pid.")
-    _entry, path = _tracked_log_entry(pid)
+    # La búsqueda del archivo del log recorre el tracker, y en Windows eso
+    # incluye un recorrido de la tabla de procesos: va al threadpool para no
+    # frenar el event loop mientras dura.
+    _entry, path = await run_in_threadpool(_tracked_log_entry, pid)
     return StreamingResponse(
         _stream_log_frames(pid, lines, path),
         media_type="text/event-stream",

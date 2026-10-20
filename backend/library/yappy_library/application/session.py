@@ -7,7 +7,7 @@ from yappy_library.adapters.database.connection import SyncError, _wait_for_port
 from yappy_library.adapters.database.credentials import generate_token, write_local_env
 from yappy_library.adapters.logging import die, info, success, warn
 from yappy_library.adapters.processes import BaseCommand, _aws_cmd
-from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES
+from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES, cluster_domain
 from yappy_library.config import Config
 from yappy_library.domain.models import DBResult, PFResult
 
@@ -32,8 +32,7 @@ class ForwarderNamespace:
             cluster_host = CLUSTER_ALIASES.get(load_balance)
             if not cluster_host:
                 die(f"Unknown cluster '{load_balance}'. Use: cap, cap2, or int")
-            domain = cfg.get("CLUSTER_DOMAIN", "yappycloud.com")
-            remote_host = f"{cluster_host}.{cfg.env}.{domain}"
+            remote_host = f"{cluster_host}.{cfg.env}.{cluster_domain(cfg)}"
             target = f"cluster/{load_balance}"
         elif self._target_type == "bastion":
             remote_host = None
