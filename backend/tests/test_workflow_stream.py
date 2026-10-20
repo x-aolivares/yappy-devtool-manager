@@ -306,6 +306,69 @@ def test_un_cluster_que_no_existe_es_400():
 
 
 # --------------------------------------------------------------------------
+# Sin ambiente: la página de Kafka.
+# --------------------------------------------------------------------------
+
+
+def test_sin_env_el_endpoint_abre_el_stream_en_vez_de_400(bus, watchdog):
+    """`env` vacío es *sin ambiente*, no el default del endpoint.
+
+    La página de Kafka llama sin `env` a propósito —es full local— y el default
+    era `"dev"`, un ambiente real: en una máquina sin `env.dev` el stream
+    contestaba 400 antes de abrirse y la sección no cargaba nunca su estado.
+
+    Se conduce el generador directo y no por ``TestClient``: un stream que no
+    termina hace esperar al cliente por una respuesta que nunca completa, así
+    que "el stream abre" no se puede preguntar por ahí sin colgar el test.
+    """
+
+    async def main():
+        # El `_cfg` real, sin ambiente: es el paso que antes levantaba el 400.
+        cfg = routes_workflow._cfg("")
+        frames, sink, pump = await _open(cfg)
+        assert await _until(sink, 1), "el stream sin ambiente no mandó nada"
+        body = sink[0]
+        assert body["env"] == ""
+        # Kafka es lo único que existe sin ambiente: el resto son túneles.
+        assert {row["key"] for row in body["resources"]} == {"kafka-server", "kafka-ui"}
+        assert body["ports"] == []
+        await _close(frames, pump)
+
+    _run(main())
+
+
+def test_sin_env_el_estado_tampoco_pide_un_ambiente(tmp_path, monkeypatch):
+    """El mismo `_cfg` para los dos transportes, así que el `GET` también."""
+    from yappy_api.routes import workflow as routes
+
+    monkeypatch.setattr(Config, "_config_dir", tmp_path)
+    (tmp_path / "env.base").write_text("KAFKA_PATH=C:/kafka\n", encoding="utf-8")
+
+    body = routes.api_workflow_state(env="", cluster="cap")
+
+    assert body["env"] == ""
+    assert {row["key"] for row in body["resources"]} == {"kafka-server", "kafka-ui"}
+
+
+def test_sin_env_el_catalogo_de_puertos_no_se_ofrece(tmp_path, monkeypatch):
+    """Sin ambiente no hay cluster contra el que abrir un túnel.
+
+    El catálogo vive en `env.base` y se levantaría con `ssm start-session`; una
+    fila ahí sería un botón que no puede funcionar.
+    """
+    from yappy_api.routes import workflow as routes
+
+    monkeypatch.setattr(Config, "_config_dir", tmp_path)
+    (tmp_path / "env.base").write_text(
+        'KAFKA_PATH=C:/kafka\nCLUSTER_PORTS=cap=8403:commerce\n', encoding="utf-8"
+    )
+
+    body = routes.api_workflow_state(env="", cluster="cap")
+
+    assert body["ports"] == []
+
+
+# --------------------------------------------------------------------------
 # El log empujado: la misma pregunta, sin el poll de 1,5s.
 # --------------------------------------------------------------------------
 

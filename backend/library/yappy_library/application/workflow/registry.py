@@ -112,9 +112,15 @@ def resources_for(cfg: Config) -> list[ResourceDef]:
         ),
     ]
 
-    # `getattr` because several callers pass a trimmed config object (the
-    # workflow tests build one from a `SimpleNamespace`); production `Config`
-    # always has the property.
-    if getattr(cfg, "is_local", False):
+    # Sin ambiente no hay AWS, y esa es la misma razón que en un ambiente local:
+    # los cuatro recursos que quedan son túneles SSM o un token de RDS. Se mira
+    # `cfg.env` además de `is_local` porque la pantalla sin ámbito —Kafka— llega
+    # con la config cruda, que no tiene ambiente que marcar como local. Es el
+    # mismo par de condiciones que usa `routes.workflow._cfg`.
+    #
+    # `getattr` porque varios llamadores pasan un config recortado (los tests de
+    # workflow arman uno con `SimpleNamespace`); el `Config` de producción
+    # siempre tiene las dos cosas.
+    if getattr(cfg, "is_local", False) or not getattr(cfg, "env", None):
         return [definition for definition in definitions if definition.group == "kafka"]
     return definitions

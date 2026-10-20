@@ -11,7 +11,11 @@ export interface WorkflowStateResponse {
    */
   catalog_configured?: boolean;
   cluster: string;
-  env: string;
+
+  /**
+   * Empty when the caller asked for no environment at all — the Kafka page, which is full local and has no environment to name. It used to be the literal `dev`, which is a real environment: on a machine without an `env.dev` the screen could not load.
+   */
+  env?: string;
   generated_at: number;
 
   /**

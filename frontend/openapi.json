@@ -1129,7 +1129,7 @@
           "workflow"
         ],
         "summary": "Api Workflow State",
-        "description": "Everything one read of the screen needs.\n\nKept, and not replaced by the stream: it is the documented shape, the one a\n``curl`` can hit, and what a reader gets on the first frame.",
+        "description": "Everything one read of the screen needs.\n\nKept, and not replaced by the stream: it is the documented shape, the one a\n``curl`` can hit, and what a reader gets on the first frame.\n\n``env`` vacío es \"sin ambiente\", no ``\"dev\"``: ver :func:`_cfg`.",
         "operationId": "get_workflow_state",
         "parameters": [
           {
@@ -1138,7 +1138,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "default": "dev",
+              "default": "",
               "title": "Env"
             }
           },
@@ -1192,7 +1192,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "default": "dev",
+              "default": "",
               "title": "Env"
             }
           },
@@ -1239,7 +1239,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "default": "dev",
+              "default": "",
               "title": "Env"
             }
           }
@@ -1284,6 +1284,7 @@
           "workflow"
         ],
         "summary": "Api Workflow Port Start",
+        "description": "Abrir un túnel de cluster: esto **sí** necesita un ambiente.\n\nA diferencia del resto de los endpoints del dominio, un `env` vacío aquí no\nes \"sin ambiente\": es \"no dijiste con qué cluster-abierto querés hablar\".\nEl handler lo dice con un motivo, no con un `500`.",
         "operationId": "start_workflow_port",
         "parameters": [
           {
@@ -1292,7 +1293,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "default": "dev",
+              "default": "",
               "title": "Env"
             }
           },
@@ -4740,7 +4741,9 @@
         "properties": {
           "env": {
             "type": "string",
-            "title": "Env"
+            "title": "Env",
+            "description": "Empty when the caller asked for no environment at all — the Kafka page, which is full local and has no environment to name. It used to be the literal `dev`, which is a real environment: on a machine without an `env.dev` the screen could not load.",
+            "default": ""
           },
           "cluster": {
             "type": "string",
@@ -4791,7 +4794,6 @@
         },
         "type": "object",
         "required": [
-          "env",
           "cluster",
           "remote_host",
           "generated_at",

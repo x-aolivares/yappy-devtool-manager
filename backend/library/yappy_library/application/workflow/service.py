@@ -11,6 +11,7 @@ data anyway, and would derive them differently on each row.
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 from yappy_library.adapters.process_tracker import get_tracked_processes
 from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES
@@ -34,9 +35,14 @@ CLUSTER_PROBE_PATH = "/swagger-ui/index.html"
 
 
 def remote_host_for(cfg: Config, cluster: str) -> str:
-    """The host a cluster's tunnels land on, for one environment."""
+    """The host a cluster's tunnels land on, for one environment.
+
+    **Sin ambiente no hay host.** El host de un cluster es
+    ``<alias>.<ambiente>.<dominio>``, y un ambiente vacío no es un ambiente: lo
+    que salía era ``cap..yappycloud.com``, un nombre que no resuelve a nada.
+    """
     host = CLUSTER_ALIASES.get(cluster)
-    if not host:
+    if not host or not cfg.env:
         return ""
     domain = cfg.get("CLUSTER_DOMAIN", "yappycloud.com")
     return f"{host}.{cfg.env}.{domain}"
@@ -98,12 +104,56 @@ def _browser_url(def_port: int | None) -> str | None:
     return f"https://localhost:{def_port}{CLUSTER_PROBE_PATH}"
 
 
+#: El archivo que describe la máquina del developer.
+LOCAL_ENV_NAME = "local"
+
+#: La config sin ambiente, cacheada junto con el directorio de donde salió.
+#:
+#: El directorio va en la cache y no sólo los valores: una prueba que cambia
+#: ``Config._config_dir`` tiene que ver *su* config, no la que quedó cacheada de
+#: la máquina. Sin esto, el primer test que tocó la config contaminaba a todos
+#: los que venían después.
+_cached_environmentless: tuple[Path, dict[str, str]] | None = None
+
+
+def _environmentless_config() -> Config:
+    """La config de la pantalla que no eligió ambiente, leída una sola vez.
+
+    Es ``env.base`` con ``env.local`` encima cuando ese archivo existe, que es
+    exactamente lo que hereda ``Config()`` — el mismo objeto con el que
+    ``KafkaService(Config())`` levanta el broker de verdad. Leerlo en cada tick
+    del stream sería releer el archivo cada cinco segundos por un puerto que no
+    cambia.
+
+    **Por qué no se elige un ambiente.** El default era ``"dev"``, y ese default
+    es un ambiente real: en una máquina sin ``env.dev`` —el checkout de cualquiera
+    que haya renombrado ese archivo— el stream de la página de Kafka contestaba
+    ``400`` antes de abrir la conexión, así que esa sección no cargaba nunca su
+    estado. Kafka no es que no tenga ambiente: *no tiene uno*.
+
+    El ambiente del ``Config`` queda vacío a propósito: es lo que distingue esta
+    config de las demás en el snapshot (``env: ""``) y en la registry, donde las
+    filas que dependen del ambiente no se ofrecen.
+    """
+    global _cached_environmentless
+    config_dir = Config._get_config_dir()
+    cached = _cached_environmentless
+    if cached is None or cached[0] != config_dir:
+        name = LOCAL_ENV_NAME if (config_dir / f"env.{LOCAL_ENV_NAME}").exists() else None
+        cached = (config_dir, dict(Config(name)._values))
+        _cached_environmentless = cached
+    return Config._from_values(dict(cached[1]))
+
+
 def snapshot(cfg: Config, cluster: str) -> WorkflowSnapshot:
     """One consistent read of every resource and every catalog row."""
     tracked = get_tracked_processes()
     holders = _holders_by_port(tracked)
     # `getattr` for the same reason as the registry: trimmed configs in tests.
-    is_local = bool(getattr(cfg, "is_local", False))
+    # Las dos condiciones son una sola idea — *no hay AWS*: o el ambiente es
+    # local, o no hay ambiente. Kafka sin ámbito entra por la segunda, y es por
+    # eso que su snapshot no ofrece el catálogo de puertos.
+    is_local = bool(getattr(cfg, "is_local", False)) or not getattr(cfg, "env", None)
 
     resources: list[ResourceRow] = []
     for definition in resources_for(cfg):

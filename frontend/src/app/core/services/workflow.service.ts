@@ -180,8 +180,9 @@ export class WorkflowService {
   /**
    * Levantar un recurso del registro.
    *
-   * `env` opcional por lo mismo que en `stream()`: Kafka no tiene ambiente. Omitirlo
-   * lo deja en el default del backend, que es el mismo que mandaría el cliente.
+   * `env` opcional por lo mismo que en `stream()`: Kafka no tiene ambiente.
+   * Omitirlo ya no cae en un ambiente concreto del backend: `env` vacío es *sin
+   * ambiente*, que es la config con la que el broker se levanta de verdad.
    */
   startResource(key: string, env?: string): Promise<WorkflowActionResponse> {
     return firstValueFrom(

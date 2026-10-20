@@ -65,6 +65,24 @@ def default_kafka_path() -> str:
 class Config:
     _config_dir: Path | None = None
 
+    @classmethod
+    def _from_values(cls, values: dict[str, str]) -> Config:
+        """An *env-less* `Config` with values already in hand, no disk read.
+
+        Exists for the workflow screen that asked for no environment at all —
+        Kafka is full local — and has to answer that on every tick of a stream
+        without re-reading `env.base` each time.
+
+        `_env` queda en `None`, no en `""`: una config sin ambiente no se
+        identifica con una cadena vacía, y hacerlo la volvería distinguible de
+        `Config()` — que es exactamente el objeto que hereda la máquina del
+        developer.
+        """
+        cfg = cls.__new__(cls)
+        cfg._env = None
+        cfg._values = values
+        return cfg
+
     def __init__(self, env: str | None = None):
         self._env = env
         self._values: dict[str, str] = {}

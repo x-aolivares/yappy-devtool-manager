@@ -73,7 +73,6 @@ def _describe(entry: dict) -> str:
 
 def ensure_port_free(port: int, cluster: str = "") -> None:
     """Forget the ghosts on ``port``, then refuse if somebody live holds it.
-
     ``cluster`` is the cluster of the row trying to start. The test is the same
     one the snapshot uses — ownership is ``(cluster, port)``, not ``port`` — so
     "this row is already up" and "another cluster has it" stay distinguishable

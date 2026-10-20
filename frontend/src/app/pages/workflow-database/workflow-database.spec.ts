@@ -72,6 +72,19 @@ describe('WorkflowDatabasePage', () => {
     expect(el.querySelector('.res-grid__empty')?.textContent).toContain('Migrar datos');
   });
 
+  it('en un ambiente local explica que no hay túnel, en vez de ofrecerlo', async () => {
+    // El backend ya no manda la fila de Aurora para un ambiente local. Sin esto,
+    // la página quedaba con una tabla vacía y un "no está levantado" que invita a
+    // apretar un botón que sólo puede fallar.
+    calls.answer = { ...calls.answer, env: 'local', is_local: true };
+    const { el } = await montar();
+
+    expect(el.querySelector('.res-grid')?.textContent ?? '').not.toContain('Tunnel Aurora');
+    const aviso = el.querySelector('.callout')?.textContent ?? '';
+    expect(aviso).toContain('local');
+    expect(aviso).toContain('TCP');
+  });
+
   it('"Ver logs" de la fila abre el panel con el pid de esa fila', async () => {
     calls.answer = {
       ...calls.answer,

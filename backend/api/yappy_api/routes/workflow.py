@@ -75,6 +75,16 @@ LOG_STREAM_CHECK_SECONDS = 0.5
 
 
 def _cfg(env: str) -> Config:
+    """El ambiente pedido, o la config sin ambiente cuando no se pidió ninguno.
+
+    `env` tuvo `"dev"` por default desde siempre, pero la página de Kafka llama
+    sin `env` a propósito: Kafka es full local y no tiene ambiente. Tratar ese
+    vacío como "dev" hacía que la pantalla no cargara en cualquier máquina sin un
+    `env.dev` — el stream contestaba 400 antes de abrirse. Un string vacío
+    significa *sin ambiente*, no *el default*.
+    """
+    if not env:
+        return workflow_service._environmentless_config()
     try:
         return Config.with_env(env)
     except ValueError as exc:
@@ -224,11 +234,13 @@ def api_workflow_clusters():
     operation_id="get_workflow_state",
     response_model=WorkflowStateResponse,
 )
-def api_workflow_state(env: str = "dev", cluster: str = "cap"):
+def api_workflow_state(env: str = "", cluster: str = "cap"):
     """Everything one read of the screen needs.
 
     Kept, and not replaced by the stream: it is the documented shape, the one a
     ``curl`` can hit, and what a reader gets on the first frame.
+
+    ``env`` vacío es "sin ambiente", no ``"dev"``: ver :func:`_cfg`.
     """
     cfg = _cfg(env)
     cluster = _cluster(cluster)
@@ -241,7 +253,7 @@ def api_workflow_state(env: str = "dev", cluster: str = "cap"):
     operation_id="stream_workflow_state",
     response_class=StreamingResponse,
 )
-async def api_workflow_stream(env: str = "dev", cluster: str = "cap"):
+async def api_workflow_stream(env: str = "", cluster: str = "cap"):
     """The same payload, pushed when it changes instead of asked for on a timer.
 
     The browser opens this once per screen and listens. A start writes the tracker
@@ -268,7 +280,7 @@ async def api_workflow_stream(env: str = "dev", cluster: str = "cap"):
     status_code=202,
     response_model=WorkflowActionResponse,
 )
-def api_workflow_resource_start(req: WorkflowStartResourceRequest, env: str = "dev"):
+def api_workflow_resource_start(req: WorkflowStartResourceRequest, env: str = ""):
     """Spawn a resource and supervise it. Returns as soon as the process exists.
 
     ``202`` and not ``200``: the tunnel is not up yet, and saying so is the whole
@@ -288,7 +300,13 @@ def api_workflow_resource_start(req: WorkflowStartResourceRequest, env: str = "d
     status_code=202,
     response_model=WorkflowActionResponse,
 )
-def api_workflow_port_start(req: WorkflowStartPortRequest, env: str = "dev", cluster: str = "cap"):
+def api_workflow_port_start(req: WorkflowStartPortRequest, env: str = "", cluster: str = "cap"):
+    """Abrir un túnel de cluster: esto **sí** necesita un ambiente.
+
+    A diferencia del resto de los endpoints del dominio, un `env` vacío aquí no
+    es "sin ambiente": es "no dijiste con qué cluster-abierto querés hablar".
+    El handler lo dice con un motivo, no con un `500`.
+    """
     cfg = _cfg(env)
     cluster = _cluster(cluster)
     try:
