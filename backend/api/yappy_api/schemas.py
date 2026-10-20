@@ -31,8 +31,8 @@ class ParamsDiffRequest(BaseModel):
 
 
 class ApplyParamsRequest(BaseModel):
-    env_a: str
-    env_b: str
+    env_a: str  # destino
+    env_b: str  # origen
     service: str  # "ssm" | "secretsmanager"
     name: str
     new_value: str
@@ -41,12 +41,15 @@ class ApplyParamsRequest(BaseModel):
     new_secret_value: str = ""
     write_secret: bool = False
     write_param: bool = True
+    # El destino de la escritura, y sólo de la escritura: `op="delete"` y el
+    # modo `with_secret` van siempre a `env_a` (destino), porque el diff fluye
+    # origen -> destino. Ver `routes/params.py`.
     target: str = "a"  # "a" (destino) | "b" (origen)
 
 
 class ExecuteParamsRequest(BaseModel):
-    env_a: str
-    env_b: str
+    env_a: str  # destino
+    env_b: str  # origen
     service: str  # "ssm" | "secretsmanager"
     op: str = "update"  # "update" | "delete"
     name: str
@@ -57,6 +60,9 @@ class ExecuteParamsRequest(BaseModel):
     new_secret_value: str = ""
     write_secret: bool = False
     write_param: bool = True
+    # El destino de la escritura, y sólo de la escritura: `op="delete"` y el
+    # modo `with_secret` van siempre a `env_a` (destino), porque el diff fluye
+    # origen -> destino. Ver `routes/params.py`.
     target: str = "a"  # "a" (destino) | "b" (origen)
 
 

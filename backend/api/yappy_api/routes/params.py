@@ -134,11 +134,18 @@ def api_params_apply(req: ApplyParamsRequest):
     if req.target not in ("a", "b"):
         raise HTTPException(status_code=400, detail="target debe ser 'a' o 'b'")
 
+    # `env_a` es **destino** y `env_b` es **origen**: el diff fluye siempre de
+    # origen a destino (ver `diff_params`), así que por defecto se escribe en
+    # destino. `target` elige en cuál de los dos se escribe *cuando el
+    # parámetro falta* —ahí sí hay dos destinos posibles— y nada más.
     cfg_a = env_config(req.env_a)
-    env_config(req.env_b)
-    cfg_target = cfg_a if req.target != "b" else env_config(req.env_b)
+    cfg_b = env_config(req.env_b)
+    cfg_target = cfg_a if req.target != "b" else cfg_b
 
     if req.with_secret:
+        # El par secreto+parámetro va al destino, como el resto. La tabla del
+        # modo par muestra los valores del destino (`value_a`,
+        # `secret_value_a`), y lo que se edita ahí es lo que se escribe.
         steps = []
         if req.write_secret:
             steps.append(
@@ -194,9 +201,12 @@ def api_params_apply_execute(req: ExecuteParamsRequest):
             detail="El modo 'es un secreto' no admite eliminaciones.",
         )
 
+    # Misma regla que arriba: `env_a` es destino, `env_b` es origen, y el diff
+    # fluye de origen a destino. `target` sólo decide dónde se **escribe** un
+    # valor; el borrado y el modo par van al destino y no son excepciones.
     cfg_a = env_config(req.env_a)
-    env_config(req.env_b)
-    cfg_target = cfg_a if req.target != "b" else env_config(req.env_b)
+    cfg_b = env_config(req.env_b)
+    cfg_target = cfg_a if req.target != "b" else cfg_b
 
     try:
         if req.with_secret:
@@ -230,6 +240,11 @@ def api_params_apply_execute(req: ExecuteParamsRequest):
             if req.op == "update":
                 result = p.put_parameter(cfg_target, req.name, req.new_value, req.value_type)
             else:
+                # El borrado va **siempre** al destino, y no es una excepción
+                # rara: el diff fluye origen -> destino, así que borrar es
+                # "quitar la copia extra que quedó en destino para que destino
+                # quede igual que origen". `target` no aplica —no hay dos
+                # destinos para un borrado— y el test lo deja fijo.
                 result = p.delete_parameter(cfg_a, req.name)
         else:
             if req.op == "update":

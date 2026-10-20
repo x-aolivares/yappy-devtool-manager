@@ -2279,6 +2279,13 @@ def test_api_params_apply_execute_target_b_forwards_put_to_origin(monkeypatch):
 
 
 def test_api_params_apply_execute_delete_ignores_target(monkeypatch):
+    """El borrado va siempre al destino, y `target` no lo mueve.
+
+    No es una excepción rara: el diff fluye origen -> destino, así que borrar
+    es "quitar la copia extra que quedó en destino para que destino quede
+    igual que origen". `target` elige dónde se **escribe** un valor, y un
+    borrado no escribe un valor.
+    """
     monkeypatch.setattr(
         Config, "known_environments", classmethod(lambda cls: ["dev", "qa"])
     )
@@ -2298,6 +2305,40 @@ def test_api_params_apply_execute_delete_ignores_target(monkeypatch):
     )
 
     assert calls == ["qa"]
+
+
+def test_api_params_apply_execute_with_secret_ignores_target(monkeypatch):
+    """El par secreto+parámetro también va al destino.
+
+    La tabla del modo par muestra los valores del destino (`value_a`,
+    `secret_value_a`), así que lo que se edita ahí es lo que se escribe.
+    """
+    monkeypatch.setattr(
+        Config, "known_environments", classmethod(lambda cls: ["dev", "qa"])
+    )
+    monkeypatch.setattr(Config, "with_env", staticmethod(lambda env: _FakeConfig(env)))
+
+    calls = []
+    monkeypatch.setattr(
+        p, "update_secret",
+        lambda cfg, name, value: calls.append(("secret", cfg._env))
+        or {"ok": True, "message": "secreto ok"},
+    )
+    monkeypatch.setattr(
+        p, "put_parameter",
+        lambda cfg, name, value, value_type: calls.append(("param", cfg._env))
+        or {"ok": True, "message": "param ok"},
+    )
+
+    api_params_apply_execute(
+        ExecuteParamsRequest(
+            env_a="qa", env_b="dev", service="ssm", op="update", name="/x",
+            with_secret=True, new_secret_value="s3cr3t", write_secret=True,
+            write_param=True, target="b", confirm=True,
+        )
+    )
+
+    assert calls == [("secret", "qa"), ("param", "qa")]
 
 
 def test_api_params_apply_execute_invalid_target_rejected(monkeypatch):
