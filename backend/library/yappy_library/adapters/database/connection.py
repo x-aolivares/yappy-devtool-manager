@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import socket
+import threading
 import time
 from typing import Iterator
 
@@ -38,6 +39,27 @@ def _local_env_values() -> dict[str, str]:
 
 def _resolve_user(cfg: Config, local: dict[str, str]) -> str:
     return resolve_db_user(cfg, local)
+
+
+#: Un lock por puerto local, para el check-and-spawn del túnel.
+#:
+#: Vive en el proceso y no en un archivo: el lock de archivo tendría que
+#: estar tomado durante la espera del túnel, que puede ser de treinta
+#: segundos, y eso colgaría al otro proceso entero. El caso que esto
+#: resuelve es el real: dos pestañas del browser, o dos requests de la web,
+#: clicks a la vez.
+_port_locks: dict[int, threading.Lock] = {}
+_port_locks_guard = threading.Lock()
+
+
+def _port_lock(port: int) -> threading.Lock:
+    """El lock de un puerto local, creado la primera vez que se usa."""
+    with _port_locks_guard:
+        lock = _port_locks.get(port)
+        if lock is None:
+            lock = threading.Lock()
+            _port_locks[port] = lock
+        return lock
 
 
 #: The MySQL handshake starts with a 4-byte little-endian payload length, a
@@ -187,26 +209,33 @@ def connect(cfg: Config) -> Iterator[pymysql.connections.Connection]:
         # process per request — one per click, none of them ever cleaned up,
         # since the cleanup only runs when the request finishes. It also hid the
         # failure, because the tunnel is started quietly.
-        if not mysql_greeting(local_port, timeout=1.0):
-            try:
-                proc = base.ssm_tunnel(
-                    instance=instance,
-                    port=int(remote_port),
-                    local_port=local_port,
-                    region=cfg.region,
-                    profile=cfg.profile,
-                    remote_host=remote_host,
-                    quiet=True,
-                    log_file=tunnel_log_path(local_port),
-                )
-            except ToolUnavailable as exc:
-                # Every DB route runs on a sync `def`, so a `SystemExit` escaping
-                # here does not produce a 500 — it takes uvicorn with it, silently,
-                # because `asyncio.Task.__step` re-raises `BaseException` and no
-                # `except Exception` in the stack can catch it. `SyncError` is
-                # what every one of those routes already knows how to render.
-                raise SyncError(f"No se pudo abrir el túnel a la base: {exc.reason}") from exc
-            _wait_for_port(local_port)
+        #
+        # Y el chequeo y el spawn tienen que ser **una** operación: dos
+        # requests concurrent veían los dos "no hay túnel" y spawneaban los
+        # dos. El segundo no puede tomar el puerto y falla en silencio —la
+        # CLI escribe el error al log del túnel, que nadie mira—, y el
+        # request se queda esperando un MySQL que no va a contestar.
+        with _port_lock(local_port):
+            if not mysql_greeting(local_port, timeout=1.0):
+                try:
+                    proc = base.ssm_tunnel(
+                        instance=instance,
+                        port=int(remote_port),
+                        local_port=local_port,
+                        region=cfg.region,
+                        profile=cfg.profile,
+                        remote_host=remote_host,
+                        quiet=True,
+                        log_file=tunnel_log_path(local_port),
+                    )
+                except ToolUnavailable as exc:
+                    # Every DB route runs on a sync `def`, so a `SystemExit` escaping
+                    # here does not produce a 500 — it takes uvicorn with it, silently,
+                    # because `asyncio.Task.__step` re-raises `BaseException` and no
+                    # `except Exception` in the stack can catch it. `SyncError` is
+                    # what every one of those routes already knows how to render.
+                    raise SyncError(f"No se pudo abrir el túnel a la base: {exc.reason}") from exc
+                _wait_for_port(local_port)
         conn = _open("127.0.0.1", local_port, user, token)
         try:
             yield conn
