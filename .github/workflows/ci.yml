@@ -15,10 +15,18 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# El job solo lee el repo. Sin esto, el token del workflow puede escribir en
+# el repo y en los packages: el minimo de permisos que hace falta para correr tests.
+permissions:
+  contents: read
+
 jobs:
   backend:
     name: Backend (pytest + ruff)
     runs-on: ubuntu-latest
+    # Un test colgado se queda con las seis horas default del runner. Con este
+    # tope, se ve que algo se colgó en quince minutos en vez de en tres horas.
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +37,12 @@ jobs:
           # a py314. Correrlo en una version anterior deja de chequear la
           # sintica que se ejecuta en produccion.
           python-version: '3.14'
+          # `pip install -e .` arrastra awscli, que pesa; con el cache, el
+          # runner no lo descarga en cada run.
+          cache: pip
+          cache-dependency-path: |
+            docs/requirements.txt
+            docs/requirements-dev.txt
 
       - name: Instalar dependencias
         # `pip install -e .` no es opcional: los tests importan yappy_library,
@@ -50,7 +64,20 @@ jobs:
         run: python -m ruff check backend backend/tests
 
       - name: pytest
-        run: python -m pytest
+        # Se usa `coverage` y no `pytest-cov` a proposito: `coverage` ya es una
+        # dependencia compartida con bbit-release-manager, y sumar `pytest-cov`
+        # solo en este repo crearia drift en el stack comun.
+        run: |
+          python -m coverage run --source=backend -m pytest
+          python -m coverage report --skip-covered
+          python -m coverage xml
+
+      - name: la cobertura no baja
+        # Hoy la cobertura de `backend/` es de 90%. El piso está 5 puntos
+        # abajo: no es un objetivo, es una red contra los módulos que se
+        # quedan sin test. Sin esto, un módulo nuevo sin test pasa desapercibido.
+        run: |
+          python -m coverage report --fail-under=85
 
       - name: openapi.json al día
         # `frontend/openapi.json` y `frontend/src/app/api-gen/` están
@@ -74,6 +101,7 @@ jobs:
   frontend:
     name: Frontend (Vitest + build)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: frontend
@@ -103,3 +131,59 @@ jobs:
         # los budgets de angular.json (500kB de aviso, 1MB de error), y los
         # tests no compilan la aplicacion.
         run: npx ng build
+
+      - name: el cliente generado está al día
+        # El paso del backend mira `openapi.json`, que es el contrato. Este
+        # mira el otro lado: el cliente de TypeScript que sale de él. Sin este
+        # paso, un cambio de modelo en el backend dejaba el cliente viejo
+        # commiteado — compila igual, y falla en runtime, que es la peor
+        # forma de fallar.
+        run: |
+          npx ng-openapi-gen
+          git diff --exit-code -- src/app/api-gen || (
+            echo "::error::frontend/src/app/api-gen/ quedó desactualizado. Corré 'npm run api:gen' en frontend/ y commiteá el resultado."
+            exit 1
+          )
+
+      - name: formato (informativo)
+        # `prettier` estaba en devDependencies y no lo invocaba nadie. Acá se
+        # reporta la deuda sin bloquear: el repo todavía no está formateado
+        # (147 archivos), y reformatear de golpe en un PR de cambios reales
+        # tapa el diff y mueve whitespace dentro de templates de Angular, que
+        # es texto que se renderiza.
+        #
+        # Cuando el reformateo se haga en su propio commit, este paso pasa a
+        # `continue-on-error: false` y deja de ser informativo.
+        continue-on-error: true
+        run: npx prettier --check "src/**/*.{ts,html,scss}"
+
+  windows:
+    name: Windows (pytest)
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    # El producto es Windows-first: `taskkill`, `ctypes.wintypes`, y el
+    # snapshot de la tabla de procesos con la API de Toolhelp. Todo eso
+    # estaba sin verificar en CI, porque el único job corría en Linux — y las
+    # aserciones de Windows están marcadas con `skipif(sys.platform !=
+    # "win32")`, así que en Linux no se ejecutaban. Este job es el que las
+    # corre.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: |
+            docs/requirements.txt
+            docs/requirements-dev.txt
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install -r docs/requirements-dev.txt
+
+      - name: pytest
+        run: python -m pytest

@@ -1,0 +1,33 @@
+# Dependabot: las dependencias del repo subían a mano, o no subían.
+#
+# `docs/requirements.txt` no pincha nada —todo es `>=`— y `package.json` usa
+# `^` en todo, así que una dependencia transitiva vulnerada o yanked llega sin
+# que nadie lo note. Esto abre los PR de actualización solos.
+version: 2
+
+updates:
+  # El runtime y las deps de desarrollo, que viven en docs/. El `pyproject.toml`
+  # de la raíz no sirve para esto: sus dependencias son dinámicas
+  # (`file = ["docs/requirements.txt"]`), y Dependabot no las resuelve.
+  - package-ecosystem: pip
+    directory: /docs
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: [dependencies, python]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: [dependencies, frontend]
+
+  # Las actions del workflow: una action vieja es una action con un CVE de
+  # dos años y sin parche.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    labels: [dependencies, ci]
