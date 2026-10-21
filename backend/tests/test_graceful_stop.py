@@ -24,6 +24,7 @@ from types import SimpleNamespace
 import pytest
 
 import yappy_library.adapters.kafka.service as kafka_service
+import yappy_library.adapters.java as java_adapters
 import yappy_library.adapters.processes as processes
 from yappy_library.adapters.processes import BaseCommand
 
@@ -176,8 +177,10 @@ def test_el_broker_se_pregunta_antes_de_matarlo(monkeypatch):
     """``down("server")`` y ``clean()`` salen por el mismo camino."""
     asked = []
     killed = []
+    # El cierre elegante vive en `adapters/java.py`, que es donde está el
+    # manejo de procesos Java de toda la app.
     monkeypatch.setattr(
-        kafka_service, "stop_gracefully", lambda pid, timeout=30.0: asked.append(pid) or True
+        java_adapters, "stop_gracefully", lambda pid, timeout=30.0: asked.append(pid) or True
     )
     monkeypatch.setattr(
         kafka_service.subprocess, "run", lambda cmd, **kw: killed.append(cmd)
@@ -207,7 +210,7 @@ def test_los_brokers_que_nosotros_lanzamos_se_preguntan_primero(monkeypatch):
     monkeypatch.setattr(kafka_service.process_tracker, "get_tracked_processes",
                         FakeTracker.get_tracked_processes)
     monkeypatch.setattr(
-        kafka_service, "stop_gracefully", lambda pid, timeout=30.0: asked.append(pid) or True
+        java_adapters, "stop_gracefully", lambda pid, timeout=30.0: asked.append(pid) or True
     )
     monkeypatch.setattr(
         kafka_service.subprocess,

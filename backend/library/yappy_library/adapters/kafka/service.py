@@ -9,23 +9,14 @@ import sys
 import time
 from pathlib import Path
 
-from yappy_library.adapters import process_tracker
+from yappy_library.adapters import java, process_tracker
 from yappy_library.adapters.logging import info, raw, success, warn
 from yappy_library.adapters.processes import (
     jvm_shim_command,
     open_url,
     own_console_popen_kwargs,
-    stop_gracefully,
 )
 from yappy_library.config import Config
-
-#: How long a broker gets to leave by itself before it is killed.
-#:
-#: Kafka's shutdown closes the metadata log, and that is the whole point: a log
-#: closed is a log that is not corrupt. Thirty seconds is generous for a local
-#: broker and short enough that a developer does not think the button is stuck.
-GRACEFUL_STOP_SECONDS = 30.0
-
 
 class KafkaUnavailable(Exception):
     """Kafka cannot be run from here, and the reason to show for it.
@@ -98,62 +89,32 @@ def _kill_kafka_processes():
     and a ``CTRL_C`` there would land in the middle of whatever they were doing.
     """
     _stop_tracked_brokers()
-    try:
-        result = subprocess.run(["jps", "-l"], capture_output=True, text=True, check=False)
-        for line in result.stdout.strip().splitlines():
-            parts = line.strip().split()
-            if len(parts) == 2:
-                pid, name = parts
-                if "kafka.Kafka" in name or "main.jar" in name:
-                    raw(f"  - matando proceso {name} (PID {pid})")
-                    subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
-        time.sleep(1)
-    except FileNotFoundError:
-        warn("jps no encontrado, no se pudieron buscar procesos Java")
+    for pid, name in java.matching("kafka.Kafka") + java.matching("main.jar"):
+        raw(f"  - matando proceso {name} (PID {pid})")
+        java.kill_java(pid)
+    time.sleep(1)
 
 
 def _stop_java(pid: str) -> bool:
     """Ask a JVM to leave, and kill it only if it doesn't.
 
-    **A broker that is killed hard leaves its metadata log half-written.** The
-    next start finds the invalid offset, deletes the segment and dies with an
-    NPE — and from there on every start fails the same way, until somebody wipes
-    the storage. Asking first is what keeps the storage usable.
-
-    The graceful way needs a console to send the event to, which is why the
-    broker is spawned with one (see
-    :func:`~yappy_library.adapters.processes.own_console_popen_kwargs`).
+    Ahora vive en :mod:`yappy_library.adapters.java`, que es donde está el
+    resto del manejo de procesos Java.
     """
-    try:
-        pid_number = int(pid)
-    except (TypeError, ValueError):
-        return False
-    if stop_gracefully(pid_number, timeout=GRACEFUL_STOP_SECONDS):
-        raw(f"  - el proceso {pid} se cerró solo")
-        return True
-    subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
-    return False
+    return java.stop_java(pid)
 
 
 def _kill_ui_process():
-    try:
-        result = subprocess.run(["jps", "-l"], capture_output=True, text=True, check=False)
-        killed = False
-        for line in result.stdout.strip().splitlines():
-            parts = line.strip().split()
-            if len(parts) == 2:
-                pid, name = parts
-                if "main.jar" in name:
-                    raw(f"  - matando UI (PID {pid})")
-                    _stop_java(pid)
-                    killed = True
-        if not killed:
-            warn("No se encontró proceso de Kafka UI")
-        else:
-            time.sleep(1)
-            success("Kafdrop UI stopped")
-    except FileNotFoundError:
-        warn("jps no encontrado, no se pudieron buscar procesos Java")
+    killed = False
+    for pid, name in java.matching("main.jar"):
+        raw(f"  - matando UI (PID {pid})")
+        _stop_java(pid)
+        killed = True
+    if not killed:
+        warn("No se encontró proceso de Kafka UI")
+    else:
+        time.sleep(1)
+        success("Kafdrop UI stopped")
 
 
 #: Port the bundled Kafdrop listens on. It is passed on the command line a few
@@ -524,14 +485,11 @@ class KafkaService:
             # hard kill stays as the fallback for a broker that does not take
             # the hint.
             _stop_tracked_brokers()
-            try:
-                result = subprocess.run(["jps", "-l"], capture_output=True, text=True, check=False)
-                for line in result.stdout.strip().splitlines():
-                    if "kafka.Kafka" in line:
-                        pid = line.split()[0]
-                        subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
-            except FileNotFoundError:
-                warn("jps not found")
+            # A diferencia de la UI, que se pide que se vaya, el broker que
+            # no se fue en el tiempo razonable se mata: el storage se limpia
+            # después, y quedarse esperando un JVM colgado no mejora nada.
+            for pid, _name in java.matching("kafka.Kafka"):
+                java.kill_java(pid)
             success("Kafka server stopped")
         elif target == "ui":
             info("Stopping Kafdrop UI...")

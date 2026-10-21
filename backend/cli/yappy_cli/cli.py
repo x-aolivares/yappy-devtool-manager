@@ -11,6 +11,7 @@ from typing import Annotated
 import typer
 
 from yappy_library.adapters.logging import console, die, info, success, warn
+from yappy_library.adapters.java import java_processes, kill_java
 from yappy_library.adapters.processes import ToolUnavailable
 from yappy_library.config import Config, venv_scripts_dir, win_to_posix
 from yappy_library.paths import (
@@ -586,18 +587,14 @@ def ps():
 
     # Java processes: Kafka server + Kafdrop UI
     try:
-        result = subprocess.run(["jps", "-l"], capture_output=True, text=True, timeout=10)
-        for line in result.stdout.strip().splitlines():
-            parts = line.strip().split()
-            if len(parts) == 2:
-                pid, name = parts
-                if pid in known_pids:
-                    continue
-                known_pids.add(pid)
-                if "kafka.Kafka" in name:
-                    rows.append((pid, "-", "Kafka Server", "9092"))
-                elif "main.jar" in name:
-                    rows.append((pid, "-", "Kafdrop UI", "8080"))
+        for pid, name in java_processes():
+            if pid in known_pids:
+                continue
+            known_pids.add(pid)
+            if "kafka.Kafka" in name:
+                rows.append((pid, "-", "Kafka Server", "9092"))
+            elif "main.jar" in name:
+                rows.append((pid, "-", "Kafdrop UI", "8080"))
     except FileNotFoundError:
         pass
     except Exception:
@@ -896,14 +893,13 @@ def uninstall(
     # 1. Kill running Kafka processes
     info("Stopping Kafka processes...")
     try:
-        result = subprocess.run(
-            ["jps", "-l"], capture_output=True, text=True, check=False,
-        )
+        # A la fuerza y sin preguntar: el desinstalador borra el storage
+        # igual, asi que dejar el broker cerrando su metadata log a medias no
+        # importa — el directorio se va.
         killed = 0
-        for line in result.stdout.strip().splitlines():
-            if "kafka.Kafka" in line or "main.jar" in line:
-                pid = line.split()[0]
-                subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
+        for pid, name in java_processes():
+            if "kafka.Kafka" in name or "main.jar" in name:
+                kill_java(pid)
                 killed += 1
         if killed:
             success(f"  Killed {killed} process(es)")
