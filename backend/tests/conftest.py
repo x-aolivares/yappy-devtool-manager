@@ -26,7 +26,6 @@ machine's `env.*` — the values the tests already rely on, like the port catalo
 from __future__ import annotations
 
 import os
-import shutil
 import threading
 from pathlib import Path
 
@@ -65,23 +64,57 @@ DB_PORT=8100
 """
 
 
+#: Los compartidos. De mentira, como los demás: lo que los tests miran es la
+#: forma del archivo, no los valores.
+SYNTHETIC_BASE = """\
+ORG_DOMAIN=yappy
+AWS_PROFILE=base-profile
+AWS_USER=test-user
+AWS_PORT=53360
+KAFKA_PATH=C:/kafka
+WORKSPACE_PATH=C:/workspace
+CLUSTER_DOMAIN=yappycloud.com
+CLUSTER_PORTS=cap=8402:core,8403:commerce;cap2=8412:personal;int=
+"""
+
+#: Los otros dos ambientes remotos, con la misma forma.
+SYNTHETIC_QA = SYNTHETIC_DEV.replace("AWS_ENVIRONMENT=dev", "AWS_ENVIRONMENT=qa")
+SYNTHETIC_UAT = SYNTHETIC_DEV.replace("AWS_ENVIRONMENT=dev", "AWS_ENVIRONMENT=uat")
+
+#: El ambiente local: conexión directa a un MySQL de la máquina, sin túnel SSM.
+SYNTHETIC_LOCAL = """\
+AWS_ENVIRONMENT=local
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=root
+"""
+
+
 @pytest.fixture(scope="session")
 def suite_config_dir(tmp_path_factory) -> Path:
     """El directorio de configuración de la suite.
 
-    Una copia de los `env.*` de la máquina —para que los valores que los tests
-    ya usan sigan siendo los mismos— y un `env.dev` sintético si la máquina no
-    lo tiene. Los `.example` no se copian: son plantillas, no configuración.
+    **Se escribe de cero, no se copia de la máquina.** Antes copiaba los
+    `env.*` de la máquina, y eso tenía dos problemas:
+
+    - El resultado de la suite dependía de valores que viven en archivos
+      gitignored. Una máquina con un `env.qa` distinto —o sin `env.uat`—
+      hacía fallar un test que en otra máquina pasaba, y al revés.
+    - La copia arrastraba las credenciales reales de la máquina
+      (`CIRCLECI_TOKEN`, `BITBUCKET_TOKEN`) a un directorio temporal, en
+      cada corrida, sin que nadie lo pidiera.
+
+    Ahora los archivos se escriben con valores fijos. El que un test necesite
+    de verdad, lo declara en su propio fixture: los que dependen del catálogo
+    de puertos usan su propio `FakeConfig`, no éste.
     """
-    source = Config._get_config_dir()
     target = tmp_path_factory.mktemp("config")
-    if source.is_dir():
-        for path in sorted(source.glob("env.*")):
-            if path.name.endswith(".example") or not path.is_file():
-                continue
-            shutil.copyfile(path, target / path.name)
-    if not (target / "env.dev").exists():
-        (target / "env.dev").write_text(SYNTHETIC_DEV, encoding="utf-8")
+    (target / "env.base").write_text(SYNTHETIC_BASE, encoding="utf-8")
+    (target / "env.dev").write_text(SYNTHETIC_DEV, encoding="utf-8")
+    (target / "env.qa").write_text(SYNTHETIC_QA, encoding="utf-8")
+    (target / "env.uat").write_text(SYNTHETIC_UAT, encoding="utf-8")
+    (target / "env.local").write_text(SYNTHETIC_LOCAL, encoding="utf-8")
     return target
 
 
