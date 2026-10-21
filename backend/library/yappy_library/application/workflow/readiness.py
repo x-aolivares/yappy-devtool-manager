@@ -134,11 +134,17 @@ def probe_kafka(port: int, timeout: float = 5.0) -> bool:
 #: Probe per resource kind. The registry names one of these per resource.
 #: Every entry takes ``(port, timeout)``, and nothing else: a caller holding a
 #: kind name should never have to know whether the probe under it wanted a path.
+def _probe_http_root(port: int, timeout: float = 5.0) -> bool:
+    return probe_http(port, path="/", tls=False, timeout=timeout)
+
+
+def _probe_http_cluster(port: int, timeout: float = 5.0) -> bool:
+    return probe_http(port, path=CLUSTER_PROBE_PATH, tls=True, timeout=timeout)
+
+
 PROBES: dict[str, Callable[[int, float], bool]] = {
-    "http": lambda port, timeout=5.0: probe_http(port, path="/", tls=False, timeout=timeout),
-    "https": lambda port, timeout=5.0: probe_http(
-        port, path=CLUSTER_PROBE_PATH, tls=True, timeout=timeout
-    ),
+    "http": _probe_http_root,
+    "https": _probe_http_cluster,
     "mysql": probe_mysql,
     "kafka": probe_kafka,
 }
@@ -152,7 +158,7 @@ def probe_for(kind: str) -> Callable[[int, float], bool]:
     resource that never goes green, which is visible. A crash shows up as a
     screen that hangs.
     """
-    return PROBES.get(kind, probe_http)
+    return PROBES.get(kind, _probe_http_root)
 
 
 def wait_for(probe: Callable[[], bool], timeout: float = DEFAULT_TIMEOUT,

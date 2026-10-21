@@ -8,6 +8,7 @@ two is the whole reason the probes exist.
 from __future__ import annotations
 
 import contextlib
+import inspect
 import socket
 import threading
 import time
@@ -187,8 +188,19 @@ def test_probe_for_falls_back_instead_of_raising():
     # A resource that cannot name its own probe still gets a verdict; the wrong
     # guess shows as a row that never goes green, which is visible. A crash
     # shows as a screen that hangs.
-    assert probe_for("something-new") is probe_http
+    #
+    # El fallback se verifica por lo que **hace**, no por ser el mismo objeto
+    # que `probe_http`: `probe_http` tiene la firma
+    # `(port, path, tls, timeout)`, y el supervisor llama a los probes como
+    # `probe(port, timeout)`. Con `probe_http` como fallback, ese `2.0` caía en
+    # `path` y la probe reventaba con un `TypeError` que ni siquiera caía en su
+    # propio `except`. El fallback era una caída.
+    fallback = probe_for("something-new")
     assert probe_for("kafka") is probe_kafka
+
+    params = list(inspect.signature(fallback).parameters.values())
+    assert [p.name for p in params[:2]] == ["port", "timeout"]
+    assert fallback(9, 0.05) is False  # nadie escucha en el puerto 9: no explota
 
 
 def test_every_probe_takes_the_same_two_arguments():
