@@ -175,7 +175,7 @@
           </thead>
           <tbody>
             @for (i of jsonPage.visibleIndices(); track i) {
-              @let row = rows()[i];
+              @let row = rows()[i]!;
               <tr>
                 <td>
                   <input
@@ -244,7 +244,7 @@
           class="change-input"
           rows="4"
           spellcheck="false"
-          [value]="rows()[0].text"
+          [value]="rows()[0]!.text"
           (input)="setRowText(0, $any($event.target).value)"
         ></textarea>
       </div>

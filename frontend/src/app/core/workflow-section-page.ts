@@ -257,8 +257,9 @@ export abstract class WorkflowSectionPage {
           }
           // El ambiente elegido tiene que existir: si la máquina no lo tiene, el
           // primero de la lista es el que sí.
-          if (!list.some((e: { env: string }) => e.env === this.env())) {
-            this.env.set(list[0].env);
+          const first = list[0];
+          if (first && !list.some((e: { env: string }) => e.env === this.env())) {
+            this.env.set(first.env);
           }
           this.envKnown.set(true);
         })

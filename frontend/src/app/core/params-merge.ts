@@ -20,14 +20,16 @@ function setAt(obj: Record<string, unknown>, parts: string[], value: unknown): R
   if (!parts.length) throw new Error('setAt requires a non-empty path');
   let cur = obj as Record<string, unknown>;
   for (let i = 0; i < parts.length - 1; i++) {
-    const seg = parts[i];
-    const nextIsIndex = /^\d+$/.test(parts[i + 1]);
+    // `getParts` no deja segmentos vacíos, así que el `?? ''` no cambia nada:
+    // sólo le dice al type checker que el índice no es `undefined`.
+    const seg = parts[i] ?? '';
+    const nextIsIndex = /^\d+$/.test(parts[i + 1] ?? '');
     if (cur[seg] == null || typeof cur[seg] !== 'object') {
       cur[seg] = nextIsIndex ? [] : {};
     }
     cur = cur[seg] as Record<string, unknown>;
   }
-  cur[parts[parts.length - 1]] = value;
+  cur[parts[parts.length - 1] ?? ''] = value;
   return obj;
 }
 
@@ -35,11 +37,11 @@ function deleteAt(obj: Record<string, unknown>, parts: string[]): Record<string,
   if (!parts.length) return {};
   let cur: unknown = obj;
   for (let i = 0; i < parts.length - 1; i++) {
-    const seg = parts[i];
+    const seg = parts[i] ?? '';
     if (cur == null || (cur as Record<string, unknown>)[seg] == null) return obj;
     cur = (cur as Record<string, unknown>)[seg];
   }
-  const last = parts[parts.length - 1];
+  const last = parts[parts.length - 1] ?? '';
   if (Array.isArray(cur) && /^\d+$/.test(last)) {
     cur.splice(Number(last), 1);
   } else {

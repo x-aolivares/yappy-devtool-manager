@@ -5,7 +5,16 @@
   "compilerOptions": {
     "types": [
       "vitest/globals"
-    ]
+    ],
+    // Los specs no están en `noUncheckedIndexedAccess`, por la misma razón que
+    // los tests no entran al gate de mypy: son código de test, no código que
+    // se despliega. Un `arr[0].prop` en un test es una aserción sobre un
+    // array que el test sabe que no está vacío, y obligar a escribir `?.` en
+    // cada una hides el error en vez de expresarlo.
+    //
+    // El código que sí se despliega se chequea con la config estricta
+    // completa: eso lo hace `tsconfig.app.json`, que excluye estos archivos.
+    "noUncheckedIndexedAccess": false
   },
   "include": [
     "src/**/*.d.ts",

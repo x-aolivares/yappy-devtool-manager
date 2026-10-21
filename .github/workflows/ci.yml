@@ -63,6 +63,19 @@ jobs:
         # un NameError que llego a produccion sin que nada lo cachara.
         run: python -m ruff check backend backend/tests
 
+      - name: mypy
+        # Las anotaciones de este repo existen y nunca se verificaban. El
+        # codigo esta anotado a mano, lo que significa que la intencion ya
+        # esta escrita: faltaba el que la mirara.
+        #
+        # El alcance es el codigo de produccion —library, api y cli—: los
+        # tests usan dobles sinteticos donde la produccion usa objetos reales,
+        # y `monkeypatch` de un metodo no es un error.
+        #
+        # No es un gate de estilo: no pide anotaciones donde no las hay. Lo que
+        # mira es que los tipos que el codigo dice tener sean los que tiene.
+        run: python -m mypy
+
       - name: pytest
         # Se usa `coverage` y no `pytest-cov` a proposito: `coverage` ya es una
         # dependencia compartida con bbit-release-manager, y sumar `pytest-cov`
@@ -130,6 +143,10 @@ jobs:
         # El build de produccion, no el de desarrollo: es el unico que pasa por
         # los budgets de angular.json (500kB de aviso, 1MB de error), y los
         # tests no compilan la aplicacion.
+        #
+        # El build **es** el type check del frontend: `ng build` falla si un
+        # template no cumple el tipo que el componente dice tener, con
+        # `strict` y `strictTemplates` prendidos en `tsconfig.json`.
         run: npx ng build
 
       - name: el cliente generado está al día

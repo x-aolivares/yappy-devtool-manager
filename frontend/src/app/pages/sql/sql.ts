@@ -134,8 +134,10 @@ export class SqlPage {
    */
   readonly page = paginate(() => this.gridSearch.filtered());
   /** El ambiente elegido: el array es la fuente de verdad, el string se deriva. */
-  readonly env = computed(() => (this.envs().length === 1 ? this.envs()[0] : ''));
-  readonly destEnv = computed(() => (this.destEnvs().length === 1 ? this.destEnvs()[0] : ''));
+  readonly env = computed(() => (this.envs().length === 1 ? (this.envs()[0] ?? '') : ''));
+  readonly destEnv = computed(() =>
+    this.destEnvs().length === 1 ? (this.destEnvs()[0] ?? '') : '',
+  );
   /** The destination picker excludes the query's own environment. */
   readonly destEnvironments = computed(() => {
     const all = this.environments();

@@ -89,7 +89,13 @@ export function paginate<T>(source: () => T[], initialSize: number = DEFAULT_PAG
     const to = from + pageSize();
     return source().map((_, i) => i).slice(from, to);
   });
-  const visible = computed(() => visibleIndices().map((i) => source()[i]));
+  // El índice sale de `source().map(...)`, así que siempre es válido: el
+  // filtro no saca nada, sólo le dice al type checker lo que ya es cierto.
+  const visible = computed(() =>
+    visibleIndices()
+      .map((i) => source()[i])
+      .filter((v): v is T => v !== undefined),
+  );
 
   const rangeLabel = computed(() => {
     const n = total();

@@ -271,7 +271,7 @@ export class CompilePage {
 
   /** En modo script el destino es el único ambiente: va al mismo `envA`. */
   onDestEnvChange(envs: string[]): void {
-    this.envA.set(envs.length === 1 ? envs[0] : '');
+    this.envA.set(envs.length === 1 ? (envs[0] ?? '') : '');
   }
 
   generate() {

@@ -61,20 +61,20 @@
               <div class="session-status-stack">
                 <span class="session-status-item">
                   <app-badge status="ok" label="Aplicado" />
-                  <span class="muted">{{ s.status_counts?.['aplicado'] ?? 0 }}</span>
+                  <span class="muted">{{ s.status_counts['aplicado'] ?? 0 }}</span>
                 </span>
                 <span class="session-status-item">
                   <app-badge status="equal" label="Revisado" />
-                  <span class="muted">{{ s.status_counts?.['revisado'] ?? 0 }}</span>
+                  <span class="muted">{{ s.status_counts['revisado'] ?? 0 }}</span>
                 </span>
                 <span class="session-status-item">
                   <app-badge status="none" label="Pendiente" />
-                  <span class="muted">{{ s.status_counts?.['pendiente'] ?? 0 }}</span>
+                  <span class="muted">{{ s.status_counts['pendiente'] ?? 0 }}</span>
                 </span>
-                @if ((s.status_counts?.['saltado'] ?? 0) > 0) {
+                @if ((s.status_counts['saltado'] ?? 0) > 0) {
                   <span class="session-status-item">
                     <app-badge status="missing_in_b" label="Saltado" />
-                    <span class="muted">{{ s.status_counts?.['saltado'] ?? 0 }}</span>
+                    <span class="muted">{{ s.status_counts['saltado'] ?? 0 }}</span>
                   </span>
                 }
               </div>

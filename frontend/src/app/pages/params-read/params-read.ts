@@ -186,7 +186,7 @@ export class ParamsReadPage {
       byEnv.get(env)!.push(r);
     }
 
-    const reference = byEnv.get(envs[0]);
+    const reference = byEnv.get(envs[0] ?? '');
     const referenceValues = new Map(
       (reference ?? []).map((r) => [r.key, r.ok ? (r.value ?? '').trim() : null]),
     );
@@ -194,21 +194,25 @@ export class ParamsReadPage {
     this.panels.set(
       envs
         .filter((env) => byEnv.has(env))
-        .map((env) => {
-          const r = byEnv.get(env)![0];
+        .flatMap((env): EnvPanel[] => {
+          const r = byEnv.get(env)?.[0];
+          if (!r) return [];
           const rawValue = r.ok ? formatValue(r.value) : r.error || 'No existe el parámetro.';
           const meta = (this.environments() ?? []).find((e) => e.env === env);
-          return {
-            env,
-            region: meta?.region,
-            profile: meta?.profile,
-            value: rawValue,
-            valueType: toValueType(r.value_type),
-            isJson: r.ok && isJsonDocument(r.value),
-            ok: r.ok,
-            error: r.error ?? null,
-            differs: r.ok && (referenceValues.get(r.key) ?? null) !== (r.value ?? '').trim(),
-          };
+          return [
+            {
+              env,
+              region: meta?.region,
+              profile: meta?.profile,
+              value: rawValue,
+              valueType: toValueType(r.value_type),
+              isJson: r.ok && isJsonDocument(r.value),
+              ok: r.ok,
+              error: r.error ?? null,
+              differs:
+                r.ok && (referenceValues.get(r.key) ?? null) !== (r.value ?? '').trim(),
+            },
+          ];
         }),
     );
     this.writeStatus.set({});
@@ -320,7 +324,7 @@ export class ParamsReadPage {
   );
 
   private ensureSession(name: string) {
-    const [origin, destination] = this.envs();
+    const [origin = '', destination = ''] = this.envs();
     if (!destination || destination === origin) return;
     const alias = this.sessionAlias().trim();
     const payload = {
