@@ -34,6 +34,7 @@ import time
 from pathlib import Path
 
 from yappy_library.adapters import process_identity
+from yappy_library.adapters.file_io import file_lock, write_atomic
 from yappy_library.adapters.state_bus import state_bus
 
 _TRACKER_DIR = Path.home() / ".yappy" / "tracker"
@@ -61,6 +62,20 @@ _cache_lock = threading.Lock()
 def _forget(name: str) -> None:
     with _cache_lock:
         _parsed_cache.pop(name, None)
+
+
+def _tracker_lock():
+    """El lock del tracker entero, para los read-modify-write.
+
+    El CLI y la web son dos procesos y tocan los mismos archivos: un estado
+    leído y escrito sin lock se pierde si los dos escriben a la vez. Un lock
+    por archivo dejaría un `.lock` por pid tirado en la carpeta; uno para la
+    carpeta entera no, y las escrituras son raras.
+
+    El archivo del lock no termina en `.json`, así que el glob que arma el
+    snapshot no lo ve.
+    """
+    return file_lock(_TRACKER_DIR / "tracker")
 
 
 def _parse(path: Path) -> dict | None:
@@ -149,7 +164,11 @@ def track_process(
         "create_time": create_time or 0.0,
     }
     path = _TRACKER_DIR / f"{pid}.json"
-    path.write_text(json.dumps(entry, indent=2))
+    # Atómico: un lector concurrente nunca ve un JSON a medias. Con
+    # `write_text` el archivo se truncaba entre el truncate y el write, y
+    # el parser devolvía None — o sea, la fila desaparecía del snapshot y
+    # la UI parpadeaba.
+    write_atomic(path, json.dumps(entry, indent=2))
     _forget(path.name)
     state_bus.publish()
 
@@ -171,17 +190,18 @@ def update_process_state(pid: int, state: str, fix: str = "") -> None:
     sentence, because the wording belongs where the button is drawn.
     """
     path = _TRACKER_DIR / f"{pid}.json"
-    try:
-        data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return
-    data["state"] = state
-    if fix:
-        data["fix"] = fix
-    try:
-        path.write_text(json.dumps(data, indent=2))
-    except OSError:
-        return
+    with _tracker_lock():
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            return
+        data["state"] = state
+        if fix:
+            data["fix"] = fix
+        try:
+            write_atomic(path, json.dumps(data, indent=2))
+        except OSError:
+            return
     _forget(path.name)
     state_bus.publish()
 
@@ -222,16 +242,17 @@ def track_process_state_and_supervisor(pid: int, state: str, supervisor: int) ->
     the web cannot clobber each other's fields.
     """
     path = _TRACKER_DIR / f"{pid}.json"
-    try:
-        data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return
-    data["state"] = state
-    data["supervisor"] = supervisor
-    try:
-        path.write_text(json.dumps(data, indent=2))
-    except OSError:
-        return
+    with _tracker_lock():
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            return
+        data["state"] = state
+        data["supervisor"] = supervisor
+        try:
+            write_atomic(path, json.dumps(data, indent=2))
+        except OSError:
+            return
     _forget(path.name)
     state_bus.publish()
 
@@ -390,7 +411,9 @@ def get_tracked_processes(
 
 def untrack_process(pid: int):
     f = _TRACKER_DIR / f"{pid}.json"
-    if f.exists():
-        f.unlink()
+    # `missing_ok`: entre el `exists()` y el `unlink()` otro proceso puede
+    # llevar el archivo, y un `FileNotFoundError` ahí sube por `kill_ssm` y
+    # sale del `finally` de `serve()`.
+    f.unlink(missing_ok=True)
     _forget(f.name)
     state_bus.publish()

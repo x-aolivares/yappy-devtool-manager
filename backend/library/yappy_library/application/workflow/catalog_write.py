@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 
+from yappy_library.adapters.file_io import file_lock, write_atomic
 from yappy_library.adapters.state_bus import state_bus
 from yappy_library.application.workflow.catalog import CONFIG_KEY, format_catalog, parse_catalog
 from yappy_library.application.workflow.models import PortEntry
@@ -140,21 +141,27 @@ def _persist(cfg: Config, catalog: dict) -> None:
     path = config_file(cfg)
     rendered = format_catalog(catalog)
 
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise CatalogError(f"No se pudo leer {path}: {exc}") from exc
+    # El lock y la escritura atómica van juntos. La pantalla edita el nombre
+    # de un servicio "en cada tecla", así que dos escrituras se pisan: sin
+    # lock, la última en escribir se lleva el cambio de la otra. Y sin
+    # escribir atómico, un lector —el snapshot— puede ver el `env.base` a
+    # medias, con la línea del catálogo partida.
+    with file_lock(path):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise CatalogError(f"No se pudo leer {path}: {exc}") from exc
 
-    if _KEY_LINE.search(text):
-        updated = _KEY_LINE.sub(f"{CONFIG_KEY}={rendered}", text, count=1)
-    else:
-        separator = "" if text.endswith("\n") or not text else "\n"
-        updated = f"{text}{separator}{CONFIG_KEY}={rendered}\n"
+        if _KEY_LINE.search(text):
+            updated = _KEY_LINE.sub(f"{CONFIG_KEY}={rendered}", text, count=1)
+        else:
+            separator = "" if text.endswith("\n") or not text else "\n"
+            updated = f"{text}{separator}{CONFIG_KEY}={rendered}\n"
 
-    try:
-        path.write_text(updated, encoding="utf-8")
-    except OSError as exc:
-        raise CatalogError(f"No se pudo escribir {path}: {exc}") from exc
+        try:
+            write_atomic(path, updated)
+        except OSError as exc:
+            raise CatalogError(f"No se pudo escribir {path}: {exc}") from exc
 
     # The catalog is part of the state the screen reads, so a rename has to reach it
     # the same way a verdict does. Without this the new name would only show up on

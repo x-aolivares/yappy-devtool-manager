@@ -9,6 +9,7 @@ from pathlib import Path
 
 import botocore.session
 
+from yappy_library.adapters.file_io import file_lock, write_atomic
 from yappy_library.config import Config, aws_port_of
 from yappy_library.adapters.logging import die, success, warn
 from yappy_library.paths import project_config_dir
@@ -93,30 +94,58 @@ def _clipboard(text: str) -> None:
 
 
 def write_local_env(token: str, env_local: Path | None = None) -> None:
-    """Persist a generated database token to the project-local env file."""
+    """Persist a generated database token to the project-local env file.
+
+    Sólo se toca la línea del token: el archivo se reescribía entero desde un
+    parse ingenuo, y eso perdía los comentarios y el orden de las claves.
+    """
     if env_local is None:
         env_local = project_config_dir() / ".env.local"
 
     try:
-        existing = {}
-        if env_local.exists():
-            for line in env_local.read_text().splitlines():
-                if "=" in line and not line.strip().startswith("#"):
-                    key, value = line.strip().split("=", 1)
-                    existing[key] = value
-        existing["DB_PASSWORD"] = token
-        if "DB_USER" not in existing:
-            existing["DB_USER"] = Config().aws_user or ""
-        content = "\n".join(f"{key}={value}" for key, value in existing.items()) + "\n"
-        env_local.write_text(content)
-        if os.name != "nt":
+        with file_lock(env_local):
             try:
-                os.chmod(env_local, 0o600)
+                text = env_local.read_text(encoding="utf-8") if env_local.exists() else ""
             except OSError:
-                pass
+                text = ""
+
+            lines = text.splitlines()
+            replaced = False
+            for index, line in enumerate(lines):
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or "=" not in stripped:
+                    continue
+                if stripped.split("=", 1)[0].strip() == "DB_PASSWORD":
+                    lines[index] = f"DB_PASSWORD={token}"
+                    replaced = True
+                    break
+
+            if not replaced:
+                if lines and lines[-1].strip():
+                    lines.append("")
+                lines.append(f"DB_PASSWORD={token}")
+
+            if not any(
+                line.strip().split("=", 1)[0].strip() == "DB_USER"
+                for line in lines
+                if "=" in line and not line.strip().startswith("#")
+            ):
+                usuario = Config().aws_user or ""
+                lines.append(f"DB_USER={usuario}")
+
+            write_atomic(env_local, "\n".join(lines) + "\n")
+            if os.name != "nt":
+                try:
+                    os.chmod(env_local, 0o600)
+                except OSError:
+                    pass
         success(f"Token saved to {env_local}")
     except Exception as exc:
+        # El fallo se reporta y se corta: seguir y decir "Token copied to
+        # clipboard" como si nada era mentira, y `db up` seguía creyendo que
+        # el token quedó persistido.
         warn(f"Could not write {env_local}: {exc}")
+        return
 
     _clipboard(token)
     success("Token copied to clipboard")
