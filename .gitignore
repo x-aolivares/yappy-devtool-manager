@@ -21,6 +21,18 @@ backend/build/
 scripts/mysql-*.zip
 scripts/mysql-*/
 
+# Caches de herramientas locales: se regeneran solas y no son del repo.
+# `.angular/` es el cache del compilador de Angular (con su lock file), y
+# `.atl/` es el registro de skills de "gentle-ai", que además trae rutas del
+# home de la máquina donde se generó.
+.angular/
+.atl/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
 # Kafka binaries (download separately)
 devkit/kafka/kafka-core/
 devkit/kafka/kafka-ui/
