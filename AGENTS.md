@@ -77,17 +77,23 @@ no consulta el tema: consume la misma variable y hereda el valor del tema activo
 
 ### Lo que este estándar todavía no cubre
 
-El frontend tiene **6 llamadas a `confirm()` nativo en 3 archivos**
-(`pages/params-create/params-create.ts:145`, `pages/params-diff/params-diff.ts` ×4
-—líneas 518, 549, 586 y 637—, `pages/params-edit/params-edit.ts:114`). El navegador
-muestra un alert que no dice qué va a pasar ni deja recuperar nada, y una de ellas
-llega a decir *"No se puede deshacer"*
-(`pages/params-diff/params-diff.ts:549`). Es el principio de Agency del HIG
-—*ofrecer perdón, que sea fácil deshacer*— y es donde la app más se aparta del
-estándar. Existe ya `components/notice-modal/notice-modal.ts` con `role="dialog"` y
-foco preso, que es la pieza correcta y está sin usar para estas acciones.
-`params-diff.ts:586` además confirma varias filas a la vez, algo que `confirm()` no
-puede expresar. Tratarlo aparte. Rastreado en el issue #6.
+**El `confirm()` nativo ya no está.** El issue #6 quedó resuelto: el frontend
+Angular no tiene ninguna llamada a `confirm()`. Todas las acciones que piden
+confirmación pasan por `components/notice-modal/notice-modal.ts`, que tiene los
+dos desenlaces —cancelar y confirmar— que el `confirm()` del navegador no
+tenía. Ese componente además confirma varias filas a la vez, que es justo lo
+que `confirm()` no podía expresar.
+
+(Las seis llamadas que este documento mencionaba estaban en los `.js` legacy
+de `backend/api/yappy_api/static/`, que eran el frontend anterior y ya no se
+sirven. Se borraron junto con el resto del frontend vanilla.)
+
+**Lo que sí falta, y es real:** `notice-modal.ts` declara `role="dialog"` y
+`aria-modal="true"`, pero **no tiene foco preso** y **no devuelve el foco** al
+elemento que lo tenía cuando se cierra. El teclado sale del diálogo al fondo de
+la página y vuelve a empezar desde arriba. `components/busy-modal/busy-modal.ts`
+sí lo hace —guarda `document.activeElement` y lo restaura—; `notice-modal`
+debería copiar ese patrón y agregar el ciclado de Tab.
 
 ## Workflow
 
@@ -100,8 +106,39 @@ When a user requests an adjustment:
 4. `git add -A && git commit -m "tipo(REP-XXXXXX): descripción concisa"`
 5. `git push`
 
-El issue name (`REP-XXXXXX`) va en el scope del mensaje — ver
+The issue name (`REP-XXXXXX`) goes in the scope of the message — see
 [Commit message format](#commit-message-format).
+
+If the change touches the API contract, regenerate the client in the same
+commit: `cd frontend && npm run api:gen`. CI checks both halves — the spec
+(`frontend/openapi.json`) and the generated client (`frontend/src/app/api-gen/`)
+— and a stale one compiles fine and fails at runtime.
+
+## CI
+
+`.github/workflows/ci.yml` is where the gate really runs. Three jobs:
+
+- **backend** (Linux): ruff, pytest with coverage, and the check that
+  `frontend/openapi.json` is up to date. Coverage cannot drop below 85%
+  (`--fail-under`); it is at 90% today.
+- **frontend** (Linux): the Vitest suite, the production build, and the check
+  that the generated client is up to date.
+- **windows** (Windows): pytest. It exists because the product is Windows-first
+  (`taskkill`, the Toolhelp API for the process table) and the Windows
+  assertions are marked with `skipif`, so on Linux they never ran at all.
+  Without that job, half of `process_identity` was unverified.
+
+The `prettier` check is **informative** (`continue-on-error`): the repo is not
+formatted yet — 147 files — and reformatting in the middle of a real change
+hides the diff and moves whitespace inside Angular templates, which is text
+that gets rendered. When the reformat lands as its own commit, that step
+becomes blocking.
+
+## Repo hygiene
+
+Caches and machine-local artifacts do not go in the repo. `.gitignore` covers
+`.angular/`, `.atl/`, `.pytest_cache/` and `.ruff_cache/`; if you see one of
+them staged, it is a mistake, not a convention.
 
 ## Lint gate (ruff)
 
