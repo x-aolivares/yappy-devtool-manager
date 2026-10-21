@@ -115,9 +115,9 @@ def debug_local(
     )
     agents_dir = Path(agents_path)
     if agents_dir.exists():
-        success(f"kafka-agents found at {win_to_posix(agents_dir)}")
+        success(f"kafka-agents found at {win_to_posix(str(agents_dir))}")
         info(f"  Start it manually in another terminal:")
-        info(f"  cd {win_to_posix(agents_dir)} && <your run command>")
+        info(f"  cd {win_to_posix(str(agents_dir))} && <your run command>")
     else:
         warn(f"kafka-agents not found at {agents_dir}")
         info("  You can pass --kafka-agents-path to set the correct path")
@@ -215,6 +215,8 @@ def executor(
         die(f"Executor script not found. Run 'yappy workflow executor edit' to create it first.")
 
     spec = importlib.util.spec_from_file_location("workflow_executor", executor_path)
+    if spec is None or spec.loader is None:
+        die(f"No se pudo cargar el executor desde {executor_path}.")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 

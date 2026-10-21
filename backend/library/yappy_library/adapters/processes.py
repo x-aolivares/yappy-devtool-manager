@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import functools
 import json
 import os
@@ -542,6 +544,7 @@ class BaseCommand:
         # exactly like one that was still coming up, which is how a request ends
         # up waiting forever on a tunnel that was never going to work.
         handle = None
+        sink: Any
         if log_file:
             path = Path(log_file)
             path.parent.mkdir(parents=True, exist_ok=True)

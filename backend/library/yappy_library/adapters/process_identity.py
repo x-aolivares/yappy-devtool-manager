@@ -241,7 +241,9 @@ def _exe_basename(raw: str) -> str:
 # --------------------------------------------------------------------------
 
 
-_win_api = None
+#: `None` = todavía no se intentó; `False` = no hay API de Windows (un
+#: Windows recortado, o wine); un dict = la API cargada.
+_win_api: dict | bool | None = None
 
 
 def _windows_api():
@@ -459,6 +461,20 @@ def _linux_parent_map() -> dict[int, int]:
     return parents
 
 
+if sys.platform != "win32":  # pragma: no cover - el camino de Linux
+    def _clock_ticks_per_second() -> int:
+        """Los ticks de reloj por segundo del kernel.
+
+        `os.sysconf` es POSIX-only, y mypy —que corre en la plataforma en la
+        que corre— no lo ve en Windows. Con el branch por `sys.platform` sólo
+        se chequea el lado que corresponde.
+        """
+        return os.sysconf("SC_CLK_TCK")
+else:  # pragma: no cover - el camino de Linux nunca corre en Windows
+    def _clock_ticks_per_second() -> int:
+        return 100
+
+
 def _boot_time() -> float:
     """Seconds since the epoch at which the kernel started counting.
 
@@ -490,7 +506,7 @@ def _linux_identity(pid: int) -> ProcessIdentity | None:
     boot = _boot_time()
     if boot:
         try:
-            create_time = boot + start_ticks / os.sysconf("SC_CLK_TCK")
+            create_time = boot + start_ticks / _clock_ticks_per_second()
         except (OSError, ValueError, ZeroDivisionError):
             create_time = 0.0
 

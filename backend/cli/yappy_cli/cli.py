@@ -526,7 +526,7 @@ def ps():
 
     rows = []
     known_pids = set()
-    port_map = {}
+    port_map: dict[str, list[str]] = {}
 
     try:
         netstat = subprocess.run(

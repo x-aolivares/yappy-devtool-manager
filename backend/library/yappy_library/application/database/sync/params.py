@@ -7,6 +7,8 @@ overwriting the whole parameter.
 
 from __future__ import annotations
 
+from typing import Any
+
 import copy
 import json
 from concurrent.futures import ThreadPoolExecutor
@@ -253,7 +255,9 @@ def _diff_tree(a, b):
 def apply_patch(source, tree):
     """Apply the change tree onto ``source``; untouched parts keep A's values."""
     if isinstance(source, dict):
-        out = copy.deepcopy(source)
+        # `Any` y no `dict`: la rama de abajo maneja una lista, y el type
+        # checker no puede narrowing entre `if`s con `isinstance`.
+        out: Any = copy.deepcopy(source)
         for key, (op, payload) in tree.items():
             if op == "del":
                 out.pop(key, None)
@@ -445,23 +449,16 @@ def diff_params(
         value_a, type_a = (a, None) if a else (None, None)
         value_b, type_b = (b, None) if b else (None, None)
 
-    if value_a is None and value_b is None:
-        return ParamDiffResult(
-            env_a=env_a, env_b=env_b, service=service, name=name,
-            status="none",
-            notes=[f"No existe en ninguna de las dos regiones."],
-        )
-
-    if value_a is None:
-        return ParamDiffResult(
-            env_a=env_a, env_b=env_b, service=service, name=name,
-            status="missing_in_a",
-            value_b=value_b, value_type_b=type_b,
-            script=_build_script(service, name, value_b, type_b, cfg_a),
-            notes=[f"Existe solo en {env_b} (origen) — debe crearse en {env_a} (destino)."],
-        )
-
+    # El orden de las ramas importa para el type checker: con `value_b`
+    # primero, la rama de "falta en el destino" sabe que `value_b` no es
+    # `None`. La lógica es la misma; la forma en que se dice, no.
     if value_b is None:
+        if value_a is None:
+            return ParamDiffResult(
+                env_a=env_a, env_b=env_b, service=service, name=name,
+                status="none",
+                notes=[f"No existe en ninguna de las dos regiones."],
+            )
         if include_deletes:
             script = (
                 build_secret_delete_script(name, cfg_a)
@@ -485,6 +482,15 @@ def diff_params(
             value_a=value_a, value_type_a=type_a,
             script=script,
             notes=notes,
+        )
+
+    if value_a is None:
+        return ParamDiffResult(
+            env_a=env_a, env_b=env_b, service=service, name=name,
+            status="missing_in_a",
+            value_b=value_b, value_type_b=type_b,
+            script=_build_script(service, name, value_b, type_b, cfg_a),
+            notes=[f"Existe solo en {env_b} (origen) — debe crearse en {env_a} (destino)."],
         )
 
     status, is_json, changes, patch_value = compare_values(value_a, value_b)
@@ -675,7 +681,7 @@ def _normalize_entries(entries) -> list[dict]:
         if isinstance(entry, str):
             name, is_secret = entry, False
         elif isinstance(entry, dict):
-            name = entry.get("key") or entry.get("name")
+            name = entry.get("key") or entry.get("name") or ""
             is_secret = bool(entry.get("is_secret", False))
         else:
             raise ValueError(
@@ -773,18 +779,18 @@ def read_many(cfg, entries) -> list[dict]:
         with ThreadPoolExecutor(max_workers=min(8, len(names))) as pool:
             outcomes = list(pool.map(_read_secret, names))
         auto_indices = {idx for idx, _ in auto_pending}
-        for (idx, _name), (value, error) in zip(sm_pending, outcomes):
+        for (idx, _name), (secret_value, error) in zip(sm_pending, outcomes):
             if idx in auto_indices:
-                if error is None and value is not None:
+                if error is None and secret_value is not None:
                     results[idx].update(
-                        value=value,
+                        value=secret_value,
                         ok=True,
                         is_secret=True,
                         service="secretsmanager",
                     )
             else:
-                results[idx]["value"] = value
-                if error is None and value is not None:
+                results[idx]["value"] = secret_value
+                if error is None and secret_value is not None:
                     results[idx]["ok"] = True
                 else:
                     results[idx]["error"] = error

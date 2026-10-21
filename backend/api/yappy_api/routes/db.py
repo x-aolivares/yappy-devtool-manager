@@ -60,7 +60,8 @@ def api_db_diff(req: DbDiffRequest):
             if req.object_type == "procedure":
                 code_a = obj.show_create_procedure(conn_a, schema, name)
                 code_b = obj.show_create_procedure(conn_b, schema, name)
-                col_ops, index_ops = [], []
+                col_ops: list = []
+                index_ops: list = []
             else:
                 code_a = obj.show_create_table(conn_a, schema, name)
                 code_b = obj.show_create_table(conn_b, schema, name)
@@ -68,10 +69,34 @@ def api_db_diff(req: DbDiffRequest):
                 cols_b, idx_b = _table_structure(conn_b, schema, name)
                 col_ops, index_ops = db_diff.diff_tables(cols_a, cols_b, idx_a, idx_b)
 
-            if code_a is None and code_b is None:
-                status = "none"
-                script = None
-                notes = ["El objeto no existe en ninguna de las dos regiones."]
+            # El orden de las ramas importa para el type checker: con
+            # `code_b` primero, la rama de "falta en el destino" sabe que
+            # `code_b` no es `None`. La lógica es la misma; la forma en que
+            # se dice, no.
+            if code_b is None:
+                if code_a is None:
+                    status = "none"
+                    script = None
+                    notes = ["El objeto no existe en ninguna de las dos regiones."]
+                else:
+                    status = "missing_in_b"
+                    if req.include_deletes:
+                        script = (
+                            ddl.drop_procedure_script(schema, name)
+                            if req.object_type == "procedure"
+                            else ddl.drop_table_script(schema, name)
+                        )
+                        notes = [
+                            f"Existe en {req.env_a} (destino) pero no en {req.env_b} (origen) — "
+                            "se elimina para que la región destino quede igual a la de origen."
+                        ]
+                    else:
+                        script = None
+                        notes = [
+                            f"Existe en {req.env_a} (destino) pero no en {req.env_b} (origen) — "
+                            "no hay nada que sincronizar (origen → destino). "
+                            "Marcá la opción 'Incluir eliminaciones' para generar el DROP."
+                        ]
             elif code_a is None:
                 status = "missing_in_a"
                 if req.object_type == "procedure":
@@ -79,25 +104,6 @@ def api_db_diff(req: DbDiffRequest):
                 else:
                     script = ddl.create_table_script(code_b)
                 notes = [f"Existe solo en {req.env_b} — debe crearse en {req.env_a}."]
-            elif code_b is None:
-                status = "missing_in_b"
-                if req.include_deletes:
-                    script = (
-                        ddl.drop_procedure_script(schema, name)
-                        if req.object_type == "procedure"
-                        else ddl.drop_table_script(schema, name)
-                    )
-                    notes = [
-                        f"Existe en {req.env_a} (destino) pero no en {req.env_b} (origen) — "
-                        "se elimina para que la región destino quede igual a la de origen."
-                    ]
-                else:
-                    script = None
-                    notes = [
-                        f"Existe en {req.env_a} (destino) pero no en {req.env_b} (origen) — "
-                        "no hay nada que sincronizar (origen → destino). "
-                        "Marcá la opción 'Incluir eliminaciones' para generar el DROP."
-                    ]
             elif (
                 obj.normalize_ddl(code_a) == obj.normalize_ddl(code_b)
                 and not col_ops

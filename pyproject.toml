@@ -46,3 +46,37 @@ exclude = [".venv", "build", "backend/build", "dist", "frontend"]
 
 [tool.ruff.lint]
 select = ["F821", "F811", "E9"]
+
+# --- mypy -------------------------------------------------------------------
+#
+# Las anotaciones de este repo existen y nunca se verificaban. El código está
+# anotado a mano (`from __future__ import annotations`, `str | None`,
+# `dict[str, str]`, `-> tuple[str, int]`), lo que significa que la intención
+# ya está escrita: faltaba el que la mirara.
+#
+# El gate es de *corrección*, como el de ruff: no busca estilo, busca que los
+# tipos que el código dice tener sean los que tiene. Un `cfg.get("X")` que
+# puede devolver `None` y se pasa a algo que espera `str` es un `None` que
+# viaja hasta que algo explota —o no explota, que es peor.
+#
+# `ignore_missing_imports`: los stubs de `typer`, `rich`, `pymysql` y `boto3`
+# no están, y no vale la pena mantener stubs propios para eso.
+#
+# `check_untyped_defs`: sin esto, mypy no mira el cuerpo de las funciones sin
+# anotar, que es la mitad del código. Es la diferencia entre un gate que
+# existe y uno que decoraría.
+[tool.mypy]
+python_version = "3.14"
+# El gate es del código que corre en producción. Los tests no entran: usan
+# dobles sintéticos donde la producción usa objetos reales (`SimpleNamespace`
+# en lugar de un `Config`), y `monkeypatch` de un método no es un error —es
+# lo que hacen—. La mitad de los errores que mypy reportaba en los tests eran
+# el patrón `lambda: calls.append(x)`, que es correcto en Python.
+files = ["backend/library", "backend/api", "backend/cli"]
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+show_error_codes = true
+

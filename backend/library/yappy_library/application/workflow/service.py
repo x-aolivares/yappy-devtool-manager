@@ -112,7 +112,7 @@ LOCAL_ENV_NAME = "local"
 #: ``Config._config_dir`` tiene que ver *su* config, no la que quedó cacheada de
 #: la máquina. Sin esto, el primer test que tocó la config contaminaba a todos
 #: los que venían después.
-_cached_environmentless: tuple[Path, dict[str, str]] | None = None
+_cached_environmentless: tuple[Path, dict[str, str | None]] | None = None
 
 
 def _environmentless_config() -> Config:

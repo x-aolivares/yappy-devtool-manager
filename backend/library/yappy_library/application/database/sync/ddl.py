@@ -125,6 +125,19 @@ def _render_default(row: dict) -> str:
     return "DEFAULT '" + v.replace("'", "''") + "'"
 
 
+def _definition(op) -> dict:
+    """La definición de una columna agregada o modificada.
+
+    El tipo del `ColumnOp` no puede decir que "added" y "modified" siempre
+    traen la definición y "removed" —que no la usa— puede no traerla: es
+    una unión de discriminantes, y el dataclass no la modela. Se dice acá, y
+    si algún día falta, es un error y no un DDL con una columna vacía.
+    """
+    if op.definition is None:
+        raise ValueError(f"La columna '{op.name}' no tiene definición.")
+    return op.definition
+
+
 def _render_column(row: dict) -> str:
     parts = [obj.quote_ident(row["COLUMN_NAME"]), row["COLUMN_TYPE"]]
 
@@ -182,11 +195,11 @@ def alter_table_script(
 
     for op in column_ops:
         if op.op == "added":
-            clauses.append(f"ADD COLUMN {_render_column(op.definition)}")
+            clauses.append(f"ADD COLUMN {_render_column(_definition(op))}")
         elif op.op == "removed":
             clauses.append(f"DROP COLUMN {obj.quote_ident(op.name)}")
         elif op.op == "modified":
-            clauses.append(f"MODIFY COLUMN {_render_column(op.definition)}")
+            clauses.append(f"MODIFY COLUMN {_render_column(_definition(op))}")
 
     for op_name, name, sig in index_ops:
         non_unique, entries = sig

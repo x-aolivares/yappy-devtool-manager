@@ -149,7 +149,7 @@ def plan(
         decisions.append(
             Decision(
                 action=action,
-                pid=entry.get("pid"),
+                pid=entry.get("pid") or 0,
                 reason=reason,
                 label=_label(entry),
             )

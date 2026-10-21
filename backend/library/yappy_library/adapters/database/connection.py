@@ -33,8 +33,15 @@ class SyncError(ValueError):
 
 
 def _local_env_values() -> dict[str, str]:
+    """Los valores de `.env.local`, sin los que no tienen valor.
+
+    El dotenv devuelve `None` para una clave escrita a secas, y un `None` en
+    un valor de config es una sorpresa esperando a pasar algo.
+    """
     path = project_config_dir() / ".env.local"
-    return dotenv_values(path) if path.exists() else {}
+    if not path.exists():
+        return {}
+    return {k: v for k, v in dotenv_values(path).items() if v is not None}
 
 
 def _resolve_user(cfg: Config, local: dict[str, str]) -> str:
@@ -175,9 +182,9 @@ def connect(cfg: Config) -> Iterator[pymysql.connections.Connection]:
             conn.close()
         return
 
-    instance = cfg.get("AWS_INSTANCE")
+    instance = cfg.get("AWS_INSTANCE") or ""
     remote_host = cfg.get("AWS_HOST")
-    remote_port = cfg.get("AWS_PORT")
+    remote_port = cfg.get("AWS_PORT") or ""
     required = {
         "AWS_INSTANCE": instance,
         "AWS_HOST": remote_host,
@@ -197,8 +204,7 @@ def connect(cfg: Config) -> Iterator[pymysql.connections.Connection]:
 
     try:
         token = generate_token(cfg)
-    except SystemExit as exc:
-        raise SyncError(f"No se pudo generar el token de autenticación de RDS: {exc}") from exc
+    except SystemExit as exc:        raise SyncError(f"No se pudo generar el token de autenticación de RDS: {exc}") from exc
 
     base = BaseCommand()
     local_port = cfg.db_port

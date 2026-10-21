@@ -436,7 +436,7 @@ def api_params_read(envs: list[str], entries: list[ReadParamsEntry | str]):
     }
 
 
-def _env_error_rows(env: str, entries: list[dict | str], message: str) -> list[dict]:
+def _env_error_rows(env: str, entries: list[ReadParamsEntry | str], message: str) -> list[dict]:
     """One failed row per requested key, so the panel keeps its shape.
 
     Entries arrive either as plain key strings or as dicts, depending on what the
@@ -447,8 +447,10 @@ def _env_error_rows(env: str, entries: list[dict | str], message: str) -> list[d
         if isinstance(entry, str):
             key, is_secret = entry, False
         else:
-            key = entry.get("key") or entry.get("name") or ""
-            is_secret = bool(entry.get("is_secret"))
+            # `ReadParamsEntry` es un modelo de Pydantic, no un dict: los
+            # campos se leen por atributo.
+            key = entry.key or entry.name or ""
+            is_secret = bool(entry.is_secret)
         rows.append(
             {
                 "env": env,

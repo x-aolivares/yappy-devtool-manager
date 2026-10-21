@@ -25,12 +25,16 @@ cuando los que escriben son dos procesos distintos.
 from __future__ import annotations
 
 import os
+import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-if os.name == "nt":  # pragma: no cover - la rama se ejercita en Windows
+# `sys.platform` y no `os.name`: mypy sólo chequea la rama que corresponde
+# a la plataforma en la que corre, así que el módulo de la otra plataforma
+# no le da errors.
+if sys.platform == "win32":  # pragma: no cover - la rama se ejercita en Windows
     import msvcrt
 
     def _lock(handle) -> None:

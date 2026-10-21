@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from datetime import datetime
+from typing import NoReturn
 
 from rich.console import Console
 from rich.theme import Theme
@@ -47,7 +48,14 @@ def error(msg: str):
     _err_console.print(f"[dim]{_stamp()}[/dim] [error]ERR[/error] {msg}")
 
 
-def die(msg: str, code: int = 1):
+def die(msg: str, code: int = 1) -> NoReturn:
+    """Salir con un error.
+
+    `NoReturn` y no `None`: `die` no devuelve nunca, y el type checker lo
+    necesita saber. Sin esto, cada `except` que llama a `die` parece un
+    camino que se cae al piso —y hay funciones que sólo wegen eso se
+    quejaban de "falta un return".
+    """
     error(msg)
     sys.exit(code)
 

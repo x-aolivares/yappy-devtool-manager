@@ -4,6 +4,7 @@ import os
 import glob
 import re
 import sys
+from typing import overload
 from pathlib import Path
 from dotenv import dotenv_values
 
@@ -101,7 +102,7 @@ class Config:
     _config_dir: Path | None = None
 
     @classmethod
-    def _from_values(cls, values: dict[str, str]) -> Config:
+    def _from_values(cls, values: dict[str, str | None]) -> Config:
         """An *env-less* `Config` with values already in hand, no disk read.
 
         Exists for the workflow screen that asked for no environment at all —
@@ -120,7 +121,10 @@ class Config:
 
     def __init__(self, env: str | None = None):
         self._env = env
-        self._values: dict[str, str] = {}
+        # `None` es un valor legítimo acá: una clave escrita sin valor
+        # (`AWS_PROFILE` a secas) vale `None` en el dotenv, y eso es lo que
+        # `get` distingue de "no está".
+        self._values: dict[str, str | None] = {}
 
         config_dir = self._get_config_dir()
         self._load_file(config_dir / "env.base")
@@ -203,7 +207,21 @@ class Config:
             envs.append(name)
         return sorted(envs)
 
+    @overload
+    def get(self, key: str) -> str | None: ...
+
+    @overload
+    def get(self, key: str, default: str) -> str: ...
+
     def get(self, key: str, default: str | None = None) -> str | None:
+        """El valor de una clave, o el default.
+
+        **Un default que no es `None` garantiza un resultado que no es
+        `None`.** Eso no es un detalle: sin el overload, media docena de
+        llamados que pasan un default de verdad tienen que defensar contra un
+        `None` que no puede pasar, y el type checker los obliga a hacerlo o a
+        mentir con un `cast`.
+        """
         # Precedence: (1) config files, (2) explicit YAPPY_* overrides,
         # (3) plain os.environ as a last resort when the key is not defined
         # in any config file.

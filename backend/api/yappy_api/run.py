@@ -201,18 +201,22 @@ def _log_shutdown_signal():
         try:
             previous[sig] = signal.getsignal(sig)
 
-            def handler(signum, frame, _prev=previous):
+            # El handler anterior se guarda en un dict, no como atributo de
+            # la función: mypy no acepta atributos en funciones, y un dict es
+            # más fácil de leer igual.
+            prev_handlers: dict[int, object] = {}
+
+            def handler(signum, frame):
                 try:
                     info(f"  [apagado] señal {signal.Signals(signum).name} recibida")
                 except Exception:  # noqa: BLE001 - loggear no puede romper el apagado
                     pass
-                handler._prev = getattr(handler, "_prev", None)
-                old = handler._prev.get(signum)
+                old = prev_handlers.get(signum)
                 if callable(old):
                     return old(signum, frame)
                 return None
 
-            handler._prev = previous
+            prev_handlers.update(previous)
             signal.signal(sig, handler)
         except (OSError, ValueError):
             # Sin consola propia (o signal no disponible): no se puede escuchar.

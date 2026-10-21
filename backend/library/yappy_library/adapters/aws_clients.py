@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import threading
 import time
+from typing import Any
 
 # TTL y no lru_cache: un cliente con un token SSO vencido puede quedar trabado
 # para siempre. Con TTL se regenera solo a los 15 minutos.
@@ -78,9 +79,15 @@ def _lookup(key: tuple):
     """
     with _cache_lock:
         hit = _cache.get(key)
-        fresh = hit is not None and time.monotonic() - hit[0] < CLIENT_TTL_SECONDS
+        # El `fresh` en una variable aparte no le devuelve el narrowing a
+        # mypy: no puede saber que `hit` es `None` cuando `fresh` es falso.
+        client = (
+            hit[1]
+            if hit is not None and time.monotonic() - hit[0] < CLIENT_TTL_SECONDS
+            else None
+        )
         key_lock = _key_locks.setdefault(key, threading.Lock())
-        return (hit[1] if fresh else None), key_lock
+        return client, key_lock
 
 
 def _build(key: tuple, key_lock: threading.Lock, force: bool = False):
@@ -117,7 +124,7 @@ def get_client(service: str, profile: str, region: str, endpoint_url: str | None
     return cached if cached is not None else _build(key, key_lock)
 
 
-def client_for_cfg(service: str, cfg) -> object:
+def client_for_cfg(service: str, cfg) -> Any:
     """Cliente para un `Config`, resolviendo el endpoint de LocalStack.
 
     El perfil `localstack` implica `http://localhost:4566` salvo que la config

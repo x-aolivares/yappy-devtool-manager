@@ -20,6 +20,8 @@ una terminal quiere lo mismo que estaba leyendo.
 
 from __future__ import annotations
 
+from typing import Any
+
 import json
 import re
 import urllib.error
@@ -363,7 +365,7 @@ def environment_deployment(
     `cfg` se puede pasar ya resuelto para no leer los archivos de configuración
     dos veces por ambiente (una acá y otra al filtrar cuáles preguntarle a ECS).
     """
-    row = {
+    row: dict[str, Any] = {
         "env": env,
         "region": None,
         "status": "error",

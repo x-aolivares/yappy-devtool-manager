@@ -273,7 +273,10 @@ def parse_select(sql: str, default_schema: str = "") -> QueryPlan:
             "La consulta no tiene FROM, así que no referencia ninguna tabla para migrar."
         )
     # `match(..., pos).end()` is already an absolute offset, so use it directly.
-    from_start = _FROM_RE.match(masked, from_at).end()
+    from_match = _FROM_RE.match(masked, from_at)
+    if from_match is None:  # pragma: no cover - `_find_top_level` ya lo encontró
+        raise MigrationError("No se pudo ubicar el FROM de la consulta.")
+    from_start = from_match.end()
 
     where_at = _find_top_level(masked, _WHERE_RE, from_start)
     tail_at = _find_top_level(masked, _TERMINATOR_RE, from_start)

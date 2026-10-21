@@ -375,7 +375,7 @@ def stop_all(*, allow_foreign: bool = False) -> dict:
     for entry in process_tracker.get_tracked_processes():
         if not entry.get("alive"):
             continue
-        pid = entry.get("pid")
+        pid = entry.get("pid") or 0
         if is_foreign(entry) and not allow_foreign:
             refused.append({"pid": pid, "reason": _describe(entry)})
             motivos.append(f"{pid}: no lo levantó la web")
