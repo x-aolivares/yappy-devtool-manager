@@ -3,11 +3,15 @@ from __future__ import annotations
 import subprocess
 
 from yappy_library.adapters.aws_sso import login as sso_login
-from yappy_library.adapters.database.connection import SyncError, _wait_for_port
+from yappy_library.adapters.database.connection import (
+    SyncError,
+    _wait_for_port,
+    open_db_tunnel,
+)
 from yappy_library.adapters.database.credentials import generate_token, write_local_env
 from yappy_library.adapters.logging import die, info, success, warn
 from yappy_library.adapters.processes import BaseCommand, _aws_cmd
-from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES, cluster_domain
+from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES, cluster_remote_host
 from yappy_library.config import Config, aws_port_of
 from yappy_library.domain.models import DBResult, PFResult
 
@@ -29,10 +33,9 @@ class ForwarderNamespace:
         if self._target_type == "cluster":
             if not load_balance:
                 die("load_balance is required for cluster port-forwarding")
-            cluster_host = CLUSTER_ALIASES.get(load_balance)
-            if not cluster_host:
+            if load_balance not in CLUSTER_ALIASES:
                 die(f"Unknown cluster '{load_balance}'. Use: cap, cap2, or int")
-            remote_host = f"{cluster_host}.{cfg.env}.{cluster_domain(cfg)}"
+            remote_host = cluster_remote_host(cfg, load_balance)
             target = f"cluster/{load_balance}"
         elif self._target_type == "bastion":
             remote_host = None
@@ -114,17 +117,7 @@ class Session:
         token = generate_token(cfg)
         write_local_env(token)
 
-        proc = cmd.ssm_tunnel(
-            instance=cfg.require("AWS_INSTANCE"),
-            port=aws_port_of(cfg),
-            local_port=cfg.db_port,
-            region=cfg.require("AWS_REGION"),
-            profile=cfg.profile,
-            remote_host=cfg.require("AWS_HOST"),
-            quiet=True,
-            env=cfg.env or "",
-            label="db",
-        )
+        proc = open_db_tunnel(cfg, cmd=cmd, env=cfg.env or "")
         self._procs.append(proc)
 
         # A fixed sleep is not a readiness check. It answers a question nobody

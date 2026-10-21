@@ -9,6 +9,7 @@ from pathlib import Path
 import typer
 
 from yappy_library.adapters import process_tracker
+from yappy_library.adapters.database.connection import open_db_tunnel
 from yappy_library.adapters.database.credentials import (
     generate_token as _generate_token,
     write_local_env as _write_local_env,
@@ -126,15 +127,7 @@ def up(
         info(f"Starting database tunnel to {env} (localhost:{cfg.db_port})...")
 
     try:
-        proc = db_cmd.ssm_tunnel(
-            instance=cfg.require("AWS_INSTANCE"),
-            port=aws_port_of(cfg),
-            local_port=cfg.db_port,
-            region=cfg.require("AWS_REGION"),
-            profile=cfg.profile,
-            remote_host=cfg.require("AWS_HOST"),
-            quiet=detach,
-        )
+        proc = open_db_tunnel(cfg, cmd=db_cmd, quiet=detach)
     except Exception as e:
         die(f"Failed to start tunnel: {e}")
 
@@ -142,14 +135,7 @@ def up(
         info("Regenerating token and restarting tunnel...")
         new_token = _generate_token(cfg)
         _write_local_env(new_token)
-        return db_cmd.ssm_tunnel(
-            instance=cfg.require("AWS_INSTANCE"),
-            port=aws_port_of(cfg),
-            local_port=cfg.db_port,
-            region=cfg.require("AWS_REGION"),
-            profile=cfg.profile,
-            remote_host=cfg.require("AWS_HOST"),
-        )
+        return open_db_tunnel(cfg, cmd=db_cmd, quiet=False)
 
     if keep_alive:
         stop_event: threading.Event | None = None

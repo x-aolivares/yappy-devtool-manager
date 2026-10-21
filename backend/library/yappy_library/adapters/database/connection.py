@@ -17,6 +17,7 @@ import contextlib
 import socket
 import threading
 import time
+from pathlib import Path
 from typing import Iterator
 
 import pymysql
@@ -24,7 +25,8 @@ from dotenv import dotenv_values
 
 from yappy_library.adapters.database.credentials import generate_token, resolve_db_user
 from yappy_library.adapters.processes import BaseCommand, ToolUnavailable, tunnel_log_path
-from yappy_library.config import Config, mysql_port_of
+from yappy_library.adapters.sockets import recv_exactly
+from yappy_library.config import Config, aws_port_of, mysql_port_of
 from yappy_library.paths import project_config_dir
 
 
@@ -42,6 +44,37 @@ def _local_env_values() -> dict[str, str]:
     if not path.exists():
         return {}
     return {k: v for k, v in dotenv_values(path).items() if v is not None}
+
+
+def open_db_tunnel(
+    cfg: Config,
+    *,
+    cmd: BaseCommand | None = None,
+    quiet: bool = True,
+    env: str = "",
+    label: str = "db",
+    log_file: str | Path | None = None,
+):
+    """Abrir el túnel SSM a la base de datos de un ambiente.
+
+    Los cinco lugares que lo abrían pasan los mismos seis datos —instancia,
+    puerto remoto de Aurora, puerto local, región, perfil y host— y cada uno
+    los pasaba por su cuenta. Una diferencia de un puerto entre ellos es un
+    túnel que no llega a la base, y no falla: no trae bytes, y la pantalla
+    dice que el túnel está caído sin decir por qué.
+    """
+    return (cmd or BaseCommand()).ssm_tunnel(
+        instance=cfg.require("AWS_INSTANCE"),
+        port=aws_port_of(cfg),
+        local_port=cfg.db_port,
+        region=cfg.require("AWS_REGION"),
+        profile=cfg.profile,
+        remote_host=cfg.require("AWS_HOST"),
+        quiet=quiet,
+        env=env,
+        label=label,
+        log_file=log_file,
+    )
 
 
 def _resolve_user(cfg: Config, local: dict[str, str]) -> str:
@@ -87,19 +120,6 @@ READ_TIMEOUT = 120
 WRITE_TIMEOUT = 120
 
 
-def _recv_exactly(sock: socket.socket, size: int) -> bytes:
-    """Read exactly ``size`` bytes, or fewer if the peer stops sending."""
-    chunks: list[bytes] = []
-    remaining = size
-    while remaining > 0:
-        chunk = sock.recv(remaining)
-        if not chunk:
-            break
-        chunks.append(chunk)
-        remaining -= len(chunk)
-    return b"".join(chunks)
-
-
 def mysql_greeting(port: int, timeout: float) -> bool:
     """True when ``port`` answers with a MySQL server greeting.
 
@@ -117,7 +137,7 @@ def mysql_greeting(port: int, timeout: float) -> bool:
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=timeout) as sock:
             sock.settimeout(timeout)
-            header = _recv_exactly(sock, _MYSQL_GREETING_HEADER)
+            header = recv_exactly(sock, _MYSQL_GREETING_HEADER)
     except OSError:
         return False
     return len(header) == _MYSQL_GREETING_HEADER and header[4] == _MYSQL_PROTOCOL_VERSION
@@ -224,14 +244,9 @@ def connect(cfg: Config) -> Iterator[pymysql.connections.Connection]:
         with _port_lock(local_port):
             if not mysql_greeting(local_port, timeout=1.0):
                 try:
-                    proc = base.ssm_tunnel(
-                        instance=instance,
-                        port=int(remote_port),
-                        local_port=local_port,
-                        region=cfg.region,
-                        profile=cfg.profile,
-                        remote_host=remote_host,
-                        quiet=True,
+                    proc = open_db_tunnel(
+                        cfg,
+                        cmd=base,
                         log_file=tunnel_log_path(local_port),
                     )
                 except ToolUnavailable as exc:

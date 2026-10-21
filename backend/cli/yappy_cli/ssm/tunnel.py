@@ -3,7 +3,12 @@ import subprocess
 import typer
 from yappy_library.adapters.processes import BaseCommand, tunnel_log_path
 from yappy_library.adapters.logging import die, info, success
-from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES
+from yappy_library.adapters.ssm.targets import (
+    CLUSTER_ALIASES,
+    databricks_host,
+    databricks_port,
+    kafdrop_port,
+)
 from yappy_library.config import Config
 from ..deprecation import warn_deprecated
 
@@ -132,7 +137,7 @@ def kafdrop(
     ssm_cmd.check_requirements("aws")
     cfg = Config.with_env(env)
 
-    local_port = int(cfg.get("KAFDROP_PORT", "9000" if env == "qa" else "9001"))
+    local_port = kafdrop_port(cfg, env)
 
     info(f"Starting Kafdrop tunnel to {env} (localhost:{local_port})...")
     try:
@@ -170,11 +175,8 @@ def databricks(
     ssm_cmd.check_requirements("aws")
     cfg = Config.with_env(env)
 
-    local_port = int(cfg.get("DATABRICKS_PORT", "4433" if env == "dev" else "4434"))
-    remote_host = cfg.get(
-        "DATABRICKS_HOST",
-        f"yappy-lakehouse-{env}.cloud.databricks.com",
-    )
+    local_port = databricks_port(cfg, env)
+    remote_host = databricks_host(cfg, env)
 
     info(f"Starting Databricks tunnel to {env} (localhost:{local_port})...")
     try:

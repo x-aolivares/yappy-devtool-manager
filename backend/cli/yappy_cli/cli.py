@@ -473,13 +473,9 @@ complete -F _yappy_completions yappy""")
 def reload():
     """Reinstall the package in editable mode (pip install -e .)."""
     project_root = get_project_root()
-    pyproject = project_root / "pyproject.toml"
-    version_str = "unknown"
-    if pyproject.exists():
-        for line in pyproject.read_text().splitlines():
-            if line.strip().startswith('version'):
-                version_str = line.split("=")[1].strip().strip('"').strip("'")
-                break
+    # El mismo reader que usa `yappy version`: dos readers del mismo archivo
+    # son dos respuestas y, con el tiempo, dos versiones.
+    version_str = _read_version()
     info(f"Reinstalling Yappy-ToolKit v{version_str} from {project_root}...")
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", "-e", str(project_root)],

@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from yappy_library.adapters import process_tracker
 from yappy_library.adapters.logging import info as log_info
 from yappy_library.adapters.processes import BaseCommand, ToolUnavailable, tunnel_log_path
-from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES, cluster_domain
+from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES, cluster_remote_host
 from yappy_library.application.workflow.models import is_foreign, is_live, state_of
 from yappy_library.application.workflow.registry import resources_for
 from yappy_library.application.workflow.service import _owner
@@ -166,10 +166,9 @@ def _remote_host_for(cfg: Config, definition, cluster: str) -> str | None:
     """Where a tunnel's packets go: the definition's own host, or the cluster's."""
     if definition is not None and definition.remote_host:
         return definition.remote_host
-    host = CLUSTER_ALIASES.get(cluster)
-    if not host:
-        return None
-    return f"{host}.{cfg.env}.{cluster_domain(cfg)}"
+    # El host del cluster lo arma el módulo que sabe armarlo: la fórmula
+    # `<alias>.<ambiente>.<dominio>` estaba en tres lugares.
+    return cluster_remote_host(cfg, cluster) or None
 
 
 def start_resource(cfg: Config, key: str) -> dict:

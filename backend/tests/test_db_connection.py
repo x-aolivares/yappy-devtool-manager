@@ -176,12 +176,19 @@ def _tunnel_cfg(port: int) -> types.SimpleNamespace:
         "AWS_REGION": "us-east-1",
         "AWS_USER": "app",
     }
+    def _require(key):
+        value = values.get(key)
+        if not value:
+            raise ValueError(f"Missing required config: {key}")
+        return value
+
     return types.SimpleNamespace(
         db_port=port,
         region="us-east-1",
         profile="base-profile",
         aws_user="app",
         get=lambda key, default=None: values.get(key, default),
+        require=_require,
     )
 
 

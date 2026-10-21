@@ -124,16 +124,29 @@ def get_client(service: str, profile: str, region: str, endpoint_url: str | None
     return cached if cached is not None else _build(key, key_lock)
 
 
-def client_for_cfg(service: str, cfg) -> Any:
-    """Cliente para un `Config`, resolviendo el endpoint de LocalStack.
+#: El endpoint de LocalStack, cuando el perfil lo es.
+LOCALSTACK_ENDPOINT = "http://localhost:4566"
+
+
+def endpoint_for(cfg) -> str | None:
+    """El endpoint que hay que usar para un `Config`, si hay alguno.
 
     El perfil `localstack` implica `http://localhost:4566` salvo que la config
     diga otra cosa: es el único servicio donde el endpoint no viene explícito.
+
+    Vive acá y no en el que lo consume, porque lo consumen dos —el cliente y el
+    calentador— y cada uno con su copia el endpoint de LocalStack era una
+    constante que podía divergir sin que nadie lo notara.
     """
     endpoint = getattr(cfg, "endpoint_url", None)
     if endpoint is None and cfg.profile == "localstack":
-        endpoint = "http://localhost:4566"
-    return get_client(service, cfg.profile, cfg.region, endpoint)
+        return LOCALSTACK_ENDPOINT
+    return endpoint
+
+
+def client_for_cfg(service: str, cfg) -> Any:
+    """Cliente para un `Config`, resolviendo el endpoint de LocalStack."""
+    return get_client(service, cfg.profile, cfg.region, endpoint_for(cfg))
 
 
 # --- Calentado y re-calentado ---------------------------------------------

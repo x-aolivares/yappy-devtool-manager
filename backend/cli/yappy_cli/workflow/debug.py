@@ -6,6 +6,7 @@ from pathlib import Path
 
 import typer
 
+from yappy_library.adapters.database.connection import open_db_tunnel
 from yappy_library.adapters.database.credentials import generate_token as _generate_token
 from yappy_library.adapters.database.credentials import write_local_env as _write_local_env
 from yappy_library.adapters.kafka.service import KafkaService, KafkaUnavailable
@@ -82,14 +83,7 @@ def debug_local(
     info("[2/5] Starting database tunnel...")
     token = _generate_token(cfg)
     _write_local_env(token)
-    db_proc = wf_cmd.ssm_tunnel(
-        instance=cfg.require("AWS_INSTANCE"),
-        port=aws_port_of(cfg),
-        local_port=cfg.db_port,
-        region=cfg.require("AWS_REGION"),
-        profile=cfg.profile,
-        remote_host=cfg.require("AWS_HOST"),
-    )
+    db_proc = open_db_tunnel(cfg, cmd=wf_cmd, quiet=False)
     time.sleep(3)
     if db_proc.poll() is None:
         success(f"Database tunnel started (localhost:{cfg.db_port})")

@@ -25,6 +25,7 @@ import time
 from typing import Callable
 
 from yappy_library.adapters.database.connection import mysql_greeting
+from yappy_library.adapters.sockets import recv_exactly
 
 #: Swagger UI is what the CLI already opens for a cluster tunnel, so asking for
 #: it is asking for the thing the tunnel is for.
@@ -40,19 +41,6 @@ _KAFKA_API_VERSIONS_KEY = 18
 #: in a minute was not going to.
 DEFAULT_TIMEOUT = 30.0
 POLL_INTERVAL = 0.5
-
-
-def _recv_exactly(sock: socket.socket, size: int) -> bytes:
-    """Read up to ``size`` bytes, stopping early if the peer stops sending."""
-    chunks: list[bytes] = []
-    remaining = size
-    while remaining > 0:
-        chunk = sock.recv(remaining)
-        if not chunk:
-            break
-        chunks.append(chunk)
-        remaining -= len(chunk)
-    return b"".join(chunks)
 
 
 def probe_http(port: int, path: str = "/", tls: bool = False, timeout: float = 5.0) -> bool:
@@ -126,7 +114,7 @@ def probe_kafka(port: int, timeout: float = 5.0) -> bool:
         with socket.create_connection(("127.0.0.1", port), timeout=timeout) as sock:
             sock.settimeout(timeout)
             sock.sendall(_kafka_api_versions_request())
-            return len(_recv_exactly(sock, 4)) == 4
+            return len(recv_exactly(sock, 4)) == 4
     except OSError:
         return False
 

@@ -472,18 +472,27 @@ def test_a_db_request_is_an_error_row_not_a_dead_server(no_aws_cli, tunnel_logs,
     monkeypatch.setattr(connection, "generate_token", lambda cfg: "tok")
     monkeypatch.setattr(connection, "mysql_greeting", lambda port, timeout: False)
 
+    _values = {
+        "AWS_INSTANCE": "i-123",
+        "AWS_HOST": "db.x.rds.amazonaws.com",
+        "AWS_PORT": "53360",
+        "AWS_REGION": "us-east-1",
+    }
+
+    def _require(key):
+        value = _values.get(key)
+        if not value:
+            raise ValueError(f"Missing required config: {key}")
+        return value
+
     cfg = SimpleNamespace(
         env="dev",
         db_port=8100,
         profile="base-profile",
         aws_user="app",
         region="us-east-1",
-        get=lambda key, default=None: {
-            "AWS_INSTANCE": "i-123",
-            "AWS_HOST": "db.x.rds.amazonaws.com",
-            "AWS_PORT": "53360",
-            "AWS_REGION": "us-east-1",
-        }.get(key, default),
+        get=lambda key, default=None: _values.get(key, default),
+        require=_require,
     )
 
     with pytest.raises(SyncError) as excinfo:

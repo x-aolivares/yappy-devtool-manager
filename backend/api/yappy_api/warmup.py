@@ -46,9 +46,7 @@ def client_specs(services=CLIENT_SERVICES) -> list[tuple]:
             continue
         if cfg.is_local:
             continue
-        endpoint = cfg.endpoint_url
-        if endpoint is None and cfg.profile == "localstack":
-            endpoint = "http://localhost:4566"
+        endpoint = aws_clients.endpoint_for(cfg)
         for service in services:
             specs.append((service, cfg.profile, cfg.region, endpoint))
     return specs

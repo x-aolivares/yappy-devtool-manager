@@ -19,20 +19,13 @@ from __future__ import annotations
 
 from yappy_library.adapters.kafka.service import _broker_port
 from yappy_library.adapters.kafka.service import KAFDROP_UI_PORT
+from yappy_library.adapters.ssm.targets import (
+    databricks_host as databricks_host_for,
+    databricks_port as databricks_port_for,
+    kafdrop_port as kafdrop_port_for,
+)
 from yappy_library.config import Config, aws_port_of
 from yappy_library.application.workflow.models import ResourceDef
-
-
-def _kafdrop_port(cfg: Config, env: str) -> int:
-    return int(cfg.get("KAFDROP_PORT", "9000" if env == "qa" else "9001"))
-
-
-def _databricks_port(cfg: Config, env: str) -> int:
-    return int(cfg.get("DATABRICKS_PORT", "4433" if env == "dev" else "4434"))
-
-
-def _databricks_host(cfg: Config, env: str) -> str:
-    return cfg.get("DATABRICKS_HOST", f"yappy-lakehouse-{env}.cloud.databricks.com")
 
 
 def _kafka_server_port(cfg: Config) -> int:
@@ -52,8 +45,8 @@ def resources_for(cfg: Config) -> list[ResourceDef]:
     the refusal instead of having to re-derive it.
     """
     env = cfg.env or "dev"
-    kafdrop_port = _kafdrop_port(cfg, env)
-    databricks_port = _databricks_port(cfg, env)
+    kafdrop_port = kafdrop_port_for(cfg, env)
+    databricks_port = databricks_port_for(cfg, env)
     broker_port = _kafka_server_port(cfg)
 
     definitions = [
@@ -90,7 +83,7 @@ def resources_for(cfg: Config) -> list[ResourceDef]:
             detail="Workspace del ambiente remoto",
             remote_port=443,
             local_port=databricks_port,
-            remote_host=_databricks_host(cfg, env),
+            remote_host=databricks_host_for(cfg, env),
             browser_url=f"https://localhost:{databricks_port}/",
         ),
         ResourceDef(

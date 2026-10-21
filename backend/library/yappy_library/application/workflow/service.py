@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from yappy_library.adapters.process_tracker import get_tracked_processes
-from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES, cluster_domain
+from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES, cluster_remote_host
 from yappy_library.application.workflow.catalog import entries_for, is_configured
 from yappy_library.application.workflow.models import (
     STATE_DOWN,
@@ -25,14 +25,9 @@ from yappy_library.application.workflow.models import (
     is_live,
     state_of,
 )
+from yappy_library.application.workflow.readiness import CLUSTER_PROBE_PATH
 from yappy_library.application.workflow.registry import resources_for
 from yappy_library.config import Config
-
-#: Swagger UI is what the CLI already opens for a cluster tunnel, so asking for
-#: it is asking for the thing the tunnel is for. Any HTTP answer proves the data
-#: channel moved bytes; a 404 would too.
-CLUSTER_PROBE_PATH = "/swagger-ui/index.html"
-
 
 def remote_host_for(cfg: Config, cluster: str) -> str:
     """The host a cluster's tunnels land on, for one environment.
@@ -41,10 +36,7 @@ def remote_host_for(cfg: Config, cluster: str) -> str:
     ``<alias>.<ambiente>.<dominio>``, y un ambiente vacío no es un ambiente: lo
     que salía era ``cap..yappycloud.com``, un nombre que no resuelve a nada.
     """
-    host = CLUSTER_ALIASES.get(cluster)
-    if not host or not cfg.env:
-        return ""
-    return f"{host}.{cfg.env}.{cluster_domain(cfg)}"
+    return cluster_remote_host(cfg, cluster)
 
 
 def _holders_by_port(entries: list[dict]) -> dict[int, list[dict]]:
