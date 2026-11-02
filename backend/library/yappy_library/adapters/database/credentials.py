@@ -100,19 +100,24 @@ def local_env_values(token: str, cfg: Config | None = None) -> dict[str, str]:
     """
     cfg = cfg or Config()
     region = cfg.region
+    host = "localhost"
+    port = str(cfg.db_port)
+    # La URL va ya armada: los servicios Java la pasan tal cual a
+    # `setJdbcUrl`, y nadie reemplaza un nombre de variable dentro del texto.
+    jdbc_url = f"jdbc:mysql://{host}:{port}"
     return {
         # Usuario y puerto salen de la config del ambiente: en AWS el usuario
         # es el `AWS_USER` de `env.base`; en local, el `DB_USER` de `env.local`.
         "DATABASE_USR": resolve_db_user(cfg),
-        "DATABASE_HST": "localhost",
-        "DATABASE_PRT": str(cfg.db_port),
+        "DATABASE_HST": host,
+        "DATABASE_PRT": port,
         "DATABASE_TMT": "60000",
         "AWS_REGION": region,
         "REGION": region,
         "ENV": cfg.env or "",
         "DATABASE_PWD": token,
-        "DATABASE_HST_URL_WRITE": "jdbc:mysql://DATABASE_HST:DATABASE_PRT",
-        "DATABASE_HST_URL_READ": "jdbc:mysql://DATABASE_HST:DATABASE_PRT",
+        "DATABASE_HST_URL_WRITE": jdbc_url,
+        "DATABASE_HST_URL_READ": jdbc_url,
     }
 
 

@@ -238,8 +238,8 @@ def test_el_env_local_tiene_exactamente_las_variables_de_las_pruebas_locales(tmp
         f"REGION={cfg.region}",
         "ENV=qa",
         "DATABASE_PWD=tok",
-        "DATABASE_HST_URL_WRITE=jdbc:mysql://DATABASE_HST:DATABASE_PRT",
-        "DATABASE_HST_URL_READ=jdbc:mysql://DATABASE_HST:DATABASE_PRT",
+        f"DATABASE_HST_URL_WRITE=jdbc:mysql://localhost:{cfg.db_port}",
+        f"DATABASE_HST_URL_READ=jdbc:mysql://localhost:{cfg.db_port}",
     ]
 
 
@@ -374,3 +374,6 @@ def test_usuario_y_puerto_salen_de_la_config_del_ambiente():
 
     assert (aws["DATABASE_USR"], aws["DATABASE_PRT"]) == ("dev@yappy", "8101")
     assert (local["DATABASE_USR"], local["DATABASE_PRT"]) == ("root", "3306")
+    assert aws["DATABASE_HST_URL_WRITE"] == "jdbc:mysql://localhost:8101"
+    assert aws["DATABASE_HST_URL_READ"] == "jdbc:mysql://localhost:8101"
+    assert local["DATABASE_HST_URL_WRITE"] == "jdbc:mysql://localhost:3306"
