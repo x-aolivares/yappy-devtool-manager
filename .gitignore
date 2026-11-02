@@ -6,6 +6,7 @@ __pycache__/
 .env.qa
 .env.example
 .env.*
+!backend/config/.env.local.example
 config/env.*
 !config/env.*.example
 backend/config/env.*

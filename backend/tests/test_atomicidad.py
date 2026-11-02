@@ -377,3 +377,15 @@ def test_usuario_y_puerto_salen_de_la_config_del_ambiente():
     assert aws["DATABASE_HST_URL_WRITE"] == "jdbc:mysql://localhost:8101"
     assert aws["DATABASE_HST_URL_READ"] == "jdbc:mysql://localhost:8101"
     assert local["DATABASE_HST_URL_WRITE"] == "jdbc:mysql://localhost:3306"
+
+
+def test_el_template_del_env_local_tiene_las_mismas_claves_que_se_escriben():
+    """`.env.local.example` es el registro de lo que el real tiene que tener."""
+    from dotenv import dotenv_values
+
+    from yappy_library.adapters.database.credentials import local_env_values
+
+    template = Path(__file__).resolve().parents[1] / "config" / ".env.local.example"
+    escritas = list(local_env_values("tok", _CfgAmbiente("local", {"DB_USER": "root"}, 3306)))
+
+    assert list(dotenv_values(template)) == escritas
