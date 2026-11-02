@@ -93,11 +93,36 @@ def _clipboard(text: str) -> None:
         pass
 
 
-def write_local_env(token: str, env_local: Path | None = None) -> None:
+def local_env_values(token: str, cfg: Config | None = None) -> dict[str, str]:
+    """Las variables que se escriben en `.env.local`, en orden.
+
+    Los nombres son el contrato de las pruebas locales: no se renombran.
+    """
+    cfg = cfg or Config()
+    region = cfg.region
+    return {
+        # Usuario y puerto salen de la config del ambiente: en AWS el usuario
+        # es el `AWS_USER` de `env.base`; en local, el `DB_USER` de `env.local`.
+        "DATABASE_USR": resolve_db_user(cfg),
+        "DATABASE_HST": "localhost",
+        "DATABASE_PRT": str(cfg.db_port),
+        "DATABASE_TMT": "60000",
+        "AWS_REGION": region,
+        "REGION": region,
+        "ENV": cfg.env or "",
+        "DATABASE_PWD": token,
+        "DATABASE_HST_URL_WRITE": "jdbc:mysql://DATABASE_HST:DATABASE_PRT",
+        "DATABASE_HST_URL_READ": "jdbc:mysql://DATABASE_HST:DATABASE_PRT",
+    }
+
+
+def write_local_env(
+    token: str, env_local: Path | None = None, cfg: Config | None = None
+) -> None:
     """Persist a generated database token to the project-local env file.
 
-    Sólo se toca la línea del token: el archivo se reescribía entero desde un
-    parse ingenuo, y eso perdía los comentarios y el orden de las claves.
+    Cada clave se actualiza en su línea: el archivo se reescribía entero desde
+    un parse ingenuo, y eso perdía los comentarios y el orden de las claves.
     """
     if env_local is None:
         env_local = project_config_dir() / ".env.local"
@@ -110,28 +135,19 @@ def write_local_env(token: str, env_local: Path | None = None) -> None:
                 text = ""
 
             lines = text.splitlines()
-            replaced = False
+            pending = local_env_values(token, cfg)
             for index, line in enumerate(lines):
                 stripped = line.strip()
                 if not stripped or stripped.startswith("#") or "=" not in stripped:
                     continue
-                if stripped.split("=", 1)[0].strip() == "DB_PASSWORD":
-                    lines[index] = f"DB_PASSWORD={token}"
-                    replaced = True
-                    break
+                key = stripped.split("=", 1)[0].strip()
+                if key in pending:
+                    lines[index] = f"{key}={pending.pop(key)}"
 
-            if not replaced:
+            if pending:
                 if lines and lines[-1].strip():
                     lines.append("")
-                lines.append(f"DB_PASSWORD={token}")
-
-            if not any(
-                line.strip().split("=", 1)[0].strip() == "DB_USER"
-                for line in lines
-                if "=" in line and not line.strip().startswith("#")
-            ):
-                usuario = Config().aws_user or ""
-                lines.append(f"DB_USER={usuario}")
+                lines.extend(f"{key}={value}" for key, value in pending.items())
 
             write_atomic(env_local, "\n".join(lines) + "\n")
             if os.name != "nt":

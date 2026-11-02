@@ -133,4 +133,4 @@ def test_write_local_env_sets_0600_on_posix(monkeypatch, tmp_path):
         return str(p).replace("\\", "/")
 
     assert [(_fs(p), m) for p, m in chmods] == [(_fs(target), 0o600)]
-    assert "DB_PASSWORD=SECRETTOKEN" in target.read_text()
+    assert "DATABASE_PWD=SECRETTOKEN" in target.read_text()

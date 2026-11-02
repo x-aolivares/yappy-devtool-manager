@@ -39,7 +39,7 @@ def _fake_proc():
 def _common_mocks(monkeypatch, tmp_path):
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
     monkeypatch.setattr(tunnel, "_generate_token", lambda cfg: "tok")
-    monkeypatch.setattr(tunnel, "_write_local_env", lambda token: None)
+    monkeypatch.setattr(tunnel, "_write_local_env", lambda token, **_: None)
     monkeypatch.setattr(tunnel.Config, "with_env", staticmethod(lambda env: _fake_cfg()))
     monkeypatch.setattr(tunnel.db_cmd, "check_requirements", lambda *a, **k: None)
     monkeypatch.setattr(process_tracker, "track_process", lambda *a, **k: None)

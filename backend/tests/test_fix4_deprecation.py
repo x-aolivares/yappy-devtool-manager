@@ -26,7 +26,7 @@ def _fake_cfg():
 def _db_mocks(monkeypatch):
     monkeypatch.setattr(tunnel.Config, "with_env", staticmethod(lambda env: _fake_cfg()))
     monkeypatch.setattr(tunnel, "_generate_token", lambda cfg: "tok")
-    monkeypatch.setattr(tunnel, "_write_local_env", lambda token: None)
+    monkeypatch.setattr(tunnel, "_write_local_env", lambda token, **_: None)
     monkeypatch.setattr(tunnel.db_cmd, "check_requirements", lambda *a: None)
     monkeypatch.setattr(
         tunnel.db_cmd,

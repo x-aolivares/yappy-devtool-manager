@@ -36,7 +36,7 @@ def _start_refresher(cfg: Config, stop_event: threading.Event):
             info("Refreshing DB token...")
             try:
                 new_token = _generate_token(cfg)
-                _write_local_env(new_token)
+                _write_local_env(new_token, cfg=cfg)
                 success("Token refreshed (valid for ~15 more min)")
             except Exception as e:
                 warn(f"Token refresh failed: {e}")
@@ -88,7 +88,7 @@ def refresh(
 
     info(f"Generating new DB token for {env}...")
     token = _generate_token(cfg)
-    _write_local_env(token)
+    _write_local_env(token, cfg=cfg)
     info(f"Token expires in ~15 min. Run 'yappy db refresh {env}' to renew.")
 
 
@@ -119,7 +119,7 @@ def up(
     cfg = Config.with_env(env)
 
     token = _generate_token(cfg)
-    _write_local_env(token)
+    _write_local_env(token, cfg=cfg)
 
     if auto_refresh:
         info(f"Starting auto-refresh tunnel to {env} (localhost:{cfg.db_port})...")
@@ -134,7 +134,7 @@ def up(
     def _restart():
         info("Regenerating token and restarting tunnel...")
         new_token = _generate_token(cfg)
-        _write_local_env(new_token)
+        _write_local_env(new_token, cfg=cfg)
         return open_db_tunnel(cfg, cmd=db_cmd, quiet=False)
 
     if keep_alive:

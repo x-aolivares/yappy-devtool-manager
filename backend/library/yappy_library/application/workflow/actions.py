@@ -234,7 +234,7 @@ def _start_db(cfg: Config, port: int) -> subprocess.Popen:
     from yappy_library.adapters.database.credentials import generate_token, write_local_env
 
     try:
-        write_local_env(generate_token(cfg))
+        write_local_env(generate_token(cfg), cfg=cfg)
         remote_host = cfg.require("AWS_HOST")
     except SystemExit as exc:
         raise StartRefused(f"No se pudo generar el token de RDS: {exc}") from exc

@@ -25,7 +25,7 @@ def main(env: str) -> None:
             info("Refreshing DB token...")
             try:
                 new_token = _generate_token(cfg)
-                _write_local_env(new_token)
+                _write_local_env(new_token, cfg=cfg)
                 success("Token refreshed (valid for ~15 more min)")
             except Exception as e:
                 warn(f"Token refresh failed: {e}")

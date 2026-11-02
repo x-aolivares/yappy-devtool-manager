@@ -32,7 +32,7 @@ def test_debug_local_generates_and_writes_token_before_tunnel(monkeypatch):
     )
     monkeypatch.setattr(
         debug, "_write_local_env",
-        lambda token: order.append("write_env"),
+        lambda token, **_: order.append("write_env"),
     )
     monkeypatch.setattr(
         debug.wf_cmd, "ssm_tunnel",

@@ -82,7 +82,7 @@ def debug_local(
 
     info("[2/5] Starting database tunnel...")
     token = _generate_token(cfg)
-    _write_local_env(token)
+    _write_local_env(token, cfg=cfg)
     db_proc = open_db_tunnel(cfg, cmd=wf_cmd, quiet=False)
     time.sleep(3)
     if db_proc.poll() is None:

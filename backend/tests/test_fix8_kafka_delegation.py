@@ -127,7 +127,7 @@ def test_debug_local_kafka_steps_delegate_to_service(monkeypatch):
     monkeypatch.setattr(debug.wf_cmd, "ssm_tunnel", lambda **kw: _alive_proc())
     monkeypatch.setattr(debug.wf_cmd, "kill_ssm", lambda: None)
     monkeypatch.setattr(debug, "_generate_token", lambda cfg: "tok")
-    monkeypatch.setattr(debug, "_write_local_env", lambda token: None)
+    monkeypatch.setattr(debug, "_write_local_env", lambda token, **_: None)
     monkeypatch.setattr(debug.Config, "with_env", staticmethod(lambda env: _fake_cfg()))
     monkeypatch.setattr(debug.time, "sleep", _interrupt_on_loop_sleep)
     monkeypatch.setattr(subprocess, "Popen", _sentinel)

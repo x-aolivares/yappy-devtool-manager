@@ -192,7 +192,7 @@ def test_el_token_actualiza_solo_su_línea(tmp_path):
 
     env_local = tmp_path / ".env.local"
     env_local.write_text(
-        "# un comentario que importa\nOTRA_CLAVE=valor\nDB_PASSWORD=viejo\n",
+        "# un comentario que importa\nOTRA_CLAVE=valor\nDATABASE_PWD=viejo\n",
         encoding="utf-8",
     )
 
@@ -201,7 +201,7 @@ def test_el_token_actualiza_solo_su_línea(tmp_path):
     texto = env_local.read_text(encoding="utf-8")
     assert "# un comentario que importa" in texto
     assert "OTRA_CLAVE=valor" in texto
-    assert "DB_PASSWORD=token-nuevo" in texto
+    assert "DATABASE_PWD=token-nuevo" in texto
     assert "viejo" not in texto
 
 
@@ -213,8 +213,34 @@ def test_el_token_agrega_la_línea_si_no_está(tmp_path):
 
     write_local_env("tok", env_local)
 
-    assert "DB_PASSWORD=tok" in env_local.read_text(encoding="utf-8")
+    assert "DATABASE_PWD=tok" in env_local.read_text(encoding="utf-8")
     assert "OTRA=1" in env_local.read_text(encoding="utf-8")
+
+
+def test_el_env_local_tiene_exactamente_las_variables_de_las_pruebas_locales(tmp_path):
+    """Los nombres son el contrato del `.env.local` de pruebas: no se cambian."""
+    from yappy_library.adapters.database.credentials import write_local_env
+    from yappy_library.config import Config
+
+    env_local = tmp_path / ".env.local"
+    cfg = Config.with_env("qa")
+    write_local_env("tok", env_local, cfg=cfg)
+
+    from yappy_library.adapters.database.credentials import resolve_db_user
+
+    lineas = env_local.read_text(encoding="utf-8").splitlines()
+    assert lineas == [
+        f"DATABASE_USR={resolve_db_user(cfg)}",
+        "DATABASE_HST=localhost",
+        f"DATABASE_PRT={cfg.db_port}",
+        "DATABASE_TMT=60000",
+        f"AWS_REGION={cfg.region}",
+        f"REGION={cfg.region}",
+        "ENV=qa",
+        "DATABASE_PWD=tok",
+        "DATABASE_HST_URL_WRITE=jdbc:mysql://DATABASE_HST:DATABASE_PRT",
+        "DATABASE_HST_URL_READ=jdbc:mysql://DATABASE_HST:DATABASE_PRT",
+    ]
 
 
 # --- el reclamo de un puerto ------------------------------------------------
@@ -325,3 +351,26 @@ def test_dos_conexiones_concurrentes_no_abren_dos_túneles(monkeypatch):
 
     assert not errores, errores
     assert len(spawneados) == 1, f"se abrieron {len(spawneados)} túneles"
+
+
+class _CfgAmbiente:
+    """Un doble de `Config` con los valores de un ambiente."""
+
+    def __init__(self, env, values, db_port):
+        self.env = env
+        self._values = values
+        self.db_port = db_port
+        self.region = "us-west-1"
+
+    def get(self, key, default=None):
+        return self._values.get(key, default)
+
+
+def test_usuario_y_puerto_salen_de_la_config_del_ambiente():
+    from yappy_library.adapters.database.credentials import local_env_values
+
+    aws = local_env_values("tok", _CfgAmbiente("qa", {"AWS_USER": "dev@yappy"}, 8101))
+    local = local_env_values("tok", _CfgAmbiente("local", {"DB_USER": "root"}, 3306))
+
+    assert (aws["DATABASE_USR"], aws["DATABASE_PRT"]) == ("dev@yappy", "8101")
+    assert (local["DATABASE_USR"], local["DATABASE_PRT"]) == ("root", "3306")

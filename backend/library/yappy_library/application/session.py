@@ -115,7 +115,7 @@ class Session:
         cmd = self._cmd
 
         token = generate_token(cfg)
-        write_local_env(token)
+        write_local_env(token, cfg=cfg)
 
         proc = open_db_tunnel(cfg, cmd=cmd, env=cfg.env or "")
         self._procs.append(proc)
