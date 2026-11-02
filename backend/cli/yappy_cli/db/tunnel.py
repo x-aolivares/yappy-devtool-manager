@@ -30,6 +30,18 @@ class DbCommand(BaseCommand):
 db_cmd = DbCommand()
 
 
+def _write_local_only(cfg: Config) -> bool:
+    """En un ambiente local escribe `.env.local` con su `DB_PASSWORD` y avisa.
+
+    Local no tiene AWS: no hay token RDS que pedir ni túnel SSM que abrir.
+    """
+    if not getattr(cfg, "is_local", False):
+        return False
+    _write_local_env(cfg.get("DB_PASSWORD") or "", cfg=cfg)
+    success(f"Local DB: connect directly to localhost:{cfg.db_port} (no tunnel)")
+    return True
+
+
 def _start_refresher(cfg: Config, stop_event: threading.Event):
     def refresher():
         while not stop_event.wait(REFRESH_INTERVAL):
@@ -85,6 +97,8 @@ def refresh(
         warn_deprecated("db refresh", "run db --refresh")
     DbCommand.validate_env(env)
     cfg = Config.with_env(env)
+    if _write_local_only(cfg):
+        return
 
     info(f"Generating new DB token for {env}...")
     token = _generate_token(cfg)
@@ -115,8 +129,10 @@ def up(
     if keep_alive and detach:
         die("--keep-alive and --detach are mutually exclusive")
     DbCommand.validate_env(env)
-    db_cmd.check_requirements("aws")
     cfg = Config.with_env(env)
+    if _write_local_only(cfg):
+        return
+    db_cmd.check_requirements("aws")
 
     token = _generate_token(cfg)
     _write_local_env(token, cfg=cfg)
