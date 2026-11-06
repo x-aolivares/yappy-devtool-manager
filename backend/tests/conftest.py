@@ -32,7 +32,7 @@ from pathlib import Path
 import pytest
 
 from yappy_api import shutdown
-from yappy_library.adapters import process_tracker
+from yappy_library.adapters import file_io, process_tracker
 from yappy_library.config import Config
 
 #: Antes de que nada importe `yappy_api.app`.
@@ -129,6 +129,8 @@ def isolated_tracker(tmp_path, monkeypatch):
     """Point the process tracker at an empty temp dir, for every test."""
     monkeypatch.setattr(process_tracker, "_TRACKER_DIR", tmp_path / ".yappy" / "tracker")
     monkeypatch.setattr(process_tracker, "_parsed_cache", {})
+    # Los locks también: ni el lock de un test ni el de la máquina deben tocarse.
+    monkeypatch.setattr(file_io, "LOCK_DIR", tmp_path / ".yappy" / "locks")
 
 
 @pytest.fixture(autouse=True)

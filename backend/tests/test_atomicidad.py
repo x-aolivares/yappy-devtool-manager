@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pytest
 
-from yappy_library.adapters import process_tracker
+from yappy_library.adapters import file_io, process_tracker
 from yappy_library.adapters.file_io import file_lock, lock_path_for, write_atomic
 
 
@@ -136,10 +136,10 @@ def test_el_lock_se_toma_y_se_suelta(tmp_path):
 
 
 def test_el_archivo_del_lock_no_se_confunde_con_el_contenido(tmp_path):
-    """El lock vive en otro archivo, y con punto adelante.
+    """El lock vive en otro directorio: nunca aparece junto al target.
 
-    `env.base` se lista con el glob `env.*`: un `env.base.lock` aparecería
-    como un ambiente llamado `base.lock`.
+    `env.base` se lista con el glob `env.*`. Antes el lock era un `.env.base.lock`
+    al lado, y el repo y la carpeta de config se llenaban de locks sueltos.
     """
     objetivo = tmp_path / "env.base"
 
@@ -147,8 +147,10 @@ def test_el_archivo_del_lock_no_se_confunde_con_el_contenido(tmp_path):
         pass
 
     lock = lock_path_for(objetivo)
-    assert lock.name == ".env.base.lock"
+    assert lock.parent == file_io.LOCK_DIR
+    assert lock.name.endswith("-env.base.lock")
     assert not list(tmp_path.glob("env.*"))
+    assert not list(tmp_path.glob("*.lock"))
 
 
 # --- el tracker ------------------------------------------------------------

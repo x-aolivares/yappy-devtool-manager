@@ -24,12 +24,17 @@ cuando los que escriben son dos procesos distintos.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
+
+#: Dónde viven los archivos de lock. Está en el home del developer, junto al tracker,
+#: y no en la carpeta de cada archivo.
+LOCK_DIR = Path.home() / ".yappy" / "locks"
 
 # `sys.platform` y no `os.name`: mypy sólo chequea la rama que corresponde
 # a la plataforma en la que corre, así que el módulo de la otra plataforma
@@ -99,20 +104,25 @@ def write_atomic(path: Path, payload: str, encoding: str = "utf-8") -> None:
 
 
 def lock_path_for(path: Path) -> Path:
-    """El archivo de lock que acompaña a ``path``.
+    """El archivo de lock de ``path``, en :data:`LOCK_DIR`.
 
-    Con punto adelante a propósito: ``env.base`` vive en un directorio que se
-    lista con el glob ``env.*``, y un ``env.base.lock`` aparecería como un
-    ambiente llamado ``base.lock``. ``.env.base.lock`` no matchea ese glob.
+    Fuera de la carpeta del target: un lock suelto al lado de ``.env.local`` o del
+    ``env.base`` ensuciaba el repo y la carpeta de config, y no se borra al
+    soltarlo (borrarlo daría una carrera con quien lo está esperando).
+
+    El nombre lleva un hash de la ruta absoluta, así dos archivos con el mismo
+    nombre en carpetas distintas no comparten lock.
     """
-    return path.with_name(f".{path.name}.lock")
+    absolute = str(path.resolve()).lower()
+    digest = hashlib.sha256(absolute.encode("utf-8")).hexdigest()[:16]
+    return LOCK_DIR / f"{digest}-{path.name}.lock"
 
 
 @contextmanager
 def file_lock(path: Path, timeout: float = 10.0) -> Iterator[None]:
     """Un lock exclusivo sobre ``path``, entre procesos.
 
-    El lock vive en un archivo aparte —el del target—, así que no se
+    El lock vive en un archivo aparte, en :data:`LOCK_DIR`, así que no se
     interrumpe la lectura del contenido. Espera hasta ``timeout`` y después
     levanta: un lock que nunca se libera es peor que ninguno, porque cuelga
     al que lo espera.
