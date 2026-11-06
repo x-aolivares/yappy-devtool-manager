@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from yappy_library.application.deployment import ecs_branch
+from yappy_library.application.deployment import ecs_branch, repo_catalog
 from yappy_library.config import Config
 
-from ..schemas import DeploymentsBranchesRequest, DeploymentsBranchesResponse
+from ..schemas import DeploymentReposResponse, DeploymentsBranchesRequest, DeploymentsBranchesResponse
 
 router = APIRouter(tags=["deployments"])
 
@@ -38,6 +38,37 @@ def _is_local(env: str) -> bool:
         return bool(Config.with_env(env).is_local)
     except Exception:
         return False
+
+
+@router.get(
+    "/api/deployments/repos",
+    operation_id="list_deployment_repos",
+    response_model=DeploymentReposResponse,
+)
+def api_deployment_repos(refresh: bool = False):
+    """Todos los repos del workspace de Bitbucket a los que el token tiene acceso.
+
+    La lista se guarda en memoria una hora. ``refresh=true`` la vuelve a bajar.
+    """
+    try:
+        snapshot = repo_catalog.list_repos(Config(), refresh=refresh)
+    except ecs_branch.DeploymentUnresolved as exc:
+        raise HTTPException(status_code=502, detail=exc.message) from exc
+    return {
+        "workspace": snapshot.workspace,
+        "fetched_at": snapshot.fetched_at,
+        "count": len(snapshot.repos),
+        "repos": [
+            {
+                "slug": repo.slug,
+                "name": repo.name,
+                "full_name": repo.full_name,
+                "updated_on": repo.updated_on,
+                "is_private": repo.is_private,
+            }
+            for repo in snapshot.repos
+        ],
+    }
 
 
 @router.post(

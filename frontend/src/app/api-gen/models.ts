@@ -13,6 +13,8 @@ export type { DbDiffRequest } from './models/db-diff-request';
 export type { DbObjectsResponse } from './models/db-objects-response';
 export type { DeleteResponse } from './models/delete-response';
 export type { DeploymentEnvInfo } from './models/deployment-env-info';
+export type { DeploymentRepoInfo } from './models/deployment-repo-info';
+export type { DeploymentReposResponse } from './models/deployment-repos-response';
 export type { DeploymentsBranchesRequest } from './models/deployments-branches-request';
 export type { DeploymentsBranchesResponse } from './models/deployments-branches-response';
 export type { DiffResponse } from './models/diff-response';

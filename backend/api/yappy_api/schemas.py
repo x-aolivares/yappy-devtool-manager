@@ -719,3 +719,17 @@ class WorkflowCatalogRenameRequest(BaseModel):
 class WorkflowCatalogResponse(BaseModel):
     cluster: str
     ports: list[WorkflowPortInfo]
+
+class DeploymentRepoInfo(BaseModel):
+    slug: str = Field(..., description="Nombre del repo sin el workspace. Es lo que pide `/api/deployments/branches`.")
+    name: str
+    full_name: str = ""
+    updated_on: str | None = None
+    is_private: bool = False
+
+
+class DeploymentReposResponse(BaseModel):
+    workspace: str
+    fetched_at: float = Field(..., description="Epoch en que se bajó la lista desde Bitbucket.")
+    count: int
+    repos: list[DeploymentRepoInfo]

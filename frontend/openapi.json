@@ -1060,6 +1060,50 @@
         }
       }
     },
+    "/api/deployments/repos": {
+      "get": {
+        "tags": [
+          "deployments"
+        ],
+        "summary": "Api Deployment Repos",
+        "description": "Todos los repos del workspace de Bitbucket a los que el token tiene acceso.\n\nLa lista se guarda en memoria una hora. ``refresh=true`` la vuelve a bajar.",
+        "operationId": "list_deployment_repos",
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Refresh"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentReposResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/deployments/branches": {
       "post": {
         "tags": [
@@ -2681,6 +2725,78 @@
         ],
         "title": "DeploymentEnvInfo",
         "description": "One environment. Every field is optional because the chain can stop at any step."
+      },
+      "DeploymentRepoInfo": {
+        "properties": {
+          "slug": {
+            "type": "string",
+            "title": "Slug",
+            "description": "Nombre del repo sin el workspace. Es lo que pide `/api/deployments/branches`."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name",
+            "default": ""
+          },
+          "updated_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated On"
+          },
+          "is_private": {
+            "type": "boolean",
+            "title": "Is Private",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "name"
+        ],
+        "title": "DeploymentRepoInfo"
+      },
+      "DeploymentReposResponse": {
+        "properties": {
+          "workspace": {
+            "type": "string",
+            "title": "Workspace"
+          },
+          "fetched_at": {
+            "type": "number",
+            "title": "Fetched At",
+            "description": "Epoch en que se bajó la lista desde Bitbucket."
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "repos": {
+            "items": {
+              "$ref": "#/components/schemas/DeploymentRepoInfo"
+            },
+            "type": "array",
+            "title": "Repos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace",
+          "fetched_at",
+          "count",
+          "repos"
+        ],
+        "title": "DeploymentReposResponse"
       },
       "DeploymentsBranchesRequest": {
         "properties": {

@@ -90,6 +90,7 @@ describe('DeploymentsPage', () => {
               askedEnvs.push(envs);
               return answer(repo);
             },
+            repos: () => Promise.resolve({ workspace: 'bg-ti', fetched_at: 0, count: 0, repos: [] }),
           },
         },
         {

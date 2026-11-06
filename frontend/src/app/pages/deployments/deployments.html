@@ -9,19 +9,58 @@
   <div class="field">
     <label class="field-label" for="repo">Repositorio</label>
     <div class="field-row">
-      <input
-        id="repo"
-        type="text"
-        [value]="repo()"
-        (input)="repo.set($any($event.target).value)"
-        (keydown.enter)="search()"
-        placeholder="yappy-trnxd-backend-payment-aggregator"
-        spellcheck="false"
-      />
+      <div class="repo-picker">
+        <input
+          id="repo"
+          type="text"
+          role="combobox"
+          autocomplete="off"
+          aria-autocomplete="list"
+          aria-controls="repo-options"
+          [attr.aria-expanded]="showSuggestions()"
+          [attr.aria-activedescendant]="showSuggestions() ? 'repo-option-' + highlight() : null"
+          [value]="repo()"
+          (input)="onInput($any($event.target).value)"
+          (keydown)="onKeydown($event)"
+          (focus)="open.set(true)"
+          (focusout)="open.set(false)"
+          placeholder="yappy-trnxd-backend-payment-aggregator"
+          spellcheck="false"
+        />
+        @if (showSuggestions()) {
+          <ul id="repo-options" class="repo-options" role="listbox" aria-label="Repositorios">
+            @for (suggestion of suggestions(); track suggestion.slug; let i = $index) {
+              <li
+                [id]="'repo-option-' + i"
+                role="option"
+                [attr.aria-selected]="i === highlight()"
+                [class.active]="i === highlight()"
+                (mousedown)="pick(suggestion.slug)"
+                (mouseenter)="highlight.set(i)"
+              >
+                <span class="mono">{{ suggestion.slug }}</span>
+                @if (suggestion.name !== suggestion.slug) {
+                  <span class="muted">{{ suggestion.name }}</span>
+                }
+              </li>
+            }
+          </ul>
+        }
+      </div>
       <button type="button" [disabled]="busy() || !repo().trim()" (click)="search()">
         Consultar
       </button>
     </div>
+    <p class="muted catalog-hint">
+      @if (catalogLoading()) {
+        Cargando la lista de repos…
+      } @else if (catalogError()) {
+        No se pudo cargar la lista de repos: {{ catalogError() }}. Podés escribir el nombre a mano.
+      } @else if (catalog().length) {
+        {{ catalog().length }} repos en el workspace · bajada a las {{ catalogAgeText() }}.
+        <button type="button" class="linkish" (click)="loadCatalog(true)">Actualizar lista</button>
+      }
+    </p>
   </div>
 
   <div class="field">

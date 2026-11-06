@@ -1,7 +1,10 @@
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
-import { DeploymentsBranchesResponse, DeploymentEnvInfo, EnvironmentInfo } from '../../api-gen/models';
+import {
+  DeploymentRepoInfo, DeploymentsBranchesResponse, DeploymentEnvInfo, EnvironmentInfo,
+} from '../../api-gen/models';
 import { DeploymentService } from '../../core/services/deployment.service';
+import { matchRepos } from '../../core/repo-filter';
 import { EnvironmentService } from '../../core/services/environment.service';
 import { toApiError } from '../../core/services/api-error';
 import { explainDeploymentFailure, FailureExplained } from '../../core/deployment-help';
@@ -28,6 +31,48 @@ import { copyText } from '../../core/copy';
   selector: 'app-deployments-page',
   imports: [BusyModal, CopyButton, NoticeModal, EnvPicker],
   templateUrl: './deployments.html',
+  styles: [
+    `
+      .repo-picker {
+        position: relative;
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+      }
+      .repo-picker input {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .repo-options {
+        position: absolute;
+        top: calc(100% + 0.25rem);
+        left: 0;
+        right: 0;
+        z-index: 10;
+        max-height: 18rem;
+        overflow-y: auto;
+        margin: 0;
+        padding: 0.25rem;
+        list-style: none;
+        background: var(--sys-elevated);
+        border: 0.0625rem solid var(--sys-border);
+        border-radius: var(--sys-radius-md);
+        box-shadow: var(--sys-shadow-md);
+      }
+      .repo-options li {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0.5rem;
+        padding: 0.375rem 0.5rem;
+        border-radius: var(--sys-radius-sm);
+        cursor: pointer;
+      }
+      .repo-options li.active {
+        background: var(--sys-hover-bg);
+      }
+    `,
+  ],
 })
 export class DeploymentsPage {
   private readonly deployments = inject(DeploymentService);
@@ -35,6 +80,26 @@ export class DeploymentsPage {
 
   readonly repo = signal('');
   readonly environments = signal<EnvironmentInfo[] | null>(null);
+
+  // --- el buscador de repos -------------------------------------------------
+  //
+  // La lista entera de repos del workspace se baja una vez y se filtra en memoria
+  // mientras se escribe. Ver `core/repo-filter.ts` para la regla de coincidencia.
+
+  /** Todos los repos del workspace; vacía hasta que la carga termina. */
+  readonly catalog = signal<DeploymentRepoInfo[]>([]);
+  readonly catalogLoading = signal(false);
+  readonly catalogError = signal('');
+  /** Cuándo se bajó la lista, para mostrar qué tan vieja es. `null` mientras no hay. */
+  readonly catalogFetchedAt = signal<number | null>(null);
+  /** Si el desplegable de sugerencias está abierto. */
+  readonly open = signal(false);
+  /** Posición resaltada con las flechas; `Enter` elige esa. */
+  readonly highlight = signal(0);
+  /** Lo que el desplegable muestra: los repos que coinciden con lo escrito. */
+  readonly suggestions = computed(() => matchRepos(this.catalog(), this.repo()));
+  readonly showSuggestions = computed(() => this.open() && this.suggestions().length > 0);
+
   /** Vacío = todos los que estén en la configuración. Ver `envsToQuery`. */
   readonly envs = signal<string[]>([]);
   readonly busy = signal(false);
@@ -73,6 +138,73 @@ export class DeploymentsPage {
     this.environmentService.list().then((res) =>
       this.environments.set(awsEnvironments(res.environments)),
     );
+    void this.loadCatalog();
+  }
+
+  /**
+   * Baja la lista de repos. `refresh` fuerza la bajada desde Bitbucket.
+   *
+   * Si falla, la pantalla sigue sirviendo: el campo acepta el nombre a mano y la
+   * consulta funciona igual. Sólo se pierde el desplegable.
+   */
+  async loadCatalog(refresh = false): Promise<void> {
+    this.catalogLoading.set(true);
+    try {
+      const data = await this.deployments.repos(refresh);
+      this.catalog.set(data.repos);
+      this.catalogFetchedAt.set(data.fetched_at);
+      this.catalogError.set('');
+    } catch (err) {
+      this.catalogError.set(toApiError(err).message);
+    } finally {
+      this.catalogLoading.set(false);
+    }
+  }
+
+  /** Lo que escribe el usuario: abre el desplegable y reinicia la selección. */
+  onInput(value: string): void {
+    this.repo.set(value);
+    this.open.set(true);
+    this.highlight.set(0);
+  }
+
+  /**
+   * Teclado en el campo: flechas mueven la selección, `Enter` elige la resaltada
+   * (o consulta si no hay desplegable), `Escape` lo cierra.
+   */
+  onKeydown(event: KeyboardEvent): void {
+    const list = this.suggestions();
+    if (event.key === 'Escape') {
+      this.open.set(false);
+      return;
+    }
+    if (!this.showSuggestions()) {
+      if (event.key === 'Enter') this.search();
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      this.highlight.set((this.highlight() + 1) % list.length);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      this.highlight.set((this.highlight() - 1 + list.length) % list.length);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      this.pick(list[this.highlight()]?.slug ?? this.repo());
+    }
+  }
+
+  /** Elegir un repo: lo pone en el campo, cierra el desplegable y consulta. */
+  pick(slug: string): void {
+    this.repo.set(slug);
+    this.open.set(false);
+    this.search();
+  }
+
+  /** Cuándo se bajó la lista, en texto. Vacío mientras no hay lista. */
+  catalogAgeText(): string {
+    const at = this.catalogFetchedAt();
+    return at === null ? '' : new Date(at * 1000).toLocaleTimeString();
   }
 
   toggleAll(): void {

@@ -1,7 +1,9 @@
 import { Injectable, inject } from '@angular/core';
 import { Api } from '../../api-gen/api';
-import { listDeploymentBranches } from '../../api-gen/functions';
-import { DeploymentsBranchesRequest, DeploymentsBranchesResponse } from '../../api-gen/models';
+import { listDeploymentBranches, listDeploymentRepos } from '../../api-gen/functions';
+import {
+  DeploymentReposResponse, DeploymentsBranchesRequest, DeploymentsBranchesResponse,
+} from '../../api-gen/models';
 import { abortCtx } from '../cancel';
 
 /**
@@ -30,5 +32,13 @@ export class DeploymentService {
       { body: { repo, envs: envs ?? null } as DeploymentsBranchesRequest },
       abortCtx(signal),
     );
+  }
+
+  /**
+   * Los repos del workspace a los que el token tiene acceso. El backend los guarda
+   * en memoria una hora; \efresh\ fuerza la bajada desde Bitbucket.
+   */
+  repos(refresh = false): Promise<DeploymentReposResponse> {
+    return this.api.invoke(listDeploymentRepos, { refresh });
   }
 }
