@@ -121,6 +121,9 @@ def _kill_ui_process():
 #: lines below, so tracking it needs the same value rather than a second guess.
 KAFDROP_UI_PORT = 8080
 
+#: Puerto del Kafka Agent: el mismo que el contenedor original (``9091``).
+KAFKA_AGENT_PORT = 9091
+
 #: Only used when `server.properties` is missing or unreadable. It is not a
 #: default to configure the broker with — see `_broker_port`.
 DEFAULT_BROKER_PORT = 9092
@@ -376,6 +379,16 @@ class KafkaService:
             self.clean()
             return None
         raise KafkaUnavailable("Invalid action. Use: server, ui, or clean")
+
+    def spawn_agent(self, owner: str = "cli") -> subprocess.Popen:
+        """Levantar el Kafka Agent como proceso propio, registrado en el tracker.
+
+        Corre ``yappy_api.kafka_agent_server``. Usa el mismo camino que el broker y
+        Kafdrop —log en ``temp-logs``, consola propia y entrada en el tracker—, así
+        que la pantalla lo muestra y "Parar" lo cierra igual que a los demás.
+        """
+        cmd = [sys.executable, "-m", "yappy_api.kafka_agent_server"]
+        return self._spawn_detached(cmd, "agent", KAFKA_AGENT_PORT, owner)
 
     def _run_kafka_tool(self, classname: str, args: list[str]) -> str | None:
         """Run a Kafka tool class directly via Java. Returns stdout or None."""

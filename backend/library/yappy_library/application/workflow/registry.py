@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from yappy_library.adapters.kafka.service import _broker_port
 from yappy_library.adapters.kafka.service import KAFDROP_UI_PORT
+from yappy_library.adapters.kafka.service import KAFKA_AGENT_PORT
 from yappy_library.adapters.ssm.targets import (
     databricks_host as databricks_host_for,
     databricks_port as databricks_port_for,
@@ -66,6 +67,14 @@ def resources_for(cfg: Config) -> list[ResourceDef]:
             detail="Interfaz web del broker local",
             local_port=KAFDROP_UI_PORT,
             browser_url=f"http://localhost:{KAFDROP_UI_PORT}",
+        ),
+        ResourceDef(
+            key="kafka-agent",
+            group="kafka",
+            name="Kafka Agent",
+            detail="Puente HTTP → Kafka: producer, consumer y clean-topics",
+            local_port=KAFKA_AGENT_PORT,
+            probe="http",
         ),
         ResourceDef(
             key="kafdrop-remote",

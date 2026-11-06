@@ -79,7 +79,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
       {
         link: '/workflow/kafka',
         label: 'Kafka local',
-        hint: 'Levanta y para el broker KRaft y Kafdrop',
+        hint: 'Levanta y para el broker KRaft, Kafdrop y el Kafka Agent',
       },
       {
         link: '/workflow/tunnels',

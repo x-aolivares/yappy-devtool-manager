@@ -1839,6 +1839,224 @@
           }
         }
       }
+    },
+    "/api/kafka-agent/producer": {
+      "post": {
+        "tags": [
+          "kafka-agent"
+        ],
+        "summary": "Publicar un CloudEvent en un tópico",
+        "description": "Reenvía a `POST /producer` del agente. `message` (o su alias `payload`) es el cuerpo del evento.",
+        "operationId": "kafka_agent_producer",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Body"
+              },
+              "examples": {
+                "evento": {
+                  "summary": "Evento con header propio",
+                  "value": {
+                    "topic": "mi-topico",
+                    "cloud_event_id": "evt-001",
+                    "type": "com.ejemplo.evento",
+                    "headers": {
+                      "customheader": "valor1"
+                    },
+                    "message": {
+                      "key": "value",
+                      "foo": "bar"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kafka-agent/consumer": {
+      "post": {
+        "tags": [
+          "kafka-agent"
+        ],
+        "summary": "Buscar mensajes por header",
+        "description": "Reenvía a `POST /consumer` del agente. Para buscar por `ce_id`, usá `header_key: ce_id`.",
+        "operationId": "kafka_agent_consumer",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Body"
+              },
+              "examples": {
+                "por-ce-id": {
+                  "summary": "Buscar por cloud event id",
+                  "value": {
+                    "header_key": "ce_id",
+                    "header_value": "evt-001",
+                    "topic": "mi-topico",
+                    "max_polls": 3
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kafka-agent/listener": {
+      "post": {
+        "tags": [
+          "kafka-agent"
+        ],
+        "summary": "Primer mensaje reciente de un tópico",
+        "description": "Reenvía a `POST /listener` del agente.",
+        "operationId": "kafka_agent_listener",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Body"
+              },
+              "examples": {
+                "tópico": {
+                  "summary": "Escuchar",
+                  "value": {
+                    "topic": "mi-topico",
+                    "max_polls": 3
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kafka-agent/clean-topics": {
+      "post": {
+        "tags": [
+          "kafka-agent"
+        ],
+        "summary": "Borrar tópicos",
+        "description": "Reenvía a `POST /clean-topics` del agente. **Borra datos.** Con la lista vacía borra todos los tópicos no internos.",
+        "operationId": "kafka_agent_clean_topics",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Body"
+              },
+              "examples": {
+                "dos-tópicos": {
+                  "summary": "Borrar dos tópicos",
+                  "value": {
+                    "body": {
+                      "topics": [
+                        "mi-topico",
+                        "otro-topico"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

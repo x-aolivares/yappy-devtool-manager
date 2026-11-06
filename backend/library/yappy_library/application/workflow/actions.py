@@ -180,7 +180,9 @@ def start_resource(cfg: Config, key: str) -> dict:
 
     ensure_port_free(port)
 
-    if definition.group == "kafka":
+    if definition.key == "kafka-agent":
+        proc = _start_kafka_agent(cfg, definition)
+    elif definition.group == "kafka":
         proc = _start_kafka(definition)
     elif definition.group == "db":
         proc = _start_db(cfg, port)
@@ -221,6 +223,24 @@ def _start_kafka(definition) -> subprocess.Popen:
     if proc is None:
         raise StartRefused("Kafka no devolvió un proceso")
     return proc
+
+
+def _start_kafka_agent(cfg: Config, definition) -> subprocess.Popen:
+    """Levantar el Kafka Agent como proceso propio.
+
+    Un segundo arranque mientras el primero vive se rechaza aquí, porque
+    ``ensure_port_free`` deja pasar a un recurso que ya es dueño del puerto y el
+    segundo proceso fallaría al bindear sin dejar rastro en la pantalla.
+    """
+    from yappy_library.adapters.kafka.service import KafkaService
+
+    alive = [
+        entry for entry in process_tracker.get_tracked_processes(resource="kafka", target="agent")
+        if entry.get("alive")
+    ]
+    if alive:
+        raise StartRefused(f"{definition.name} ya está levantado (PID {alive[0].get('pid')}).")
+    return KafkaService(cfg).spawn_agent(owner=process_tracker.OWNER_WEB)
 
 
 def _start_db(cfg: Config, port: int) -> subprocess.Popen:

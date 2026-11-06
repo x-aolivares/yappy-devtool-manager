@@ -1,20 +1,19 @@
 <app-page-header
   title="Kafka local"
-  description="El broker KRaft y su UI, corriendo en el puerto local. El estado sale del tracker, así que también aparece el que levantaste desde la terminal."
+  description="El broker KRaft, su UI y el Kafka Agent, corriendo en esta máquina. El estado sale del tracker, así que también aparece lo que levantaste desde la terminal."
 >
 </app-page-header>
 
 <!--
   El `aria-live` va antes de todo lo que anuncia y siempre en el DOM: si se
   insertara junto al contenido que cambia, el lector de pantalla lo anunciaría
-  como si fuera texto nuevo. Sin esto, quien no ve el punto de color no se
-  entera de que Kafka quedó arriba.
+  como si fuera texto nuevo.
 -->
 <div class="visually-hidden" role="status" aria-live="polite">{{ announcement() }}</div>
 
 <!--
-  La caja de error se saca y se pone sola con el poll: si el backend volvió y el
-  poll trae datos, desaparece.
+  La caja de error se saca y se pone sola con el stream: si el backend volvió y
+  el siguiente frame trae datos, desaparece.
 -->
 @if (readError()) {
   <div class="error-box">No se pudo leer el estado: {{ readError() }}</div>
@@ -35,6 +34,53 @@
     (logs)="logs()?.open($event)"
     (fix)="askFix($event)"
   />
+</section>
+
+<section class="panel" aria-labelledby="kafka-agent-title">
+  <div class="section-title section-title--plain">
+    <strong id="kafka-agent-title">Kafka Agent</strong>
+    <span class="muted">puente HTTP → Kafka · <code>{{ agentUrl }}</code></span>
+  </div>
+
+  @if (agentRow(); as agent) {
+    <div class="agent-status">
+      <span class="state-dot" [attr.data-state]="agent.state" aria-hidden="true"></span>
+      <span [class]="'badge ' + badgeClass(agent.state)">{{ badge(agent.state) }}</span>
+      @if (agent.pid) {
+        <span class="muted">PID {{ agent.pid }}</span>
+      }
+    </div>
+
+    @if (agent.conflict) {
+      <p class="callout err">El puerto {{ agent.local_port }} ya lo está usando {{ agent.conflict }}.</p>
+    }
+
+    <p class="agent-help">
+      Expone <code>/producer</code>, <code>/consumer</code>, <code>/listener</code> y
+      <code>/clean-topics</code>, con las mismas rutas y cuerpos que <code>kafka-agents</code>.
+      Si reiniciaste el broker, reiniciá el agente.
+    </p>
+
+    <div class="actions">
+      @if (agentUp()) {
+        <button type="button" class="secondary" (click)="restartAgent()" [disabled]="busy()">Reiniciar</button>
+        <button type="button" class="danger-tinted" (click)="stopAgent()" [disabled]="busy()">Parar</button>
+      } @else {
+        <button type="button" class="secondary" (click)="startAgent()"
+          [disabled]="busy() || agent.state === 'starting'">
+          {{ agent.state === 'starting' ? 'Levantando…' : 'Levantar' }}
+        </button>
+      }
+      @if (agent.pid) {
+        <button type="button" class="secondary" (click)="logs()?.open(agent)">Ver logs</button>
+      }
+    </div>
+  } @else {
+    <p class="muted agent-help">
+      El Kafka Agent todavía no aparece en el estado. Si la pantalla no lo muestra en unos segundos,
+      revisá que la API esté corriendo.
+    </p>
+  }
 </section>
 
 <app-workflow-summary

@@ -7,3 +7,6 @@ typer>=0.12.0
 fastapi>=0.115.0
 uvicorn>=0.30.0
 pymysql>=1.1.0
+# Kafka Agent (yappy_library/adapters/kafka/agent.py). 3.x: usa `bootstrap_timeout_ms`
+# y `delete_topics(raise_errors=...)`, que la 2.x no tiene.
+kafka-python>=3.0,<4

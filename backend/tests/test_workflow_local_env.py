@@ -71,7 +71,7 @@ def _isolated_tracker(tmp_path, monkeypatch):
 def test_a_local_env_only_gets_the_kafka_rows():
     keys = {definition.key for definition in resources_for(FakeConfig())}
 
-    assert keys == {"kafka-server", "kafka-ui"}
+    assert keys == {"kafka-server", "kafka-ui", "kafka-agent"}
 
 
 def test_a_remote_env_still_gets_every_row():
@@ -87,7 +87,7 @@ def test_the_snapshot_reports_a_local_env_and_hides_the_catalog():
     snap = snapshot(FakeConfig(), "cap")
 
     assert snap.is_local is True
-    assert {row.key for row in snap.resources} == {"kafka-server", "kafka-ui"}
+    assert {row.key for row in snap.resources} == {"kafka-server", "kafka-ui", "kafka-agent"}
     # `CLUSTER_PORTS` se hereda de env.base, pero no hay AWS contra qué abrirlo.
     assert snap.ports == []
 
@@ -105,7 +105,7 @@ def test_the_state_body_carries_is_local():
     body = _state_body(snapshot(FakeConfig(), "cap"))
 
     assert body["is_local"] is True
-    assert {row["key"] for row in body["resources"]} == {"kafka-server", "kafka-ui"}
+    assert {row["key"] for row in body["resources"]} == {"kafka-server", "kafka-ui", "kafka-agent"}
 
 
 # --- las acciones ------------------------------------------------------------
@@ -161,6 +161,7 @@ def test_starting_a_resource_without_an_environment_only_knows_kafka():
     assert {definition.key for definition in resources_for(cfg)} == {
         "kafka-server",
         "kafka-ui",
+        "kafka-agent",
     }
 
     with pytest.raises(StartRefused) as excinfo:

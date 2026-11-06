@@ -81,3 +81,11 @@ export type { RenameWorkflowCatalogPort$Params as RenameWorkflowCatalogPort$Para
 export { renameWorkflowCatalogPort as renameWorkflowCatalogPort } from './fn/workflow/rename-workflow-catalog-port';
 export type { ResetWorkflowCatalog$Params as ResetWorkflowCatalog$Params } from './fn/workflow/reset-workflow-catalog';
 export { resetWorkflowCatalog as resetWorkflowCatalog } from './fn/workflow/reset-workflow-catalog';
+export type { KafkaAgentProducer$Params as KafkaAgentProducer$Params } from './fn/kafka-agent/kafka-agent-producer';
+export { kafkaAgentProducer as kafkaAgentProducer } from './fn/kafka-agent/kafka-agent-producer';
+export type { KafkaAgentConsumer$Params as KafkaAgentConsumer$Params } from './fn/kafka-agent/kafka-agent-consumer';
+export { kafkaAgentConsumer as kafkaAgentConsumer } from './fn/kafka-agent/kafka-agent-consumer';
+export type { KafkaAgentListener$Params as KafkaAgentListener$Params } from './fn/kafka-agent/kafka-agent-listener';
+export { kafkaAgentListener as kafkaAgentListener } from './fn/kafka-agent/kafka-agent-listener';
+export type { KafkaAgentCleanTopics$Params as KafkaAgentCleanTopics$Params } from './fn/kafka-agent/kafka-agent-clean-topics';
+export { kafkaAgentCleanTopics as kafkaAgentCleanTopics } from './fn/kafka-agent/kafka-agent-clean-topics';
