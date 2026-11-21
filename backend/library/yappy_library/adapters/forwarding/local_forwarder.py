@@ -161,7 +161,7 @@ def argv(request: ForwardRequest) -> list[str]:
     remoto de AWS es un nombre que este proceso no resuelve, y ``AWS_PORT`` es
     el 53360 de RDS: el destino real es ``TUNNEL_LOCAL_HOST:TUNNEL_LOCAL_PORT``.
     """
-    cfg = Config()
+    cfg = Config(request.env) if request.env else Config()
     remote_host = cfg.get("TUNNEL_LOCAL_HOST", DEFAULT_REMOTE_HOST) or DEFAULT_REMOTE_HOST
     remote_port = int(_number(cfg, "TUNNEL_LOCAL_PORT", DEFAULT_REMOTE_PORT))
     target = (cfg.get(f"TUNNEL_LOCAL_TARGET_{request.local_port}") or "").strip()

@@ -557,6 +557,7 @@ class BaseCommand:
                 local_port=local_port,
                 remote_port=port,
                 remote_host=remote_host,
+                env=env,
             )
         )
 

@@ -39,7 +39,7 @@ from typing import Protocol, runtime_checkable
 class ForwardRequest:
     """Todo lo que el llamador sabe de un túnel, y nada más.
 
-    Los seis campos son los que :meth:`yappy_library.adapters.processes.
+    Los campos son los que :meth:`yappy_library.adapters.processes.
     BaseCommand.ssm_tunnel` ya tenía en la mano cuando arma el comando; no hay
     ninguno derivado acá, para que el request no pueda empezar a decidir por su
     cuenta algo que el llamador no pidió.
@@ -57,6 +57,7 @@ class ForwardRequest:
     local_port: int
     remote_port: int
     remote_host: str | None = None
+    env: str = ""
 
 
 @runtime_checkable
