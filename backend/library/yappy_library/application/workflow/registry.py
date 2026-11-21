@@ -102,6 +102,7 @@ def resources_for(cfg: Config) -> list[ResourceDef]:
             detail="Documento distinto: sin remote_host, va a la instancia",
             remote_port=9091,
             local_port=3000,
+            probe="kafka",
         ),
         ResourceDef(
             key="db",
