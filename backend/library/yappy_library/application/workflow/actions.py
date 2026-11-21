@@ -119,6 +119,7 @@ def _spawn_tunnel(
     cluster: str,
     label: str,
     env: str,
+    local_compatible: bool = False,
 ) -> subprocess.Popen:
     """One ``ssm start-session``, tracked with everything the screen needs.
 
@@ -134,12 +135,20 @@ def _spawn_tunnel(
     The label keeps the message honest about *what* failed, because the reason
     ("AWS CLI not found…") is identical no matter which row was clicked.
     """
+    forwarder = (cfg.get("TUNNEL_FORWARDER", "ssm") or "ssm").strip().lower()
+    if forwarder == "local" and not local_compatible:
+        raise StartRefused(
+            f"{label or 'Este túnel'} no está disponible con TUNNEL_FORWARDER=local en este ambiente. "
+            "Usá un túnel SSM/AWS o configurá un destino local compatible."
+        )
+    instance = cfg.get("AWS_INSTANCE") or ("local" if forwarder == "local" else cfg.require("AWS_INSTANCE"))
+    region = cfg.get("AWS_REGION") or ("local" if forwarder == "local" else cfg.require("AWS_REGION"))
     try:
         return BaseCommand().ssm_tunnel(
-            instance=cfg.require("AWS_INSTANCE"),
+            instance=instance,
             port=port,
             local_port=local_port,
-            region=cfg.require("AWS_REGION"),
+            region=region,
             profile=cfg.profile,
             remote_host=remote_host,
             quiet=True,
@@ -148,6 +157,7 @@ def _spawn_tunnel(
             cluster=cluster,
             label=label,
             owner=process_tracker.OWNER_WEB,
+            forwarder=forwarder,
         )
     except ToolUnavailable as exc:
         raise StartRefused(
@@ -251,6 +261,11 @@ def _start_db(cfg: Config, port: int) -> subprocess.Popen:
     forward and supervises it, and the RDS token it writes is the same file the
     other pages read.
     """
+    if cfg.get("DB_HOST"):
+        raise StartRefused(
+            f"El ambiente {cfg.env or ''} usa DB directa ({cfg.get('DB_HOST')}:{cfg.get('DB_PORT', port)}); no necesita túnel."
+        )
+
     from yappy_library.adapters.database.credentials import generate_token, write_local_env
 
     try:
@@ -271,6 +286,7 @@ def _start_db(cfg: Config, port: int) -> subprocess.Popen:
         cluster="",
         label="Tunnel Aurora",
         env=cfg.env or "",
+        local_compatible=True,
     )
 
 
@@ -284,11 +300,11 @@ def db_password(cfg: Config) -> str:
     """
     from yappy_library.adapters.database.credentials import generate_token, write_local_env
 
-    if getattr(cfg, "is_local", False):
+    if getattr(cfg, "is_local", False) or cfg.get("DB_HOST"):
         password = cfg.get("DB_PASSWORD") or ""
         if not password:
             raise StartRefused(
-                f"El ambiente {cfg.env or ''} es local y no tiene DB_PASSWORD en su config."
+                f"El ambiente {cfg.env or ''} no tiene DB_PASSWORD en su config."
             )
     else:
         try:

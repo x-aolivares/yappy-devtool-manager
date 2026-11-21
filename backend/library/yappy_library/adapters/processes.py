@@ -504,6 +504,7 @@ class BaseCommand:
         cluster: str = "",
         label: str = "",
         owner: str = process_tracker.OWNER_CLI,
+        forwarder: str | None = None,
     ) -> subprocess.Popen:
         """Start one forwarding process binding ``local_port`` to ``port``.
 
@@ -541,7 +542,14 @@ class BaseCommand:
         # Antes de abrir el sink, como siempre: `_aws_cmd` levanta `ToolUnavailable`
         # en una máquina sin CLI y ese refusal tiene que llegar sin haber tocado
         # el log del túnel.
-        argv = forwarder_for().argv(
+        if forwarder is None and env:
+            try:
+                from yappy_library.config import Config as _Config
+
+                forwarder = _Config(env).get("TUNNEL_FORWARDER", "ssm")
+            except Exception:
+                forwarder = None
+        argv = forwarder_for(forwarder).argv(
             ForwardRequest(
                 instance=instance,
                 region=region,
