@@ -274,6 +274,34 @@ def _start_db(cfg: Config, port: int) -> subprocess.Popen:
     )
 
 
+def db_password(cfg: Config) -> str:
+    """El password de la base del ambiente, con los mismos efectos que `yappy db up`.
+
+    El CLI escribe `.env.local` y copia el valor al portapapeles; acá se escribe el
+    mismo archivo y se devuelve el valor para que la web lo copie. En local el
+    password es `DB_PASSWORD` literal. En AWS es un token de RDS, que vence a los
+    ~15 minutos: por eso se genera uno nuevo en cada pedido.
+    """
+    from yappy_library.adapters.database.credentials import generate_token, write_local_env
+
+    if getattr(cfg, "is_local", False):
+        password = cfg.get("DB_PASSWORD") or ""
+        if not password:
+            raise StartRefused(
+                f"El ambiente {cfg.env or ''} es local y no tiene DB_PASSWORD en su config."
+            )
+    else:
+        try:
+            password = generate_token(cfg)
+        except SystemExit as exc:
+            raise StartRefused(f"No se pudo generar el token de RDS: {exc}") from exc
+        except ValueError as exc:
+            raise StartRefused(f"No se pudo generar el token de RDS: {exc}") from exc
+
+    write_local_env(password, cfg=cfg)
+    return password
+
+
 def start_port(cfg: Config, cluster: str, port: int, label: str = "") -> dict:
     """Start a catalog row: a tunnel to ``port`` on ``cluster``.
 

@@ -679,6 +679,16 @@ class WorkflowStopRequest(BaseModel):
     )
 
 
+class WorkflowDbPasswordResponse(BaseModel):
+    """El password de la base de un ambiente, listo para copiar.
+
+    Es un secreto: viaja sólo a la pantalla que lo pidió y no se loguea. Para AWS es
+    un token de RDS que vence en ~15 minutos.
+    """
+
+    password: str
+
+
 class WorkflowActionResponse(BaseModel):
     ok: bool = True
     pid: int | None = None

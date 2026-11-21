@@ -58,6 +58,7 @@ export type { WorkflowCatalogAddRequest } from './models/workflow-catalog-add-re
 export type { WorkflowCatalogRenameRequest } from './models/workflow-catalog-rename-request';
 export type { WorkflowCatalogResponse } from './models/workflow-catalog-response';
 export type { WorkflowClustersResponse } from './models/workflow-clusters-response';
+export type { WorkflowDbPasswordResponse } from './models/workflow-db-password-response';
 export type { WorkflowPortInfo } from './models/workflow-port-info';
 export type { WorkflowResourceInfo } from './models/workflow-resource-info';
 export type { WorkflowStartPortRequest } from './models/workflow-start-port-request';

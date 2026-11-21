@@ -8,6 +8,7 @@ import { readWorkflowLogs } from '../../api-gen/functions';
 import {
   WorkflowActionResponse,
   WorkflowCatalogResponse,
+  WorkflowDbPasswordResponse,
   WorkflowStateResponse,
 } from '../../api-gen/models';
 
@@ -246,6 +247,23 @@ export class WorkflowService {
       this.http.post<WorkflowActionResponse>(
         `${this.api.rootUrl}/api/workflow/kafka/clean`,
         {},
+      ),
+    );
+  }
+
+  /**
+   * El password de la base del ambiente, para copiarlo.
+   *
+   * El backend genera el token de RDS (o lee `DB_PASSWORD` en local) y deja
+   * `.env.local` al día, igual que `yappy db up`. Quien llama tiene que copiar el
+   * valor en el mismo gesto: el token vence en ~15 minutos.
+   */
+  dbPassword(env: string): Promise<WorkflowDbPasswordResponse> {
+    return firstValueFrom(
+      this.http.post<WorkflowDbPasswordResponse>(
+        `${this.api.rootUrl}/api/workflow/db/password`,
+        {},
+        { params: { env } },
       ),
     );
   }

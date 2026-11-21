@@ -65,6 +65,8 @@ export type { StartWorkflowPort$Params as StartWorkflowPort$Params } from './fn/
 export { startWorkflowPort as startWorkflowPort } from './fn/workflow/start-workflow-port';
 export type { CleanWorkflowKafkaStorage$Params as CleanWorkflowKafkaStorage$Params } from './fn/workflow/clean-workflow-kafka-storage';
 export { cleanWorkflowKafkaStorage as cleanWorkflowKafkaStorage } from './fn/workflow/clean-workflow-kafka-storage';
+export type { CopyWorkflowDbPassword$Params as CopyWorkflowDbPassword$Params } from './fn/workflow/copy-workflow-db-password';
+export { copyWorkflowDbPassword as copyWorkflowDbPassword } from './fn/workflow/copy-workflow-db-password';
 export type { StopWorkflowProcess$Params as StopWorkflowProcess$Params } from './fn/workflow/stop-workflow-process';
 export { stopWorkflowProcess as stopWorkflowProcess } from './fn/workflow/stop-workflow-process';
 export type { StopAllWorkflowProcesses$Params as StopAllWorkflowProcesses$Params } from './fn/workflow/stop-all-workflow-processes';

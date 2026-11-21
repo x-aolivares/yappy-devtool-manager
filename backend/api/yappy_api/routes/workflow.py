@@ -39,6 +39,7 @@ from ..schemas import (
     WorkflowCatalogRenameRequest,
     WorkflowCatalogResponse,
     WorkflowClustersResponse,
+    WorkflowDbPasswordResponse,
     WorkflowPortInfo,
     WorkflowStartPortRequest,
     WorkflowStartResourceRequest,
@@ -375,6 +376,28 @@ def api_workflow_kafka_clean():
     except KafkaUnavailable as exc:
         raise HTTPException(status_code=409, detail=exc.reason) from exc
     return {"ok": True, "pid": 0, "port": 0, "state": "down", "label": "Kafka storage"}
+
+
+@router.post(
+    "/api/workflow/db/password",
+    operation_id="copy_workflow_db_password",
+    response_model=WorkflowDbPasswordResponse,
+)
+def api_workflow_db_password(env: str = ""):
+    """El password de la base del ambiente, para el botón de copiar.
+
+    Hace lo que `yappy db up` hace antes de abrir el túnel: genera el token de RDS
+    (o lee `DB_PASSWORD` en local) y deja `.env.local` al día. Sin ambiente no hay
+    base que nombrar, así que `env` es obligatorio aquí.
+    """
+    if not env:
+        raise HTTPException(status_code=400, detail="Falta el ambiente de la base.")
+    cfg = _cfg(env)
+    try:
+        password = actions.db_password(cfg)
+    except actions.StartRefused as exc:
+        raise HTTPException(status_code=409, detail=exc.reason) from exc
+    return {"password": password}
 
 
 @router.post(

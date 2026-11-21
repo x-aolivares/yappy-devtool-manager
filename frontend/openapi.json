@@ -1408,6 +1408,50 @@
         }
       }
     },
+    "/api/workflow/db/password": {
+      "post": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Api Workflow Db Password",
+        "description": "El password de la base del ambiente, para el botón de copiar.\n\nHace lo que `yappy db up` hace antes de abrir el túnel: genera el token de RDS\n(o lee `DB_PASSWORD` en local) y deja `.env.local` al día. Sin ambiente no hay\nbase que nombrar, así que `env` es obligatorio aquí.",
+        "operationId": "copy_workflow_db_password",
+        "parameters": [
+          {
+            "name": "env",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Env"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDbPasswordResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workflow/stop": {
       "post": {
         "tags": [
@@ -4858,6 +4902,20 @@
           "domain"
         ],
         "title": "WorkflowClustersResponse"
+      },
+      "WorkflowDbPasswordResponse": {
+        "properties": {
+          "password": {
+            "type": "string",
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "password"
+        ],
+        "title": "WorkflowDbPasswordResponse",
+        "description": "El password de la base de un ambiente, listo para copiar.\n\nEs un secreto: viaja sólo a la pantalla que lo pidió y no se loguea. Para AWS es\nun token de RDS que vence en ~15 minutos."
       },
       "WorkflowPortInfo": {
         "properties": {

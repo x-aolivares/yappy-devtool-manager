@@ -26,6 +26,15 @@
   <div class="section-title section-title--plain">
     <strong>Base de datos</strong>
     <span class="muted">Aurora · <code>yappy run db</code></span>
+    <span class="actions">
+      <button
+        type="button"
+        [disabled]="passwordBusy() || !envList().length"
+        (click)="copyPassword()"
+      >
+        {{ passwordBusy() ? 'Generando…' : passwordCopied() ? 'Copiado' : 'Copiar password' }}
+      </button>
+    </span>
   </div>
 
   @if (isLocal()) {
