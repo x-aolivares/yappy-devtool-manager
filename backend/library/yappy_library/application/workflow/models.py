@@ -127,6 +127,12 @@ class ResourceRow:
     fix: str = ""
 
 
+# Remote service availability (best-effort, independent from local tunnel state).
+REMOTE_UP = "up"
+REMOTE_DOWN = "down"
+REMOTE_UNKNOWN = "unknown"
+
+
 @dataclass(frozen=True)
 class PortRow:
     """A catalog entry paired with the tunnel running on it, if any."""
@@ -141,6 +147,10 @@ class PortRow:
     browser_url: str | None = None
     log_file: str = ""
     conflict: str | None = None
+    #: Best-effort remote service availability before/without a local tunnel.
+    remote_state: str = REMOTE_UNKNOWN
+    #: Human-readable detail for the remote probe (error, source, etc.).
+    remote_detail: str = ""
 
 
 @dataclass(frozen=True)

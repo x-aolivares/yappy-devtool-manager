@@ -180,6 +180,48 @@ export class WorkflowTunnelsPage extends WorkflowSectionPage {
     }
   }
 
+  protected remoteBadge(row: WorkflowPortInfo): string {
+    switch (row.remote_state) {
+      case 'up':
+        return 'disponible';
+      case 'down':
+        return 'caído';
+      default:
+        return 'sin verificar';
+    }
+  }
+
+  protected remoteBadgeClass(row: WorkflowPortInfo): string {
+    switch (row.remote_state) {
+      case 'up':
+        return 'ok';
+      case 'down':
+        return 'error';
+      default:
+        return 'off';
+    }
+  }
+
+  protected remoteDotState(row: WorkflowPortInfo): string {
+    switch (row.remote_state) {
+      case 'up':
+        return 'up';
+      case 'down':
+        return 'dead';
+      default:
+        return 'down';
+    }
+  }
+
+  protected remoteShort(row: WorkflowPortInfo): string {
+    const detail = row.remote_detail ?? '';
+    if (row.remote_state === 'up') return 'responde';
+    if (row.remote_state === 'down') return 'sin respuesta';
+    if (detail.includes('timeout')) return 'timeout';
+    if (detail.includes('no verificable')) return 'no verificable';
+    return detail ? 'pendiente' : '';
+  }
+
   protected trackPort(_index: number, row: WorkflowPortInfo): number { return row.port; }
   protected trackUnattributed(_index: number, row: { pid: number }): number { return row.pid; }
 }

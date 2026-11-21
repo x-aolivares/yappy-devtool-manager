@@ -24,3 +24,13 @@
     color: var(--text);
   }
 }
+
+.remote-detail {
+  display: inline-block;
+  margin-left: 0.35rem;
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}

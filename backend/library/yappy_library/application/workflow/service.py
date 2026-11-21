@@ -10,13 +10,18 @@ data anyway, and would derive them differently on each row.
 
 from __future__ import annotations
 
+import socket
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from pathlib import Path
 
 from yappy_library.adapters.process_tracker import get_tracked_processes
 from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES, cluster_remote_host
 from yappy_library.application.workflow.catalog import entries_for, is_configured
 from yappy_library.application.workflow.models import (
+    REMOTE_DOWN,
+    REMOTE_UNKNOWN,
+    REMOTE_UP,
     STATE_DOWN,
     PortRow,
     ResourceRow,
@@ -93,6 +98,95 @@ def _browser_url(def_port: int | None) -> str | None:
     if not def_port:
         return None
     return f"https://localhost:{def_port}{CLUSTER_PROBE_PATH}"
+
+
+_REMOTE_TTL_SECONDS = 20.0
+_REMOTE_PROBE_TIMEOUT = 0.8
+_remote_cache: dict[tuple[str, str, int], tuple[str, str, float]] = {}
+_remote_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="wf-remote")
+
+
+def _probe_remote(host: str, port: int) -> tuple[str, str]:
+    """Best-effort TCP reachability check for a remote service.
+
+    Returns (remote_state, detail). A successful connect means something is
+    listening; connection refused means the host is reachable but service is down;
+    timeout/DNS/network errors mean unknown from this vantage point.
+    """
+    if not host or not port:
+        return REMOTE_UNKNOWN, "sin host remoto"
+    try:
+        with socket.create_connection((host, port), timeout=_REMOTE_PROBE_TIMEOUT):
+            return REMOTE_UP, f"{host}:{port} responde"
+    except ConnectionRefusedError:
+        return REMOTE_DOWN, f"{host}:{port} rechazó la conexión"
+    except socket.timeout:
+        return REMOTE_UNKNOWN, f"{host}:{port} sin respuesta (timeout)"
+    except OSError as exc:
+        return REMOTE_UNKNOWN, f"{host}:{port} no verificable ({exc.__class__.__name__})"
+
+
+def _remote_state_for(env: str, cluster: str, host: str, port: int, local_state: str) -> tuple[str, str]:
+    """Resolve remote availability for a catalog port.
+
+    If a local tunnel is already up, the remote service was reachable through it.
+    If starting, avoid claiming up/down. Otherwise use a short cached TCP probe.
+    """
+    if local_state == "up":
+        return REMOTE_UP, "alcanzable por túnel local"
+    if local_state == "starting":
+        return REMOTE_UNKNOWN, "túnel local iniciando"
+
+    key = (env, cluster, port)
+    now = time.monotonic()
+    cached = _remote_cache.get(key)
+    if cached and now - cached[2] < _REMOTE_TTL_SECONDS:
+        return cached[0], cached[1]
+
+    state, detail = _probe_remote(host, port)
+    _remote_cache[key] = (state, detail, now)
+    return state, detail
+
+
+def _remote_states_for_ports(
+    env: str, cluster: str, host: str, ports: list[tuple[int, str]]
+) -> dict[int, tuple[str, str]]:
+    """Probe multiple ports concurrently; returns {port: (state, detail)}."""
+    results: dict[int, tuple[str, str]] = {}
+    to_probe: list[tuple[int, str]] = []
+    now = time.monotonic()
+
+    for port, local_state in ports:
+        if local_state == "up":
+            results[port] = (REMOTE_UP, "alcanzable por túnel local")
+        elif local_state == "starting":
+            results[port] = (REMOTE_UNKNOWN, "túnel local iniciando")
+        else:
+            key = (env, cluster, port)
+            cached = _remote_cache.get(key)
+            if cached and now - cached[2] < _REMOTE_TTL_SECONDS:
+                results[port] = (cached[0], cached[1])
+            else:
+                to_probe.append((port, local_state))
+
+    if not to_probe:
+        return results
+
+    futures = {
+        _remote_executor.submit(_probe_remote, host, port): port
+        for port, _ in to_probe
+    }
+    for future, port in futures.items():
+        try:
+            state, detail = future.result(timeout=_REMOTE_PROBE_TIMEOUT + 0.5)
+        except FuturesTimeoutError:
+            state, detail = REMOTE_UNKNOWN, f"{host}:{port} no verificable (timeout)"
+        except Exception as exc:  # pragma: no cover - defensive
+            state, detail = REMOTE_UNKNOWN, f"{host}:{port} no verificable ({exc.__class__.__name__})"
+        _remote_cache[(env, cluster, port)] = (state, detail, time.monotonic())
+        results[port] = (state, detail)
+
+    return results
 
 
 #: El archivo que describe la máquina del developer.
@@ -177,10 +271,25 @@ def snapshot(cfg: Config, cluster: str) -> WorkflowSnapshot:
     # `CLUSTER_PORTS` from `env.base`, but there is no AWS to open it against,
     # so the catalog is not offered rather than offered and refused.
     catalog = [] if is_local else entries_for(cfg, cluster)
+    remote_host = remote_host_for(cfg, cluster)
+
+    port_states: list[tuple[int, str]] = []
+    port_rows_data = []
     for catalog_entry in catalog:
         candidates = holders.get(catalog_entry.port, [])
         entry = _owner(candidates, cluster)
         state, pid, since, foreign, log_file = _attributed(entry)
+        port_states.append((catalog_entry.port, state))
+        port_rows_data.append(
+            (catalog_entry, state, pid, since, foreign, log_file, _conflict_label(candidates, entry))
+        )
+
+    remote_states = _remote_states_for_ports(cfg.env or "", cluster, remote_host, port_states) if port_rows_data else {}
+
+    for catalog_entry, state, pid, since, foreign, log_file, conflict in port_rows_data:
+        remote_state, remote_detail = remote_states.get(
+            catalog_entry.port, (REMOTE_UNKNOWN, "")
+        )
         ports.append(
             PortRow(
                 cluster=cluster,
@@ -192,7 +301,9 @@ def snapshot(cfg: Config, cluster: str) -> WorkflowSnapshot:
                 foreign=foreign,
                 browser_url=_browser_url(catalog_entry.port) if is_live(state) else None,
                 log_file=log_file,
-                conflict=_conflict_label(candidates, entry),
+                conflict=conflict,
+                remote_state=remote_state,
+                remote_detail=remote_detail,
             )
         )
 
@@ -206,7 +317,7 @@ def snapshot(cfg: Config, cluster: str) -> WorkflowSnapshot:
     return WorkflowSnapshot(
         env=cfg.env or "",
         cluster=cluster,
-        remote_host=remote_host_for(cfg, cluster),
+        remote_host=remote_host,
         generated_at=time.time(),
         is_local=is_local,
         catalog_configured=is_configured(cfg),

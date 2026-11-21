@@ -4988,6 +4988,17 @@
               }
             ],
             "title": "Conflict"
+          },
+          "remote_state": {
+            "type": "string",
+            "title": "Remote State",
+            "description": "Best-effort remote service availability: up | down | unknown. Independent from local tunnel state.",
+            "default": "unknown"
+          },
+          "remote_detail": {
+            "type": "string",
+            "title": "Remote Detail",
+            "default": ""
           }
         },
         "type": "object",
