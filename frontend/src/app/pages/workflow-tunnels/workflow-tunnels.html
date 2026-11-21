@@ -71,7 +71,8 @@
         <tr>
           <th scope="col">Puerto</th>
           <th scope="col">Servicio</th>
-          <th scope="col">Estado</th>
+          <th scope="col">Disponibilidad remota</th>
+          <th scope="col">Túnel</th>
           <th scope="col"></th>
           <th scope="col"><span class="visually-hidden">Quitar</span></th>
         </tr>
@@ -90,6 +91,13 @@
               />
               @if (row.conflict) {
                 <p class="callout err">El puerto local {{ row.port }} ya lo está usando {{ row.conflict }}.</p>
+              }
+            </td>
+            <td>
+              <span class="state-dot" [attr.data-state]="remoteDotState(row)" aria-hidden="true"></span>
+              <span class="badge" [class]="'badge ' + remoteBadgeClass(row)">{{ remoteBadge(row) }}</span>
+              @if (row.remote_detail) {
+                <span class="muted remote-detail" [title]="row.remote_detail">{{ remoteShort(row) }}</span>
               }
             </td>
             <td>
@@ -130,7 +138,7 @@
           </tr>
         } @empty {
           <tr>
-            <td colspan="5" class="muted">
+            <td colspan="6" class="muted">
               @if (catalogConfigured()) {
                 El cluster <code>{{ cluster() }}</code> no tiene puertos cargados. Agregá el primero
                 con el campo de abajo.

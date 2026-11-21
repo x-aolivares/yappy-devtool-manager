@@ -614,6 +614,12 @@ class WorkflowPortInfo(BaseModel):
     browser_url: str | None = None
     log_file: str = ""
     conflict: str | None = None
+    remote_state: str = Field(
+        "unknown",
+        description="Best-effort remote service availability: up | down | unknown. "
+        "Independent from local tunnel state.",
+    )
+    remote_detail: str = ""
 
 
 class WorkflowUnattributedInfo(BaseModel):

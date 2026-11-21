@@ -10,6 +10,8 @@ export interface WorkflowPortInfo {
   log_file?: string;
   pid?: (number | null);
   port: number;
+  remote_detail?: string;
+  remote_state?: string;
   since?: (number | null);
   state: string;
 }

@@ -143,6 +143,8 @@ def _port_info(row) -> dict:
         "browser_url": row.browser_url,
         "log_file": row.log_file,
         "conflict": row.conflict,
+        "remote_state": getattr(row, "remote_state", "unknown"),
+        "remote_detail": getattr(row, "remote_detail", ""),
     }
 
 
