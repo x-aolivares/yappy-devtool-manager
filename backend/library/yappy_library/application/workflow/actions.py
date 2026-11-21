@@ -136,7 +136,8 @@ def _spawn_tunnel(
     ("AWS CLI not found…") is identical no matter which row was clicked.
     """
     forwarder = (cfg.get("TUNNEL_FORWARDER", "ssm") or "ssm").strip().lower()
-    if forwarder == "local" and not local_compatible:
+    has_local_target = bool((cfg.get(f"TUNNEL_LOCAL_TARGET_{local_port}") or "").strip())
+    if forwarder == "local" and not local_compatible and not has_local_target:
         raise StartRefused(
             f"{label or 'Este túnel'} no está disponible con TUNNEL_FORWARDER=local en este ambiente. "
             "Usá un túnel SSM/AWS o configurá un destino local compatible."

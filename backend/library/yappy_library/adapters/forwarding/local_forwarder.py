@@ -162,11 +162,21 @@ def argv(request: ForwardRequest) -> list[str]:
     el 53360 de RDS: el destino real es ``TUNNEL_LOCAL_HOST:TUNNEL_LOCAL_PORT``.
     """
     cfg = Config()
+    remote_host = cfg.get("TUNNEL_LOCAL_HOST", DEFAULT_REMOTE_HOST) or DEFAULT_REMOTE_HOST
+    remote_port = int(_number(cfg, "TUNNEL_LOCAL_PORT", DEFAULT_REMOTE_PORT))
+    target = (cfg.get(f"TUNNEL_LOCAL_TARGET_{request.local_port}") or "").strip()
+    if target:
+        if ":" in target:
+            host, port = target.rsplit(":", 1)
+            remote_host = host or remote_host
+            remote_port = int(port)
+        else:
+            remote_port = int(target)
     return [
         sys.executable, "-m", MODULE,
         "--local-port", str(request.local_port),
-        "--remote-host", cfg.get("TUNNEL_LOCAL_HOST", DEFAULT_REMOTE_HOST) or DEFAULT_REMOTE_HOST,
-        "--remote-port", str(int(_number(cfg, "TUNNEL_LOCAL_PORT", DEFAULT_REMOTE_PORT))),
+        "--remote-host", remote_host,
+        "--remote-port", str(remote_port),
         "--startup-delay", str(_number(cfg, "TUNNEL_LOCAL_STARTUP_DELAY", DEFAULT_STARTUP_DELAY)),
         "--idle-timeout", str(_number(cfg, "TUNNEL_LOCAL_IDLE_TIMEOUT", DEFAULT_IDLE_TIMEOUT)),
         "--stall-after", str(_number(cfg, "TUNNEL_LOCAL_STALL_AFTER", DEFAULT_STALL_AFTER)),
