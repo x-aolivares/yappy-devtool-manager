@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 import functools
-import json
 import os
 import re
 import signal
@@ -14,6 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 from yappy_library.adapters import process_identity, process_tracker
+from yappy_library.adapters.forwarding import forwarder_for
 from yappy_library.adapters.logging import (
     command as log_command,
     die,
@@ -22,6 +22,7 @@ from yappy_library.adapters.logging import (
     success,
     warn,
 )
+from yappy_library.ports.port_forwarder import ForwardRequest
 
 _DETACH_DELAY = 2
 
@@ -504,7 +505,18 @@ class BaseCommand:
         label: str = "",
         owner: str = process_tracker.OWNER_CLI,
     ) -> subprocess.Popen:
-        """Start one ``ssm start-session`` forwarding ``port`` to ``local_port``.
+        """Start one forwarding process binding ``local_port`` to ``port``.
+
+        ``TUNNEL_FORWARDER`` chooses which one, and the default —``ssm``, that is
+        ``aws ssm start-session`` — is what every machine that never touched the
+        config has always run. See
+        :func:`yappy_library.adapters.forwarding.forwarder_for`.
+
+        **Lo único que el forwarder decide es el argv.** El sink del log, el
+        ``track_process`` y todo lo demás siguen acá, y en el mismo orden: el
+        ``argv`` se arma **antes** de abrir el log, como antes, para que una
+        máquina sin AWS CLI siga fallando sin dejar un log vacío de cero bytes
+        en el medio del camino.
 
         ``env``/``cluster``/``label`` are not needed to start anything. They are
         recorded so a tracked tunnel can be attributed back to the row it belongs
@@ -525,19 +537,20 @@ class BaseCommand:
                 "El port-forwarding a un host remoto no anda en Linux. "
                 "Levantalo desde una sesión de Windows o usá un túnel sin host."
             )
-        if remote_host:
-            doc = "AWS-StartPortForwardingSessionToRemoteHost"
-            params = {
-                "portNumber": [str(port)],
-                "host": [remote_host],
-                "localPortNumber": [str(local_port)],
-            }
-        else:
-            doc = "AWS-StartPortForwardingSession"
-            params = {
-                "portNumber": [str(port)],
-                "localPortNumber": [str(local_port)],
-            }
+
+        # Antes de abrir el sink, como siempre: `_aws_cmd` levanta `ToolUnavailable`
+        # en una máquina sin CLI y ese refusal tiene que llegar sin haber tocado
+        # el log del túnel.
+        argv = forwarder_for().argv(
+            ForwardRequest(
+                instance=instance,
+                region=region,
+                profile=profile,
+                local_port=local_port,
+                remote_port=port,
+                remote_host=remote_host,
+            )
+        )
 
         # `quiet` used to mean DEVNULL, which also swallowed the AWS CLI's own
         # diagnostics. A tunnel that failed to bind its local port then looked
@@ -554,14 +567,7 @@ class BaseCommand:
             sink = subprocess.DEVNULL if quiet else None
 
         try:
-            proc = self.popen([
-                *_aws_cmd(), "ssm", "start-session",
-                "--target", instance,
-                "--document-name", doc,
-                "--parameters", json.dumps(params),
-                "--profile", profile,
-                "--region", region,
-            ], stdout=sink, stderr=sink)
+            proc = self.popen(argv, stdout=sink, stderr=sink)
         finally:
             if handle is not None:
                 handle.close()
