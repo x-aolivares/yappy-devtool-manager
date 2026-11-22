@@ -287,7 +287,11 @@ def _windows_api():
         ]
 
     try:
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32_factory = getattr(ctypes, "WinDLL", None)
+        if kernel32_factory is None:
+            _win_api = False
+            return None
+        kernel32 = kernel32_factory("kernel32", use_last_error=True)
         kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
         kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
         kernel32.Process32FirstW.argtypes = [
