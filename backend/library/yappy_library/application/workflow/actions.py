@@ -119,7 +119,6 @@ def _spawn_tunnel(
     cluster: str,
     label: str,
     env: str,
-    local_compatible: bool = False,
 ) -> subprocess.Popen:
     """One ``ssm start-session``, tracked with everything the screen needs.
 
@@ -134,14 +133,15 @@ def _spawn_tunnel(
 
     The label keeps the message honest about *what* failed, because the reason
     ("AWS CLI not found…") is identical no matter which row was clicked.
+
+    **No destination refusal.** Both forwarders now honour the same contract —
+    bind ``local_port``, forward to ``remote_host:remote_port`` — so there is
+    always a destination to forward to, configured or not. Whether something is
+    listening at the other end is exactly what the row's probe reports; a
+    refusal here would be the screen claiming to know the remote is down
+    before anybody asked.
     """
     forwarder = (cfg.get("TUNNEL_FORWARDER", "ssm") or "ssm").strip().lower()
-    has_local_target = bool((cfg.get(f"TUNNEL_LOCAL_TARGET_{local_port}") or "").strip())
-    if forwarder == "local" and not local_compatible and not has_local_target:
-        raise StartRefused(
-            f"{label or 'Este túnel'} no está disponible con TUNNEL_FORWARDER=local en este ambiente. "
-            "Usá un túnel SSM/AWS o configurá un destino local compatible."
-        )
     instance = cfg.get("AWS_INSTANCE") or ("local" if forwarder == "local" else cfg.require("AWS_INSTANCE"))
     region = cfg.get("AWS_REGION") or ("local" if forwarder == "local" else cfg.require("AWS_REGION"))
     try:
@@ -287,7 +287,6 @@ def _start_db(cfg: Config, port: int) -> subprocess.Popen:
         cluster="",
         label="Tunnel Aurora",
         env=cfg.env or "",
-        local_compatible=True,
     )
 
 

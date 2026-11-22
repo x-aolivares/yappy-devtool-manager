@@ -196,16 +196,55 @@ def test_local_arma_un_proceso_de_python_y_no_un_thread(monkeypatch):
     assert argv[argv.index("--local-port") + 1] == "8402"
 
 
-def test_local_ignora_el_host_remoto_de_aws(monkeypatch):
-    """``AWS_PORT`` es el 53360 de RDS y ``AWS_HOST`` un nombre que no resuelve:
-    el destino del forwarder local sale de su propia config."""
+def test_local_espeja_el_puerto_remoto_de_aws(monkeypatch):
+    """El forwarder local cumple el **mismo contrato** que ``ssm``: bind del
+    puerto local y reenvío al mismo puerto remoto. Es lo que hace que la fila
+    ``:9000 → :8402`` de la pantalla y el log del túnel digan lo mismo.
+
+    El host remoto, en cambio, no se usa: ``core.dev.yappycloud.com`` es un
+    nombre que este proceso no resuelve —el "lado remoto" es loopback.
+    """
     monkeypatch.setenv("YAPPY_TUNNEL_FORWARDER", "local")
-    monkeypatch.setenv("YAPPY_TUNNEL_LOCAL_PORT", "3307")
+    monkeypatch.delenv("YAPPY_TUNNEL_LOCAL_PORT", raising=False)
+    monkeypatch.delenv("YAPPY_TUNNEL_LOCAL_TARGET_8402", raising=False)
 
     argv = local_forwarder.argv(_REQUEST)
 
-    assert argv[argv.index("--remote-port") + 1] == "3307"
+    assert argv[argv.index("--local-port") + 1] == "8402"
+    assert argv[argv.index("--remote-port") + 1] == "9000"
+    assert argv[argv.index("--remote-host") + 1] == "127.0.0.1"
     assert "core.dev.yappycloud.com" not in argv
+
+
+def test_un_target_por_puerto_pisa_el_espejo(monkeypatch):
+    """El override explícito sigue existiendo, y es **por puerto**: sólo ese
+    puerto deja de ir al que dice el contrato. Un override global haría que
+    todas las filas mintieran a la vez."""
+    monkeypatch.setenv("YAPPY_TUNNEL_FORWARDER", "local")
+    monkeypatch.setenv("YAPPY_TUNNEL_LOCAL_TARGET_8402", "127.0.0.1:9002")
+
+    argv = local_forwarder.argv(_REQUEST)
+
+    assert argv[argv.index("--remote-port") + 1] == "9002"
+    assert argv[argv.index("--remote-host") + 1] == "127.0.0.1"
+
+
+def test_tunnel_local_port_solo_es_un_fallback(monkeypatch):
+    """``TUNNEL_LOCAL_PORT`` ya no es el destino: es lo que se usa sólo si el
+    llamador no pidió puerto remoto. Si lo fuera, pisaría el espejo y la fila
+    mostraría un puerto que el túnel no reenvía."""
+    monkeypatch.setenv("YAPPY_TUNNEL_LOCAL_PORT", "3307")
+
+    request = ForwardRequest(
+        instance="i-0123456789",
+        region="us-west-2",
+        profile="base-profile",
+        local_port=3307,
+        remote_port=0,
+    )
+    argv = local_forwarder.argv(request)
+
+    assert argv[argv.index("--remote-port") + 1] == "3307"
 
 
 def test_local_toma_los_knobs_de_la_config(monkeypatch):

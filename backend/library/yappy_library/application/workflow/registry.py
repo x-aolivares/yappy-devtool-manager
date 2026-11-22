@@ -102,7 +102,12 @@ def resources_for(cfg: Config) -> list[ResourceDef]:
             detail="Documento distinto: sin remote_host, va a la instancia",
             remote_port=9091,
             local_port=3000,
-            probe="kafka",
+            # 9091 es el Kafka Agent, que es HTTP en los dos mundos: en AWS es
+            # el agente corriendo en la instancia, y en un túnel local el
+            # destino es el agente de esta máquina. (El `kafka` probe hablaba
+            # con el broker, que es lo que había cuando el destino local era
+            # otro puerto.)
+            probe="http",
         ),
         ResourceDef(
             key="db",

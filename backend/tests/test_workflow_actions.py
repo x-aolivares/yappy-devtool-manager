@@ -11,6 +11,7 @@ import contextlib
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -260,6 +261,46 @@ def test_a_start_that_lost_the_race_spawns_nothing(tracker, monkeypatch):
         start_port(FakeConfig(), "cap", 8403)
 
     assert spawned == []
+
+
+def test_el_forwarder_local_no_requiere_un_destino_configurado(monkeypatch):
+    """El espejo: el destino del túnel sale del contrato (puerto remoto), no de
+    un override por puerto.
+
+    Antes había una refusal acá —"no está disponible con TUNNEL_FORWARDER=local"
+    — que era correcta cuando el forwarder local ignoraba el puerto remoto y sin
+    ``TUNNEL_LOCAL_TARGET_*`` no había adónde reenviar. Con el contrato igualado
+    al de ``ssm`` siempre hay destino, y si no hay nada escuchando allá lo que
+    lo dice es el probe de la fila, no un botón que se niega a intentarlo.
+    """
+    spawned = []
+    monkeypatch.setattr(
+        actions,
+        "tunnel_log_path",
+        lambda port: Path(__file__).parent / f"tunnel-{port}.log",
+    )
+    monkeypatch.setattr(
+        actions,
+        "BaseCommand",
+        lambda: SimpleNamespace(
+            ssm_tunnel=lambda **kwargs: spawned.append(kwargs) or object()
+        ),
+    )
+
+    actions._spawn_tunnel(
+        FakeConfig(TUNNEL_FORWARDER="local"),
+        port=9000,
+        local_port=9001,
+        remote_host=None,
+        cluster="",
+        label="Kafdrop (remoto)",
+        env="qa",
+    )
+
+    assert len(spawned) == 1
+    assert spawned[0]["port"] == 9000
+    assert spawned[0]["local_port"] == 9001
+    assert spawned[0]["forwarder"] == "local"
 
 
 # --- stopping ---------------------------------------------------------------

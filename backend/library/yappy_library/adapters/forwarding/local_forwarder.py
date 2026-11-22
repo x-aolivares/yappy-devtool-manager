@@ -149,21 +149,40 @@ def _number(cfg: Config, key: str, default: float) -> float:
 
 
 def argv(request: ForwardRequest) -> list[str]:
-    """El comando que levanta un túnel local.
+    """El comando que levanta un túnel local —el **mismo contrato** que ``ssm``.
+
+    ``aws ssm start-session`` hace bind de ``local_port`` y reenvía TCP a
+    ``remote_host:remote_port``. Este forwarder cumple exactamente ese
+    contrato: hace bind de ``request.local_port`` y reenvía a
+    ``TUNNEL_LOCAL_HOST`` en ``request.remote_port``. No hay una segunda
+    semántica que recordar, y por eso la fila de la pantalla
+    (``:remote_port → :local_port``) y el log del túnel (``local ->
+    destino``) dicen lo mismo.
+
+    Lo único que no se usa es el ``remote_host`` del request: es un nombre de
+    AWS que este proceso no resuelve (y ``AWS_PORT`` es el 53360 de RDS). El
+    "lado remoto" de un túnel local es la región corriendo en esta misma
+    máquina, que es lo que ``TUNNEL_LOCAL_HOST`` nombra —loopback por defecto.
+
+    ``TUNNEL_LOCAL_TARGET_<local_port>`` sigue siendo el override explícito
+    para cuando el destino de **ese puerto concreto** no es el que dice el
+    contrato —un servicio que corre en otro puerto en este host—. Es la única
+    forma de desviarse del espejo, y es por puerto a propósito: un override
+    global haría que todas las filas mientan a la vez.
 
     Los knobs salen de ``Config`` —con override ``YAPPY_*``— y no de
     ``os.environ``: es el mismo accessor que usa el resto de la app, así que un
     ``TUNNEL_LOCAL_IDLE_TIMEOUT`` se puede dejar en el ``env.base`` de un
     ambiente sin que nadie tenga que acordarse de pasarlo por variable.
-
-    ``request.local_port`` sí viene del llamador: es el puerto que contesta el
-    probe. ``remote_host`` y ``remote_port``, en cambio, se ignoran. Un host
-    remoto de AWS es un nombre que este proceso no resuelve, y ``AWS_PORT`` es
-    el 53360 de RDS: el destino real es ``TUNNEL_LOCAL_HOST:TUNNEL_LOCAL_PORT``.
     """
     cfg = Config(request.env) if request.env else Config()
     remote_host = cfg.get("TUNNEL_LOCAL_HOST", DEFAULT_REMOTE_HOST) or DEFAULT_REMOTE_HOST
-    remote_port = int(_number(cfg, "TUNNEL_LOCAL_PORT", DEFAULT_REMOTE_PORT))
+    # El puerto remoto es el del request: es el que pidió el llamador y el que
+    # la pantalla muestra. `TUNNEL_LOCAL_PORT` queda sólo como fallback para un
+    # llamador que no pidió puerto —nunca pisa el contrato.
+    remote_port = int(
+        request.remote_port or _number(cfg, "TUNNEL_LOCAL_PORT", DEFAULT_REMOTE_PORT)
+    )
     target = (cfg.get(f"TUNNEL_LOCAL_TARGET_{request.local_port}") or "").strip()
     if target:
         if ":" in target:

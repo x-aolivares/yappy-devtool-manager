@@ -44,11 +44,14 @@ class ForwardRequest:
     ninguno derivado acá, para que el request no pueda empezar a decidir por su
     cuenta algo que el llamador no pidió.
 
-    ``instance``/``region``/``profile`` los usa **sólo** ``ssm``. ``local`` los
-    ignora a propósito y en vez de eso va a ``TUNNEL_LOCAL_HOST:TUNNEL_LOCAL_PORT``:
-    su destino no pasa por AWS, así que el host remoto que le pasó el llamador
-    no es un lugar al que pueda llegar. Lo que sí comparte con ``ssm`` es
-    ``local_port``, porque ése sí es el puerto que contesta el probe.
+    ``instance``/``region``/``profile`` los usa **sólo** ``ssm``; ``local`` los
+    ignora porque su destino no pasa por AWS. Pero el destino **es el mismo en
+    los dos**: ``local`` hace bind de ``local_port`` y reenvía a
+    ``TUNNEL_LOCAL_HOST:remote_port`` —la región en loopback, con el mismo
+    puerto remoto que reenviaría AWS—. Sólo cambia el host, porque el host
+    remoto es un nombre que este proceso no resuelve. Ese espejo es lo que hace
+    que la fila ``:remote_port → :local_port`` de la pantalla describa el
+    proceso que corre, y no una intención.
     """
 
     instance: str
