@@ -11,6 +11,10 @@ export interface WorkflowPortInfo {
   pid?: (number | null);
   port: number;
   remote_detail?: string;
+
+  /**
+   * Best-effort remote service availability: up | down | unknown. Independent from local tunnel state.
+   */
   remote_state?: string;
   since?: (number | null);
   state: string;

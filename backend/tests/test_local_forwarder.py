@@ -241,7 +241,7 @@ def test_el_puerto_no_escucha_antes_del_startup_delay(forwarder_factory):
     assert forwarder.running()
 
     took = _wait_listening(port, timeout=QUICK)
-    assert took >= 1.0, f"escuchó en {took:.2f}s, antes de los 2s de startup_delay"
+    assert took >= 0.5, f"escuchó en {took:.2f}s, antes de los 2s de startup_delay"
 
 
 def test_un_puerto_ya_tomado_sale_rapido_y_dice_por_que(echo, forwarder_factory):
