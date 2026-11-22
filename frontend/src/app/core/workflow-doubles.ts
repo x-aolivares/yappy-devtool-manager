@@ -374,7 +374,7 @@ export function workflowProviders(calls: WorkflowCalls): Provider[] {
           calls.startEnvs.push(env);
           return calls.failStart ? Promise.reject(calls.failStart(new Error('rechazado'))) : Promise.resolve({ ok: true });
         },
-        startPort: (port: number, label: string, _env: string, cluster: string) => {
+        startPort: (port: number, label: string, _env: string, cluster: string, _localPort?: number) => {
           calls.startedPorts.push({ port, label, cluster });
           return calls.failStart ? Promise.reject(calls.failStart(new Error('rechazado'))) : Promise.resolve({ ok: true });
         },

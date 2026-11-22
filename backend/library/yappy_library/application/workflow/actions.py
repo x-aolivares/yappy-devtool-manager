@@ -318,7 +318,7 @@ def db_password(cfg: Config) -> str:
     return password
 
 
-def start_port(cfg: Config, cluster: str, port: int, label: str = "") -> dict:
+def start_port(cfg: Config, cluster: str, port: int, label: str = "", local_port: int | None = None) -> dict:
     """Start a catalog row: a tunnel to ``port`` on ``cluster``.
 
     **Sin ambiente no hay túnel.** Un túnel se abre contra un ambiente, y el
@@ -339,23 +339,24 @@ def start_port(cfg: Config, cluster: str, port: int, label: str = "") -> dict:
             f"El ambiente {cfg.env or ''} es local: se conecta por TCP y no abre "
             "túneles SSM."
         )
-    ensure_port_free(port, cluster=cluster)
 
-    # En el emulator (forwarder local) un túnel de cluster es un loop consigo
-    # mismo: local y remoto son el mismo puerto en el mismo host, así que el
-    # forwarder se conecta a sí mismo y no hay forma de que conteste. Esas
-    # filas sirven para ver disponibilidad; para probar el túnel usá Kafdrop
-    # (9001 -> 9000) o Databricks (4434 -> 443), que sí tienen puertos
-    # distintos.
+    if local_port is None:
+        local_port = port
+
+    # En el emulator (forwarder local) un túnel con el mismo puerto local y
+    # remoto es un loop consigo mismo: el forwarder bindea el puerto y después
+    # intenta conectarse a sí mismo. Si el usuario indicó un puerto local
+    # distinto, el loop se evita y el túnel funciona.
     forwarder = (cfg.get("TUNNEL_FORWARDER", "ssm") or "ssm").strip().lower()
-    if forwarder == "local":
+    if forwarder == "local" and local_port == port:
         raise StartRefused(
             f"El puerto {port} es un túnel consigo mismo en el emulator "
-            "(local y remoto coinciden en el mismo host): no se puede abrir "
-            "sin colisionar. Usá Kafdrop (9001 -> 9000) o Databricks "
-            "(4434 -> 443) para probar el túnel; esta fila sólo muestra "
-            "disponibilidad."
+            "(local y remoto coinciden en el mismo host). Indicá un puerto local "
+            "distinto para probarlo, o usá Kafdrop (9001 -> 9000) / Databricks "
+            "(4434 -> 443)."
         )
+
+    ensure_port_free(local_port, cluster=cluster)
 
     remote_host = _remote_host_for(cfg, None, cluster)
     if remote_host is None:
@@ -364,13 +365,13 @@ def start_port(cfg: Config, cluster: str, port: int, label: str = "") -> dict:
     proc = _spawn_tunnel(
         cfg,
         port=port,
-        local_port=port,
+        local_port=local_port,
         remote_host=remote_host,
         cluster=cluster,
         label=label,
         env=cfg.env or "",
     )
-    return _hand_off(proc, port, "https", label or f":{port}")
+    return _hand_off(proc, local_port, "https", label or f":{port}")
 
 
 

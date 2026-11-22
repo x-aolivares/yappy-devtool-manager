@@ -674,6 +674,11 @@ class WorkflowStartResourceRequest(BaseModel):
 class WorkflowStartPortRequest(BaseModel):
     port: int = Field(..., ge=1, le=65535)
     label: str = ""
+    local_port: int | None = Field(
+        None, ge=1, le=65535,
+        description="Puerto local donde bindea el túnel. Si se omite, usa `port` "
+        "(el mismo número que el remoto, que en el emulator es un self-loop).",
+    )
 
 
 class WorkflowStopRequest(BaseModel):

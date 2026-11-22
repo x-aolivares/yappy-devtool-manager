@@ -342,7 +342,7 @@ def api_workflow_port_start(req: WorkflowStartPortRequest, env: str = "", cluste
     cfg = _cfg(env)
     cluster = _cluster(cluster)
     try:
-        result = actions.start_port(cfg, cluster, req.port, req.label)
+        result = actions.start_port(cfg, cluster, req.port, req.label, req.local_port)
     except actions.StartRefused as exc:
         raise HTTPException(status_code=409, detail=exc.reason) from exc
     return {"ok": True, **result}

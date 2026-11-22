@@ -47,6 +47,9 @@ export class WorkflowTunnelsPage extends WorkflowSectionPage {
   readonly addPortValue = signal('');
   readonly addPortError = signal('');
 
+  /** Puerto local opcional por fila (para evitar el self-loop en el emulator). */
+  readonly localPorts = signal<Record<number, string>>({});
+
   private readonly labelTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
   /** El nombre que viaja en la URL de cada pedido. Ver `WorkflowSectionPage.section`. */
@@ -101,6 +104,22 @@ export class WorkflowTunnelsPage extends WorkflowSectionPage {
     }
   }
 
+  onLocalPortInput(row: WorkflowPortInfo, value: string): void {
+    this.localPorts.update((m) => ({ ...m, [row.port]: value }));
+  }
+
+  override async startPort(row: WorkflowPortInfo): Promise<void> {
+    const raw = (this.localPorts()[row.port] ?? '').trim();
+    const localPort = raw ? Number(raw) : undefined;
+    this.busy.set(true);
+    try {
+      await this.workflow.startPort(row.port, row.label, this.env(), this.cluster(), localPort);
+    } catch (err) {
+      this.showError('No se pudo levantar el túnel', toApiError(err).message);
+    } finally {
+      this.busy.set(false);
+    }
+  }
   onAddPortKey(event: Event): void {
     if ((event as KeyboardEvent).key === 'Enter') {
       event.preventDefault();

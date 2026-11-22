@@ -116,6 +116,15 @@
                 <button type="button" disabled>Levantando…</button>
               }
               @if (canStartRow(row.state)) {
+                <input
+                  type="number"
+                  class="port-input port-input--local"
+                  placeholder="local"
+                  [value]="localPorts()[row.port] || ''"
+                  (input)="onLocalPortInput(row, $any($event.target).value)"
+                  [disabled]="busy()"
+                  title="Puerto local opcional (para evitar el self-loop en el emulator)"
+                />
                 <button type="button" class="secondary" (click)="startPort(row)" [disabled]="busy()">
                   {{ startText(row.state) }}
                 </button>

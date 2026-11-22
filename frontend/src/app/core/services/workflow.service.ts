@@ -216,11 +216,14 @@ export class WorkflowService {
     label: string,
     env: string,
     cluster: string,
+    localPort?: number,
   ): Promise<WorkflowActionResponse> {
+    const body: { port: number; label: string; local_port?: number } = { port, label };
+    if (localPort != null) body.local_port = localPort;
     return firstValueFrom(
       this.http.post<WorkflowActionResponse>(
         `${this.api.rootUrl}/api/workflow/ports/start`,
-        { port, label },
+        body,
         { params: { env, cluster } },
       ),
     );

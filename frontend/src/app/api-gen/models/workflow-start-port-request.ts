@@ -3,5 +3,10 @@
 
 export interface WorkflowStartPortRequest {
   label?: string;
+
+  /**
+   * Puerto local donde bindea el túnel. Si se omite, usa `port` (el mismo número que el remoto, que en el emulator es un self-loop).
+   */
+  local_port?: (number | null);
   port: number;
 }

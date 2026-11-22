@@ -5137,6 +5137,20 @@
             "type": "string",
             "title": "Label",
             "default": ""
+          },
+          "local_port": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 65535.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Port",
+            "description": "Puerto local donde bindea el túnel. Si se omite, usa `port` (el mismo número que el remoto, que en el emulator es un self-loop)."
           }
         },
         "type": "object",
