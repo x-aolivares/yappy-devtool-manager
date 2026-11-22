@@ -341,6 +341,22 @@ def start_port(cfg: Config, cluster: str, port: int, label: str = "") -> dict:
         )
     ensure_port_free(port, cluster=cluster)
 
+    # En el emulator (forwarder local) un túnel de cluster es un loop consigo
+    # mismo: local y remoto son el mismo puerto en el mismo host, así que el
+    # forwarder se conecta a sí mismo y no hay forma de que conteste. Esas
+    # filas sirven para ver disponibilidad; para probar el túnel usá Kafdrop
+    # (9001 -> 9000) o Databricks (4434 -> 443), que sí tienen puertos
+    # distintos.
+    forwarder = (cfg.get("TUNNEL_FORWARDER", "ssm") or "ssm").strip().lower()
+    if forwarder == "local":
+        raise StartRefused(
+            f"El puerto {port} es un túnel consigo mismo en el emulator "
+            "(local y remoto coinciden en el mismo host): no se puede abrir "
+            "sin colisionar. Usá Kafdrop (9001 -> 9000) o Databricks "
+            "(4434 -> 443) para probar el túnel; esta fila sólo muestra "
+            "disponibilidad."
+        )
+
     remote_host = _remote_host_for(cfg, None, cluster)
     if remote_host is None:
         raise StartRefused(f"'{cluster}' no es un cluster conocido")
