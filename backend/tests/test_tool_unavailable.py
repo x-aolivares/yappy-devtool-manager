@@ -429,6 +429,7 @@ def test_the_refusal_is_chained_so_the_log_still_names_the_cause(no_aws_cli, tun
     assert isinstance(excinfo.value.__cause__, ToolUnavailable)
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="ssm con remote_host no corre en Linux (guard de plataforma)")
 def test_the_route_answers_409_with_the_reason(
     no_aws_cli, tmp_path, monkeypatch
 ):
@@ -458,6 +459,7 @@ def test_the_route_answers_409_with_the_reason(
     assert AWS_CLI_MESSAGE in response.json()["detail"]
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="ssm con remote_host no corre en Linux (guard de plataforma)")
 def test_a_db_request_is_an_error_row_not_a_dead_server(no_aws_cli, tunnel_logs, monkeypatch):
     """The other web path, and the one that fires on every DB screen.
 

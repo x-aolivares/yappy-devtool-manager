@@ -29,6 +29,7 @@ from __future__ import annotations
 import ast
 import io
 import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -436,6 +437,7 @@ def test_a_healthy_start_is_untouched(tmp_path, tracker, monkeypatch):
     assert spawned == [("server", process_tracker.OWNER_WEB)]
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="STARTUPINFO es API de Windows")
 def test_the_tracked_entry_of_a_healthy_start_is_still_written(tmp_path, tracker, monkeypatch):
     """`up()` still tracks what it spawns — the refusal path replaced nothing.
 
@@ -464,6 +466,7 @@ def test_the_tracked_entry_of_a_healthy_start_is_still_written(tmp_path, tracker
 # --- a second broker is what corrupts the storage --------------------------------
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="STARTUPINFO es API de Windows")
 def test_no_se_puede_levantar_un_segundo_broker(tmp_path, tracker, monkeypatch):
     """El motivo de la falla que se repite: dos brokers sobre el mismo storage.
 

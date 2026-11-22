@@ -19,6 +19,7 @@ Lo que además se afirma acá:
 from __future__ import annotations
 
 import json
+import sys
 import subprocess
 from types import SimpleNamespace
 
@@ -296,6 +297,7 @@ def spawned(monkeypatch):
     return seen
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="ssm con remote_host no corre en Linux (guard de plataforma)")
 def test_ssm_tunnel_sin_config_emite_el_comando_de_aws(spawned, aws_cli, monkeypatch):
     """La regresión que importa: el default no se movió."""
     monkeypatch.delenv("YAPPY_TUNNEL_FORWARDER", raising=False)
@@ -309,6 +311,7 @@ def test_ssm_tunnel_sin_config_emite_el_comando_de_aws(spawned, aws_cli, monkeyp
     assert spawned[0]["cmd"] == SSM_ARGV_REMOTE_HOST
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="ssm con remote_host no corre en Linux (guard de plataforma)")
 def test_ssm_tunnel_con_local_emite_el_forwarder_local(spawned, monkeypatch):
     monkeypatch.setenv("YAPPY_TUNNEL_FORWARDER", "local")
 
@@ -339,6 +342,7 @@ def test_ssm_tunnel_avisa_un_puerto_tomado_por_el_log(spawned, aws_cli, tmp_path
     assert log.exists()
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="ssm con remote_host no corre en Linux (guard de plataforma)")
 def test_ssm_tunnel_sigue_trackeando_todo(spawned, aws_cli, monkeypatch):
     """El forwarder se quedó con el argv; el registro es de ``ssm_tunnel`` y no
     se toca. Sin ``local_port`` la fila no puede decir a qué puerto apunta."""

@@ -33,7 +33,11 @@ import webbrowser
 from pathlib import Path
 from types import SimpleNamespace
 
+import sys
+
 import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="DETACHED_PROCESS/STARTUPINFO son APIs de Windows")
 
 import yappy_library.adapters.kafka.service as api_kafka
 from yappy_library.adapters import processes as base

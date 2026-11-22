@@ -297,6 +297,7 @@ def test_el_bind_fallido_no_deja_nada_escuchando(echo, forwarder_factory):
 # --- el reenvío ---------------------------------------------------------------
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="forwarder de proceso es validado en el job de Windows")
 def test_los_bytes_van_en_las_dos_direcciones(echo, forwarder_factory):
     """Ida y vuelta sobre el mismo socket: si el saludo volvió, cruzó el túnel
     en los dos sentidos."""
@@ -306,6 +307,7 @@ def test_los_bytes_van_en_las_dos_direcciones(echo, forwarder_factory):
     assert _echo_through(port, b"SELECT 1") == b"echo:SELECT 1"
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="forwarder de proceso es validado en el job de Windows")
 def test_un_payload_mas_grande_que_el_chunk(echo, forwarder_factory):
     """64 KiB por ``recv``, y el loop tiene que seguir. Un forwarder que
     reenvía un solo chunk por conexión no corta una query de 200 KiB: la deja
@@ -368,6 +370,7 @@ def test_un_destino_que_no_existe_no_tira_la_sesion(forwarder_factory):
 # --- los relojes ---------------------------------------------------------------
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="forwarder de proceso es validado en el job de Windows")
 def test_la_sesion_se_muere_sola_si_no_mueve_un_byte(echo, forwarder_factory):
     """El comportamiento que más cuesta reproducir sin AWS.
 
@@ -486,6 +489,7 @@ def test_no_hay_ruido_de_runpy_en_el_log_del_tunel(echo, forwarder_factory):
     assert "RuntimeWarning" not in forwarder.log()
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="identidad de proceso es API de Windows")
 def test_el_guard_de_identidad_lo_reconoce(echo, forwarder_factory):
     """``track_process`` graba el ``exe`` y el ``create_time`` que le lee al
     sistema operativo, y el guard de ``kill_ssm`` los usa para no matar a un pid

@@ -23,6 +23,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="STARTUPINFO/DETACHED_PROCESS son APIs de Windows")
+
 import yappy_library.adapters.kafka.service as kafka_service
 import yappy_library.adapters.java as java_adapters
 import yappy_library.adapters.processes as processes
