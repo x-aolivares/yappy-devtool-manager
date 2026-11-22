@@ -264,7 +264,7 @@ def _start_db(cfg: Config, port: int) -> subprocess.Popen:
     """
     if cfg.get("DB_HOST"):
         raise StartRefused(
-            f"El ambiente {cfg.env or ''} usa DB directa ({cfg.get('DB_HOST')}:{cfg.get('DB_PORT', port)}); no necesita túnel."
+            f"El ambiente {cfg.env or ''} usa DB directa ({cfg.get('DB_HOST')}:{cfg.get('DB_PORT', str(port))}); no necesita túnel."
         )
 
     from yappy_library.adapters.database.credentials import generate_token, write_local_env

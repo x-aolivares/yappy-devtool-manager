@@ -617,7 +617,7 @@ def _catalog_response(cluster: str, ports) -> WorkflowCatalogResponse:
     return WorkflowCatalogResponse(
         cluster=cluster,
         ports=[
-            WorkflowPortInfo(cluster=cluster, port=p.port, label=p.label, state="down")
+            WorkflowPortInfo(cluster=cluster, port=p.port, label=p.label, state="down", remote_state="unknown")
             for p in ports
         ],
     )

@@ -86,11 +86,15 @@ def _track(tracker, pid, *, alive=True, **overrides):
         "state": "up",
         **overrides,
     }
-    tracker.mkdir(parents=True, exist_ok=True)
-    (tracker / f"{pid}.json").write_text(json.dumps(entry))
     if not alive:
         # The OS is the authority on liveness; a fake pid is simply not there.
+        # The offset has to land in the FILE and in its NAME, because
+        # `get_tracked_processes` reads the pid back from disk and asks the OS,
+        # and `untrack_process(pid)` deletes `{pid}.json`.
         entry["pid"] = entry["pid"] + 10_000_000
+
+    tracker.mkdir(parents=True, exist_ok=True)
+    (tracker / f"{entry['pid']}.json").write_text(json.dumps(entry))
 
 
 @contextlib.contextmanager
