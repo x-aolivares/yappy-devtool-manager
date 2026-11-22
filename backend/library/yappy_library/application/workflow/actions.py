@@ -19,15 +19,12 @@ Two rules the screen depends on:
 from __future__ import annotations
 
 import os
-import socket
 import subprocess
-import time
 from dataclasses import dataclass
 
 from yappy_library.adapters import process_tracker
 from yappy_library.adapters.logging import info as log_info
 from yappy_library.adapters.processes import BaseCommand, ToolUnavailable, tunnel_log_path
-from yappy_library.adapters.kafka.service import KAFKA_AGENT_PORT
 from yappy_library.adapters.ssm.targets import CLUSTER_ALIASES, cluster_remote_host
 from yappy_library.application.workflow.models import is_foreign, is_live, state_of
 from yappy_library.application.workflow.registry import resources_for
@@ -185,60 +182,12 @@ def _remote_host_for(cfg: Config, definition, cluster: str) -> str | None:
     return cluster_remote_host(cfg, cluster) or None
 
 
-def _port_listening(port: int, timeout: float = 0.3) -> bool:
-    """Si algo acepta TCP en ``port`` ahora mismo (sin exigir un protocolo)."""
-    try:
-        with socket.create_connection(("127.0.0.1", port), timeout=timeout):
-            return True
-    except OSError:
-        return False
-
-
-def _wait_for_port_listening(port: int, timeout: float = 5.0) -> bool:
-    """Espera a que ``port`` conteste TCP; False si vence el plazo."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if _port_listening(port):
-            return True
-        time.sleep(0.2)
-    return False
-
-
 def start_resource(cfg: Config, key: str) -> dict:
     """Start one resource by registry key and hand it to a supervisor."""
     definition = _definition(cfg, key)
     port = definition.local_port
     if not port:
         raise StartRefused(f"{definition.name} no tiene puerto local")
-
-    # El túnel `bastion` reenvía a 127.0.0.1:9091 (el Kafka Agent). En AWS el
-    # agente ya vive en la instancia; en el emulator es un proceso local que no
-    # arranca con `yappy web`, así que lo levantamos acá si no está escuchando
-    # para que la fila sea usable sin pasos manuales. Si no se puede (Kafka
-    # caído, puerto tomado), el error se reporta en la fila en vez de dejar un
-    # túnel que no responde.
-    if definition.key == "bastion" and not _port_listening(KAFKA_AGENT_PORT):
-        forwarder = (cfg.get("TUNNEL_FORWARDER", "ssm") or "ssm").strip().lower()
-        # En AWS el agente vive en la instancia: no se arranca acá y la fila
-        # refleja si responde o no. En el emulator (forwarder local) el agente
-        # es un proceso de esta máquina, así que lo levantamos si falta.
-        if forwarder == "local":
-            if not _port_listening(9092):
-                raise StartRefused(
-                    "Bastion necesita el Kafka local (9092) levantado primero: "
-                    "inicialo en /workflow/kafka y volvé a intentar."
-                )
-            try:
-                start_resource(cfg, "kafka-agent")
-            except StartRefused as exc:
-                raise StartRefused(
-                    f"{definition.name} necesita el Kafka Agent en {KAFKA_AGENT_PORT}: {exc.reason}"
-                ) from exc
-            if not _wait_for_port_listening(KAFKA_AGENT_PORT):
-                raise StartRefused(
-                    f"{definition.name} necesita el Kafka Agent en {KAFKA_AGENT_PORT}, "
-                    "pero no llegó a levantar."
-                )
 
     ensure_port_free(port)
 

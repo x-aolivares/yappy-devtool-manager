@@ -170,41 +170,21 @@ def test_starting_a_resource_without_an_environment_only_knows_kafka():
     assert "bastion" in excinfo.value.reason
 
 
-def test_bastion_arranca_el_kafka_agent_en_modo_emulator(monkeypatch):
-    """En el emulator, Bastion depende del Kafka Agent (9091): si no está
-    escuchando se levanta solo, para que la fila sea usable sin pasos manuales.
-    En AWS (forwarder ssm) el agente vive en la instancia y no se toca."""
-    from yappy_library.application.workflow import actions
-
-    started_agents = []
-    monkeypatch.setattr(actions, "_port_listening", lambda port: port != 9091)
-    monkeypatch.setattr(
-        actions, "_start_kafka_agent", lambda cfg, defn: started_agents.append(defn.key) or object()
-    )
-    monkeypatch.setattr(actions, "_wait_for_port_listening", lambda port, timeout=5.0: True)
-    monkeypatch.setattr(actions, "_spawn_tunnel", lambda cfg, **kw: object())
-    monkeypatch.setattr(actions, "_hand_off", lambda proc, port, probe, label="": {"state": "starting", "port": port, "pid": 1})
-    monkeypatch.setattr(actions, "ensure_port_free", lambda port, cluster="": None)
-
+def test_el_emulator_oculta_bastion_porque_el_agente_es_local():
+    """En el emulator (forwarder local) el Kafka Agent corre en esta máquina,
+    así que el túnel Bastion (3000 -> 9091) es redundante y se oculta para no
+    dejar un túnel muerto ni la indirección del 3000."""
     cfg = FakeConfig(is_local=False, TUNNEL_FORWARDER="local")
-    result = actions.start_resource(cfg, "bastion")
+    keys = {d.key for d in resources_for(cfg)}
+    assert "bastion" not in keys
+    # El agente sigue estando disponible directo en 9091.
+    assert "kafka-agent" in keys
 
-    assert started_agents == ["kafka-agent"]
-    assert result["port"] == 3000
-
-
-def test_bastion_rechaza_si_falta_kafka_local_en_modo_emulator(monkeypatch):
-    """Sin el Kafka local (9092) el agente no sirve de nada: se rechaza con un
-    mensaje claro en vez de levantar un túnel que no responde."""
-    from yappy_library.application.workflow import actions
-
-    monkeypatch.setattr(actions, "_port_listening", lambda port: False)
-    cfg = FakeConfig(is_local=False, TUNNEL_FORWARDER="local")
-
-    with pytest.raises(StartRefused) as excinfo:
-        actions.start_resource(cfg, "bastion")
-
-    assert "9092" in excinfo.value.reason
+    # En AWS (ssm) Bastion sigue presente (es el camino al agente remoto).
+    cfg_aws = FakeConfig(is_local=False)
+    cfg_aws._values["TUNNEL_FORWARDER"] = "ssm"
+    keys_aws = {d.key for d in resources_for(cfg_aws)}
+    assert "bastion" in keys_aws
 
 
 def test_a_missing_aws_host_is_a_refusal_not_a_500(monkeypatch):

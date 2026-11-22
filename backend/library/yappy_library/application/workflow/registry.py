@@ -120,6 +120,14 @@ def resources_for(cfg: Config) -> list[ResourceDef]:
         ),
     ]
 
+    # En el emulator (forwarder local) el Kafka Agent corre en esta misma
+    # máquina, así que el túnel Bastion (3000 -> 9091) es redundante: el
+    # agente ya es alcanzable en 9091. Se oculta para no dejar un túnel
+    # muerto ni la indirección del 3000. En AWS (ssm) Bastion sigue siendo el
+    # camino al agente remoto.
+    if (cfg.get("TUNNEL_FORWARDER", "ssm") or "ssm").strip().lower() == "local":
+        definitions = [d for d in definitions if d.key != "bastion"]
+
     # Sin ambiente no hay AWS, y esa es la misma razón que en un ambiente local:
     # los cuatro recursos que quedan son túneles SSM o un token de RDS. Se mira
     # `cfg.env` además de `is_local` porque la pantalla sin ámbito —Kafka— llega
