@@ -1284,7 +1284,7 @@
           "workflow"
         ],
         "summary": "Api Workflow Port Start",
-        "description": "Abrir un túnel de cluster: esto **sí** necesita un ambiente.\n\nA diferencia del resto de los endpoints del dominio, un `env` vacío aquí no\nes \"sin ambiente\": es \"no dijiste con qué cluster-abierto querés hablar\".\nEl handler lo dice con un motivo, no con un `500`.",
+        "description": "Abrir un túnel de cluster: esto **sí** necesita un ambiente.\n\nA diferencia del resto de los endpoints del dominio, un `env` vacío aquí no\nes \"sin ambiente\": es \"no dijiste con qué cluster-abierto quieres hablar\".\nEl handler lo dice con un motivo, no con un `500`.",
         "operationId": "start_workflow_port",
         "parameters": [
           {
@@ -1823,6 +1823,340 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WorkflowCatalogResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kafka-agent/status": {
+      "get": {
+        "tags": [
+          "kafka-agent"
+        ],
+        "summary": "Estado del Kafka Agent",
+        "description": "Pregunta `GET /health` al proceso del agente. Apagado es `ok: false`, no un error.",
+        "operationId": "kafka_agent_status",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KafkaAgentStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kafka-agent/producer": {
+      "post": {
+        "tags": [
+          "kafka-agent"
+        ],
+        "summary": "Publicar un CloudEvent en un tópico",
+        "description": "Reenvía a `POST /producer` del agente. `message` (o su alias `payload`) es el cuerpo del evento.",
+        "operationId": "kafka_agent_producer",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Body"
+              },
+              "examples": {
+                "evento": {
+                  "summary": "Evento con header propio",
+                  "value": {
+                    "topic": "mi-topico",
+                    "cloud_event_id": "evt-001",
+                    "type": "com.ejemplo.evento",
+                    "headers": {
+                      "customheader": "valor1"
+                    },
+                    "message": {
+                      "key": "value",
+                      "foo": "bar"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kafka-agent/consumer": {
+      "post": {
+        "tags": [
+          "kafka-agent"
+        ],
+        "summary": "Buscar un mensaje por cloud_event_id",
+        "description": "Reenvía a `POST /consumer` del agente: busca el header `ce_id` en el tópico. Para buscar por otro header, usá `/v2/consumer`.",
+        "operationId": "kafka_agent_consumer",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Body"
+              },
+              "examples": {
+                "por-ce-id": {
+                  "summary": "Buscar por cloud event id",
+                  "value": {
+                    "cloud_event_id": "evt-001",
+                    "topic": "mi-topico",
+                    "max_polls": 3
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kafka-agent/v2/consumer": {
+      "post": {
+        "tags": [
+          "kafka-agent"
+        ],
+        "summary": "Buscar mensajes por un header key/value",
+        "description": "Reenvía a `POST /v2/consumer` del agente, la búsqueda por header del repo original.",
+        "operationId": "kafka_agent_consumer_v2",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Body"
+              },
+              "examples": {
+                "por-header": {
+                  "summary": "Buscar por header propio",
+                  "value": {
+                    "header_key": "customheader",
+                    "header_value": "valor1",
+                    "topic": "mi-topico",
+                    "max_polls": 3
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kafka-agent/listener": {
+      "post": {
+        "tags": [
+          "kafka-agent"
+        ],
+        "summary": "Primer mensaje reciente de un tópico",
+        "description": "Reenvía a `POST /listener` del agente.",
+        "operationId": "kafka_agent_listener",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Body"
+              },
+              "examples": {
+                "tópico": {
+                  "summary": "Escuchar",
+                  "value": {
+                    "topic": "mi-topico",
+                    "max_polls": 3
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kafka-agent/clean-topics": {
+      "post": {
+        "tags": [
+          "kafka-agent"
+        ],
+        "summary": "Borrar tópicos",
+        "description": "Reenvía a `POST /clean-topics` del agente. **Borra datos.** Con la lista vacía borra todos los tópicos no internos.",
+        "operationId": "kafka_agent_clean_topics",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Body"
+              },
+              "examples": {
+                "dos-tópicos": {
+                  "summary": "Borrar dos tópicos",
+                  "value": {
+                    "body": {
+                      "topics": [
+                        "mi-topico",
+                        "otro-topico"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kafka-agent/tests/run": {
+      "post": {
+        "tags": [
+          "kafka-agent"
+        ],
+        "summary": "Ejecutar la prueba local del agente",
+        "description": "Publica un evento de prueba y comprueba que aparece por `/consumer`, `/v2/consumer` y `/listener`. Es el equivalente Python de la prueba end-to-end del repo original, sin Docker ni Java.",
+        "operationId": "kafka_agent_run_tests",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KafkaAgentSmokeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KafkaAgentSmokeResponse"
                 }
               }
             }
@@ -2913,6 +3247,143 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "KafkaAgentSmokeCheck": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          },
+          "elapsed_ms": {
+            "type": "number",
+            "title": "Elapsed Ms",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "ok"
+        ],
+        "title": "KafkaAgentSmokeCheck"
+      },
+      "KafkaAgentSmokeRequest": {
+        "properties": {
+          "topic": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Topic",
+            "default": "yappy-agent-smoke"
+          },
+          "messages": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Messages",
+            "default": 1
+          },
+          "max_polls": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Max Polls",
+            "default": 3
+          },
+          "cleanup": {
+            "type": "boolean",
+            "title": "Cleanup",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "KafkaAgentSmokeRequest"
+      },
+      "KafkaAgentSmokeResponse": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "correlation_id": {
+            "type": "string",
+            "title": "Correlation Id"
+          },
+          "messages": {
+            "type": "integer",
+            "title": "Messages"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/KafkaAgentSmokeCheck"
+            },
+            "type": "array",
+            "title": "Checks"
+          },
+          "total_ms": {
+            "type": "number",
+            "title": "Total Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "topic",
+          "correlation_id",
+          "messages",
+          "checks",
+          "total_ms"
+        ],
+        "title": "KafkaAgentSmokeResponse"
+      },
+      "KafkaAgentStatusResponse": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "port": {
+            "type": "integer",
+            "title": "Port"
+          },
+          "brokers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Brokers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "port",
+          "brokers"
+        ],
+        "title": "KafkaAgentStatusResponse"
       },
       "MigrationRequest": {
         "properties": {

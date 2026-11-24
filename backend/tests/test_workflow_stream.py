@@ -337,7 +337,7 @@ def test_sin_env_el_endpoint_abre_el_stream_en_vez_de_400(bus, watchdog):
         body = sink[0]
         assert body["env"] == ""
         # Kafka es lo único que existe sin ambiente: el resto son túneles.
-        assert {row["key"] for row in body["resources"]} == {"kafka-server", "kafka-ui"}
+        assert {row["key"] for row in body["resources"]} == {"kafka-server", "kafka-ui", "kafka-agent"}
         assert body["ports"] == []
         await _close(frames, pump)
 
@@ -354,7 +354,7 @@ def test_sin_env_el_estado_tampoco_pide_un_ambiente(tmp_path, monkeypatch):
     body = routes.api_workflow_state(env="", cluster="cap")
 
     assert body["env"] == ""
-    assert {row["key"] for row in body["resources"]} == {"kafka-server", "kafka-ui"}
+    assert {row["key"] for row in body["resources"]} == {"kafka-server", "kafka-ui", "kafka-agent"}
 
 
 def test_sin_env_el_catalogo_de_puertos_no_se_ofrece(tmp_path, monkeypatch):

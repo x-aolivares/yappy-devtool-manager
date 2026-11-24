@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from yappy_library.paths import project_root
 
-from .routes import db, deployments, envs, params, sessions, workflow
+from .routes import db, deployments, envs, kafka_agent, params, sessions, workflow
 
 #: Los assets compilados por Angular.
 #:
@@ -94,6 +94,7 @@ def _create_app() -> FastAPI:
     app.include_router(sessions.router)
     app.include_router(deployments.router)
     app.include_router(workflow.router)
+    app.include_router(kafka_agent.router)
 
     @app.exception_handler(sqlite3.Error)
     async def _sqlite_error(request: Request, exc: sqlite3.Error) -> JSONResponse:

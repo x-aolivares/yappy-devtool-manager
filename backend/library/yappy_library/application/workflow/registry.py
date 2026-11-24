@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from yappy_library.adapters.kafka.service import _broker_port
 from yappy_library.adapters.kafka.service import KAFDROP_UI_PORT
+from yappy_library.adapters.kafka.service import KAFKA_AGENT_PORT
 from yappy_library.adapters.ssm.targets import (
     databricks_host as databricks_host_for,
     databricks_port as databricks_port_for,
@@ -37,7 +38,7 @@ def _kafka_server_port(cfg: Config) -> int:
 def resources_for(cfg: Config) -> list[ResourceDef]:
     """Every resource, in the order the screen groups them.
 
-    A local environment (`Config.is_local`) only gets the two Kafka rows. The
+    A local environment (`Config.is_local`) only gets the three Kafka rows. The
     other four are SSM tunnels or an Aurora token: a local environment has no
     AWS to point them at, so a button there could only fail. It is the same rule
     the params pages follow — a control that cannot work is worse than no
@@ -66,6 +67,14 @@ def resources_for(cfg: Config) -> list[ResourceDef]:
             detail="Interfaz web del broker local",
             local_port=KAFDROP_UI_PORT,
             browser_url=f"http://localhost:{KAFDROP_UI_PORT}",
+        ),
+        ResourceDef(
+            key="kafka-agent",
+            group="kafka",
+            name="Kafka Agent",
+            detail="Puente HTTP → Kafka · producer, consumer y pruebas",
+            local_port=KAFKA_AGENT_PORT,
+            probe="http",
         ),
         ResourceDef(
             key="kafdrop-remote",

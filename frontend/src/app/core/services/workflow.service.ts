@@ -54,6 +54,37 @@ export interface LogTail {
   alive: boolean;
 }
 
+/** Estado del Kafka Agent: apagado es `ok: false`, no un error de red. */
+export interface KafkaAgentStatus {
+  ok: boolean;
+  port: number;
+  brokers: string[];
+}
+
+export interface KafkaAgentSmokeRequest {
+  topic: string;
+  messages: number;
+  max_polls: number;
+  cleanup: boolean;
+}
+
+export interface KafkaAgentSmokeCheck {
+  name: string;
+  ok: boolean;
+  status: number | null;
+  detail: string;
+  elapsed_ms: number;
+}
+
+export interface KafkaAgentSmokeReport {
+  ok: boolean;
+  topic: string;
+  correlation_id: string;
+  messages: number;
+  checks: KafkaAgentSmokeCheck[];
+  total_ms: number;
+}
+
 /**
  * Las dos lecturas de las pantallas de Workflow, y los cinco endpoints con botón.
  *
@@ -247,6 +278,48 @@ export class WorkflowService {
         `${this.api.rootUrl}/api/workflow/kafka/clean`,
         {},
       ),
+    );
+  }
+
+  /**
+   * El Kafka Agent: las mismas rutas del repo original, pero detrás de nuestra API.
+   *
+   * No usan el cliente generado por lo mismo que los start/stop: los bodies son
+   * diccionarios libres —headers y payload del evento— y una firma generada para
+   * `dict[str, Any]` no aporta nada acá. El status y el informe de pruebas sí están
+   * tipados porque son contratos cerrados.
+   */
+  agentStatus(): Promise<KafkaAgentStatus> {
+    return firstValueFrom(this.http.get<KafkaAgentStatus>(`${this.api.rootUrl}/api/kafka-agent/status`));
+  }
+
+  kafkaAgentProducer(body: Record<string, unknown>): Promise<unknown> {
+    return this.agentPost('producer', body);
+  }
+
+  kafkaAgentConsumer(body: Record<string, unknown>): Promise<unknown> {
+    return this.agentPost('consumer', body);
+  }
+
+  kafkaAgentConsumerV2(body: Record<string, unknown>): Promise<unknown> {
+    return this.agentPost('v2/consumer', body);
+  }
+
+  kafkaAgentListener(body: Record<string, unknown>): Promise<unknown> {
+    return this.agentPost('listener', body);
+  }
+
+  kafkaAgentCleanTopics(body: Record<string, unknown>): Promise<unknown> {
+    return this.agentPost('clean-topics', body);
+  }
+
+  runKafkaAgentTests(body: KafkaAgentSmokeRequest): Promise<KafkaAgentSmokeReport> {
+    return this.agentPost('tests/run', body) as Promise<KafkaAgentSmokeReport>;
+  }
+
+  private agentPost(path: string, body: object): Promise<unknown> {
+    return firstValueFrom(
+      this.http.post<unknown>(`${this.api.rootUrl}/api/kafka-agent/${path}`, body),
     );
   }
 

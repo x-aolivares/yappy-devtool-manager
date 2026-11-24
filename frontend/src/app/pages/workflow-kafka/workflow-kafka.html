@@ -1,6 +1,6 @@
 <app-page-header
   title="Kafka local"
-  description="El broker KRaft y su UI, corriendo en el puerto local. El estado sale del tracker, así que también aparece el que levantaste desde la terminal."
+  description="El broker KRaft, su UI y el Kafka Agent, corriendo en puertos locales. El estado sale del tracker, así que también aparece lo que levantaste desde la terminal."
 >
 </app-page-header>
 
@@ -37,6 +37,19 @@
     (fix)="askFix($event)"
   />
 </section>
+
+<!--
+  El agente es un recurso del tracker (la tarjeta de arriba) y además un puente
+  HTTP con cinco operaciones. El panel de abajo es la segunda mitad: operar y
+  probar contra el broker local, sin Docker.
+-->
+<app-kafka-agent-panel
+  [row]="agentRow()"
+  [busy]="busy()"
+  (start)="startAgent()"
+  (stop)="stopAgent()"
+  (restart)="restartAgent()"
+/>
 
 <app-workflow-summary
   [text]="summary()"

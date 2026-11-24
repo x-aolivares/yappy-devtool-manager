@@ -282,7 +282,10 @@ yappy kafka up server -d
 # 5. Iniciar Kafdrop
 yappy kafka up ui -d
 
-# 6. Levantar kafka-agents (pendiente integracion)
+# 6. Levantar el Kafka Agent (puerto 9091)
+# Desde la web: Workflow → Kafka local → panel «Kafka Agent» → Levantar.
+# Desde la terminal:
+python -m yappy_api.kafka_agent_server
 
 # 7. Al terminar, limpiar
 yappy ssm kill
@@ -297,3 +300,4 @@ yappy kafka down
 | `yappy ssm connect ... -d` | `yappy ssm kill` |
 | `yappy kafka up server -d` | `yappy kafka down` |
 | `yappy kafka up ui -d` | `yappy kafka down` |
+| `python -m yappy_api.kafka_agent_server` | «Parar» en el panel «Kafka Agent» de la web |

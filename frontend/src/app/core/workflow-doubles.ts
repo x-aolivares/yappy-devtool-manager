@@ -102,6 +102,22 @@ export function kafkaArriba(over: Partial<WorkflowResourceInfo> = {}): WorkflowR
   });
 }
 
+/** La fila del Kafka Agent: el mismo recurso, con el puerto 9091. */
+export function kafkaAgente(over: Partial<WorkflowResourceInfo> = {}): WorkflowResourceInfo {
+  return recurso({
+    key: 'kafka-agent',
+    group: 'kafka',
+    name: 'Kafka Agent',
+    detail: 'Puente HTTP → Kafka · producer, consumer y pruebas',
+    local_port: 9091,
+    remote_port: 9091,
+    state: 'up',
+    pid: 31091,
+    log_file: 'kafka-agent-server-31091.log',
+    ...over,
+  });
+}
+
 /** La respuesta del endpoint de estado, con las tres listas vacías. */
 export function estado(over: Partial<WorkflowStateResponse> = {}): WorkflowStateResponse {
   return {
@@ -184,6 +200,12 @@ export interface WorkflowCalls {
   /** Cuántas veces se pidió limpiar el storage de Kafka, y si falló. */
   kafkaCleanCalls: number;
   kafkaCleanError: Error | null;
+  /** Operaciones del Kafka Agent: ruta y body de cada una, en orden. */
+  agentCalls: Array<{ path: string; body: Record<string, unknown> }>;
+  /** Error con el que responde la próxima operación del agente. */
+  agentError: Error | null;
+  /** Informe que devuelve `tests/run`. */
+  agentReport: unknown;
   addedPorts: Array<{ port: number; cluster: string }>;
   renames: Array<{ cluster: string; port: number; label: string }>;
   removed: Array<{ cluster: string; port: number }>;
@@ -219,6 +241,9 @@ export function callsVacios(): WorkflowCalls {
     stopAllCalls: [],
     kafkaCleanCalls: 0,
     kafkaCleanError: null,
+    agentCalls: [],
+    agentError: null,
+    agentReport: null,
     addedPorts: [],
     renames: [],
     removed: [],
@@ -391,6 +416,46 @@ export function workflowProviders(calls: WorkflowCalls): Provider[] {
           return calls.kafkaCleanError
             ? Promise.reject(calls.kafkaCleanError)
             : Promise.resolve({ ok: true, pid: 0, port: 0, state: 'down', label: 'Kafka storage' });
+        },
+        agentStatus: () => Promise.resolve({ ok: true, port: 9091, brokers: ['127.0.0.1:9092'] }),
+        kafkaAgentProducer: (body: Record<string, unknown>) => {
+          calls.agentCalls.push({ path: 'producer', body });
+          return calls.agentError
+            ? Promise.reject(calls.agentError)
+            : Promise.resolve({ status: { code: 200, message: 'Publicacion exitosa' }, data: body });
+        },
+        kafkaAgentConsumer: (body: Record<string, unknown>) => {
+          calls.agentCalls.push({ path: 'consumer', body });
+          return calls.agentError
+            ? Promise.reject(calls.agentError)
+            : Promise.resolve({ data: { key: '', value: {}, headers: {} } });
+        },
+        kafkaAgentConsumerV2: (body: Record<string, unknown>) => {
+          calls.agentCalls.push({ path: 'v2/consumer', body });
+          return calls.agentError
+            ? Promise.reject(calls.agentError)
+            : Promise.resolve({ data: [{ key: '', value: {}, headers: {} }] });
+        },
+        kafkaAgentListener: (body: Record<string, unknown>) => {
+          calls.agentCalls.push({ path: 'listener', body });
+          return calls.agentError
+            ? Promise.reject(calls.agentError)
+            : Promise.resolve({ data: { key: '', value: {}, headers: {} } });
+        },
+        kafkaAgentCleanTopics: (body: Record<string, unknown>) => {
+          calls.agentCalls.push({ path: 'clean-topics', body });
+          return calls.agentError
+            ? Promise.reject(calls.agentError)
+            : Promise.resolve({ status: { code: 200, message: 'Tópicos eliminados' }, data: { topics_deleted: [] } });
+        },
+        runKafkaAgentTests: (body: Record<string, unknown>) => {
+          calls.agentCalls.push({ path: 'tests/run', body });
+          return calls.agentError
+            ? Promise.reject(calls.agentError)
+            : Promise.resolve(calls.agentReport ?? {
+                ok: true, topic: body['topic'], correlation_id: 'evt-test', messages: body['messages'],
+                checks: [], total_ms: 1.2,
+              });
         },
         addPort: (port: number, _label: string, cluster: string) => {
           calls.addedPorts.push({ port, cluster });

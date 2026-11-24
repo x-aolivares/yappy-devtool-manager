@@ -720,3 +720,33 @@ class WorkflowCatalogRenameRequest(BaseModel):
 class WorkflowCatalogResponse(BaseModel):
     cluster: str
     ports: list[WorkflowPortInfo]
+
+
+class KafkaAgentStatusResponse(BaseModel):
+    ok: bool
+    port: int
+    brokers: list[str]
+
+
+class KafkaAgentSmokeRequest(BaseModel):
+    topic: str = Field(default="yappy-agent-smoke", min_length=1)
+    messages: int = Field(default=1, ge=1, le=100)
+    max_polls: int = Field(default=3, ge=1, le=20)
+    cleanup: bool = False
+
+
+class KafkaAgentSmokeCheck(BaseModel):
+    name: str
+    ok: bool
+    status: int | None = None
+    detail: str = ""
+    elapsed_ms: float = 0.0
+
+
+class KafkaAgentSmokeResponse(BaseModel):
+    ok: bool
+    topic: str
+    correlation_id: str
+    messages: int
+    checks: list[KafkaAgentSmokeCheck]
+    total_ms: float
