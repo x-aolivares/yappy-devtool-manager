@@ -155,3 +155,14 @@ export function canShowLogs(state: string): boolean {
 export function canStop(state: string, foreign: boolean): boolean {
   return state === 'up' && !foreign;
 }
+
+/**
+ * Si la fila ofrece "Reiniciar".
+ *
+ * Mismo criterio que parar: sólo tiene sentido sobre algo que está arriba y que
+ * es nuestro. Un proceso ajeno no se toca desde la fila, y uno que no está arriba
+ * no tiene qué reiniciar — para eso está "Levantar" / "Reintentar".
+ */
+export function canRestart(state: string, foreign: boolean): boolean {
+  return state === 'up' && !foreign;
+}

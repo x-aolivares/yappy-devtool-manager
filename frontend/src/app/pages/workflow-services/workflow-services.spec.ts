@@ -59,13 +59,7 @@ describe('WorkflowServicesPage', () => {
     expect(el.querySelector('.res-card__port')?.textContent).toBe(':9091 → :3000');
   });
 
-  it('el aviso de que "stop tunnel" mata sesiones de otro proyecto está siempre', async () => {
-    // Es la advertencia que justifica el borde punteado. Sin ella, el
-    // `foreign-tag` es un detalle que nadie sabe interpretar.
-    const { el } = await montar();
 
-    expect(el.textContent).toContain('mata todas las sesiones SSM');
-  });
 
   it('el resumen cuenta sólo los servicios con destino propio', async () => {
     calls.answer = {

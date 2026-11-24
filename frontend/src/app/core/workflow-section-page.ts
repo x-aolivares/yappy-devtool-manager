@@ -33,7 +33,7 @@ import {
 import { toApiError } from './services/api-error';
 import { awsEnvironments } from './format';
 import {
-  canOpen, canShowLogs, canStart, canStop, resourceMeta, startLabel,
+  canOpen, canRestart, canShowLogs, canStart, canStop, resourceMeta, startLabel,
   stateAnnouncement, stateBadge, stateBadgeClass,
 } from './resources';
 
@@ -501,10 +501,16 @@ export abstract class WorkflowSectionPage {
   protected readonly canOpenRow = canOpen;
   protected readonly canShowLogsRow = canShowLogs;
   protected readonly canStopRow = canStop;
+  protected readonly canRestartRow = canRestart;
 
   /** `canStopRow` con dos argumentos; en el template se lee mejor así. */
   protected canStop(row: WorkflowRow): boolean {
     return canStop(row.state, !!row.foreign);
+  }
+
+  /** `canRestartRow` con dos argumentos; en el template se lee mejor así. */
+  protected canRestart(row: WorkflowRow): boolean {
+    return canRestart(row.state, !!row.foreign);
   }
 }
 

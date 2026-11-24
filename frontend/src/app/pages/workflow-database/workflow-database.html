@@ -29,12 +29,6 @@
   </div>
 
   @if (isLocal()) {
-    <p class="callout warn">
-      <strong>{{ env() }} es un ambiente local.</strong>
-      La base se alcanza directo por TCP: no hay túnel SSM ni token de RDS que
-      levantar. Migrar datos, Ejecutar SQL y Sincronizar schema usan
-      <code>DB_HOST</code> de este ambiente.
-    </p>
   } @else {
     <app-resource-cards
       [rows]="rows()"

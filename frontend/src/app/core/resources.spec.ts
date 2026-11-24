@@ -8,6 +8,7 @@
  */
 import {
   canOpen,
+  canRestart,
   canShowLogs,
   canStart,
   resourceMeta,
@@ -53,6 +54,15 @@ describe('estados de un recurso', () => {
       // Un túnel caído es justo el caso en que el log explica qué pasó.
       expect(canShowLogs('dead')).toBe(false);
       expect(canShowLogs('down')).toBe(false);
+    });
+
+    it('reiniciar sólo se ofrece cuando está arriba y es nuestro', () => {
+      expect(canRestart('up', false)).toBe(true);
+      expect(canRestart('up', true)).toBe(false);
+      expect(canRestart('starting', false)).toBe(false);
+      expect(canRestart('down', false)).toBe(false);
+      expect(canRestart('dead', false)).toBe(false);
+      expect(canRestart('error', false)).toBe(false);
     });
   });
 

@@ -69,6 +69,16 @@ export class WorkflowTunnelsPage extends WorkflowSectionPage {
     this.ports().some((p) => p.state === 'down'),
   );
 
+  /** Si hay algún túnel arriba que se pueda reiniciar. */
+  readonly hasRestartable = computed<boolean>(() =>
+    this.ports().some((p) => this.canRestart(p)),
+  );
+
+  /** Si hay algún túnel arriba que se pueda parar desde esta vista. */
+  readonly hasStoppable = computed<boolean>(() =>
+    this.ports().some((p) => this.canStop(p)),
+  );
+
   constructor() {
     super();
     // Los timers del debounce son de esta pantalla y no de la base: el catálogo es
@@ -133,6 +143,114 @@ export class WorkflowTunnelsPage extends WorkflowSectionPage {
       }
     }
     this.busy.set(false);
+  }
+
+  /**
+   * Reinicia un túnel: lo para y lo vuelve a levantar con el mismo puerto.
+   *
+   * El stop es inmediato en la API pero el proceso tarda en soltar el puerto;
+   * por eso se espera a que la fila vuelva a estar levantable antes de arrancar
+   * de nuevo. Sin esa espera, el start choca con el puerto que todavía tiene
+   * el proceso anterior.
+   */
+  async restartPort(row: WorkflowPortInfo): Promise<void> {
+    if (!this.canRestart(row) || !row.pid) return;
+    this.busy.set(true);
+    try {
+      await this.workflow.stop(row.pid);
+    } catch (err) {
+      this.showError('No se pudo reiniciar', toApiError(err).message);
+      this.busy.set(false);
+      return;
+    }
+    const ready = await this.waitForPortStartable(row.port);
+    if (!ready) {
+      this.showError(
+        'No se pudo reiniciar',
+        `El puerto ${row.port} no se liberó a tiempo para volver a levantarlo.`,
+      );
+      this.busy.set(false);
+      return;
+    }
+    try {
+      await this.workflow.startPort(row.port, row.label, this.env(), this.cluster());
+    } catch (err) {
+      this.showError('No se pudo reiniciar', toApiError(err).message);
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /** Reinicia todos los túneles que están arriba en este cluster/ambiente. */
+  async restartAllUp(): Promise<void> {
+    const pending = this.ports().filter((p) => this.canRestart(p) && p.pid);
+    if (!pending.length) return;
+    this.busy.set(true);
+    for (const row of pending) {
+      try {
+        await this.workflow.stop(row.pid!);
+      } catch (err) {
+        this.showError('No se pudo reiniciar', toApiError(err).message);
+        break;
+      }
+      const ready = await this.waitForPortStartable(row.port);
+      if (!ready) {
+        this.showError(
+          'No se pudo reiniciar',
+          `El puerto ${row.port} no se liberó a tiempo para volver a levantarlo.`,
+        );
+        break;
+      }
+      try {
+        await this.workflow.startPort(row.port, row.label, this.env(), this.cluster());
+      } catch (err) {
+        this.showError('No se pudo reiniciar', toApiError(err).message);
+        break;
+      }
+    }
+    this.busy.set(false);
+  }
+
+  /** Apaga todos los túneles que están arriba en esta vista/cluster/ambiente. */
+  async stopAllUp(): Promise<void> {
+    const pending = this.ports().filter((p) => this.canStop(p) && p.pid);
+    if (!pending.length) return;
+    this.busy.set(true);
+    for (const row of pending) {
+      try {
+        await this.workflow.stop(row.pid!);
+      } catch (err) {
+        this.showError('No se pudo parar', toApiError(err).message);
+        break;
+      }
+    }
+    this.busy.set(false);
+  }
+
+  /**
+   * Espera a que una fila del catálogo vuelva a ser levantable.
+   *
+   * Después de un stop el proceso tarda en morir y soltar el puerto; el stream
+   * actualiza el estado cuando eso pasa. Si no llega a tiempo, devolvemos false
+   * para no arrancar encima de un puerto todavía tomado.
+   */
+  private waitForPortStartable(port: number, timeoutMs = 15000): Promise<boolean> {
+    const started = Date.now();
+    return new Promise((resolve) => {
+      const check = () => {
+        const row = this.ports().find((p) => p.port === port);
+        if (!row || this.canStartRow(row.state)) {
+          resolve(true);
+          return;
+        }
+        if (Date.now() - started >= timeoutMs) {
+          resolve(false);
+          return;
+        }
+        setTimeout(check, 250);
+      };
+      check();
+    });
   }
 
   /**

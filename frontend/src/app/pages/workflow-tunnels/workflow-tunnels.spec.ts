@@ -87,7 +87,7 @@ describe('WorkflowTunnelsPage', () => {
       expect(labels.filter((l) => l === 'Levantar')).toHaveLength(0);
     });
 
-    it('una fila arriba ofrece parar y abrir, y no levantar', async () => {
+    it('una fila arriba ofrece parar, reiniciar y abrir, y no levantar', async () => {
       calls.answer = {
         ...calls.answer,
         ports: [fila({ state: 'up', pid: 4242, browser_url: 'https://localhost:8402/swagger-ui/index.html' })],
@@ -96,6 +96,7 @@ describe('WorkflowTunnelsPage', () => {
 
       const row = filaDeTabla(el);
       expect(botones(row)).toContain('Parar');
+      expect(botones(row)).toContain('Reiniciar');
       expect(botones(row).filter((l) => l === 'Levantar')).toHaveLength(0);
       expect(row.querySelector('a[href*="swagger-ui"]')).not.toBeNull();
     });
@@ -120,13 +121,15 @@ describe('WorkflowTunnelsPage', () => {
   // --- los procesos ajenos --------------------------------------------------
 
   describe('los procesos ajenos', () => {
-    it('una fila ajena NO tiene botón de parar', async () => {
+    it('una fila ajena NO tiene botón de parar ni de reiniciar', async () => {
       // El botón de una fila nunca alcanza un proceso que no es de la web: es la
       // única barrera entre un clic y el túnel de otro proyecto.
       calls.answer = { ...calls.answer, ports: [fila({ foreign: true, state: 'up', pid: 99 })] };
       const { el } = await montar();
 
-      expect(botones(filaDeTabla(el))).not.toContain('Parar');
+      const labels = botones(filaDeTabla(el));
+      expect(labels).not.toContain('Parar');
+      expect(labels).not.toContain('Reiniciar');
     });
 
     it('parar desde la fila manda el pid sin allow_foreign', async () => {
@@ -338,6 +341,194 @@ describe('WorkflowTunnelsPage', () => {
       await new Promise((r) => setTimeout(r, 0));
 
       expect(calls.streams.at(-1)?.scope).toEqual({ env: 'qa', cluster: 'cap' });
+    });
+  });
+
+  // --- reiniciar y apagar ---------------------------------------------------
+
+  describe('reiniciar y apagar en la vista', () => {
+    it('reiniciar una fila arriba la para y la vuelve a levantar en el mismo puerto', async () => {
+      calls.answer = { ...calls.answer, ports: [fila({ port: 8402, label: 'core-p2m-m2p', state: 'up', pid: 77 })] };
+      const { comp } = await montar();
+
+      const reinicio = comp.restartPort(fila({ port: 8402, label: 'core-p2m-m2p', state: 'up', pid: 77 }));
+      await new Promise((r) => setTimeout(r, 0));
+      emiteEstado(calls, { ports: [fila({ port: 8402, label: 'core-p2m-m2p', state: 'down', pid: null })] });
+      await new Promise((r) => setTimeout(r, 300));
+      await reinicio;
+
+      expect(calls.stopped).toEqual([{ pid: 77, allowForeign: false }]);
+      expect(calls.startedPorts).toEqual([{ port: 8402, label: 'core-p2m-m2p', cluster: 'cap' }]);
+    });
+
+    it('"Reiniciar todos" sólo alcanza los túneles arriba de esta vista', async () => {
+      calls.answer = {
+        ...calls.answer,
+        ports: [
+          fila({ port: 8402, state: 'up', pid: 10 }),
+          fila({ port: 8403, label: 'commerce', state: 'down' }),
+          fila({ port: 8404, label: 'other', state: 'up', pid: 11, foreign: true }),
+        ],
+      };
+      const { comp } = await montar();
+
+      const reinicio = comp.restartAllUp();
+      await new Promise((r) => setTimeout(r, 0));
+      emiteEstado(calls, {
+        ports: [
+          fila({ port: 8402, state: 'down', pid: null }),
+          fila({ port: 8403, label: 'commerce', state: 'down' }),
+          fila({ port: 8404, label: 'other', state: 'up', pid: 11, foreign: true }),
+        ],
+      });
+      await new Promise((r) => setTimeout(r, 300));
+      await reinicio;
+
+      expect(calls.stopped).toEqual([{ pid: 10, allowForeign: false }]);
+      expect(calls.startedPorts).toEqual([{ port: 8402, label: 'core-p2m-m2p', cluster: 'cap' }]);
+    });
+
+    it('"Apagar todos" para sólo los túneles arriba de este cluster/vista', async () => {
+      calls.answer = {
+        ...calls.answer,
+        ports: [
+          fila({ port: 8402, state: 'up', pid: 10 }),
+          fila({ port: 8403, label: 'commerce', state: 'down' }),
+          fila({ port: 8404, label: 'other', state: 'up', pid: 11, foreign: true }),
+        ],
+      };
+      const { comp } = await montar();
+
+      await comp.stopAllUp();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(calls.stopped).toEqual([{ pid: 10, allowForeign: false }]);
+    });
+
+    it('"Apagar todos" no toca recursos de otras secciones', async () => {
+      calls.answer = {
+        ...calls.answer,
+        ports: [fila({ port: 8402, state: 'up', pid: 10 })],
+        resources: [recurso({ key: 'db', group: 'db', name: 'Tunnel Aurora', state: 'up', pid: 97 })],
+      };
+      const { comp } = await montar();
+
+      await comp.stopAllUp();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(calls.stopped).toEqual([{ pid: 10, allowForeign: false }]);
+    });
+
+    it('reiniciar respeta el ambiente y cluster seleccionados', async () => {
+      calls.answer = { ...calls.answer, ports: [fila({ port: 8402, state: 'up', pid: 77, cluster: 'cap' })] };
+      const { comp } = await montar();
+      comp.env.set('qa');
+      comp.cluster.set('cap2');
+      await new Promise((r) => setTimeout(r, 0));
+
+      const reinicio = comp.restartPort(fila({ port: 8402, label: 'core-p2m-m2p', state: 'up', pid: 77 }));
+      await new Promise((r) => setTimeout(r, 0));
+      emiteEstado(calls, { ports: [fila({ port: 8402, label: 'core-p2m-m2p', state: 'down', pid: null })] });
+      await new Promise((r) => setTimeout(r, 300));
+      await reinicio;
+
+      expect(calls.startedPorts).toEqual([{ port: 8402, label: 'core-p2m-m2p', cluster: 'cap2' }]);
+    });
+
+    it('reiniciar no hace nada si la fila no es reiniciable', async () => {
+      calls.answer = { ...calls.answer, ports: [fila({ port: 8402, state: 'down', pid: null })] };
+      const { comp } = await montar();
+
+      await comp.restartPort(fila({ port: 8402, state: 'down', pid: null }));
+
+      expect(calls.stopped).toHaveLength(0);
+      expect(calls.startedPorts).toHaveLength(0);
+    });
+
+    it('si parar falla al reiniciar, muestra error y no levanta de nuevo', async () => {
+      calls.answer = { ...calls.answer, ports: [fila({ port: 8402, state: 'up', pid: 77 })] };
+      const { comp } = await montar();
+      const originalStop = (comp as any).workflow.stop.bind((comp as any).workflow);
+      (comp as any).workflow.stop = async () => { throw new Error('boom'); };
+
+      await comp.restartPort(fila({ port: 8402, state: 'up', pid: 77 }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(comp.notice()?.title).toBe('No se pudo reiniciar');
+      expect(calls.startedPorts).toHaveLength(0);
+      (comp as any).workflow.stop = originalStop;
+    });
+
+    it('si el puerto no se libera a tiempo, reiniciar informa el error', async () => {
+      calls.answer = { ...calls.answer, ports: [fila({ port: 8402, state: 'up', pid: 77 })] };
+      const { comp } = await montar();
+      (comp as any).waitForPortStartable = async () => false;
+
+      await comp.restartPort(fila({ port: 8402, state: 'up', pid: 77 }));
+
+      expect(comp.notice()?.title).toBe('No se pudo reiniciar');
+      expect(comp.notice()?.paragraphs.join(' ')).toContain('8402');
+      expect(calls.startedPorts).toHaveLength(0);
+    });
+
+    it('waitForPortStartable devuelve false si la fila no se libera antes del timeout', async () => {
+      calls.answer = { ...calls.answer, ports: [fila({ port: 8402, state: 'up', pid: 77 })] };
+      const { comp } = await montar();
+
+      const ready = await (comp as any).waitForPortStartable(8402, 30);
+
+      expect(ready).toBe(false);
+    });
+
+    it('si levantar falla después de parar, reiniciar muestra error y deja busy en false', async () => {
+      calls.answer = { ...calls.answer, ports: [fila({ port: 8402, state: 'up', pid: 77 })] };
+      calls.failStart = () => new Error('no levantó');
+      const { comp } = await montar();
+      (comp as any).waitForPortStartable = async () => true;
+
+      await comp.restartPort(fila({ port: 8402, label: 'core-p2m-m2p', state: 'up', pid: 77 }));
+
+      expect(comp.notice()?.title).toBe('No se pudo reiniciar');
+      expect(comp.busy()).toBe(false);
+    });
+
+    it('"Reiniciar todos" no hace nada si no hay túneles reiniciables', async () => {
+      calls.answer = { ...calls.answer, ports: [fila({ port: 8402, state: 'down' })] };
+      const { comp } = await montar();
+
+      await comp.restartAllUp();
+
+      expect(calls.stopped).toHaveLength(0);
+      expect(calls.startedPorts).toHaveLength(0);
+    });
+
+    it('"Apagar todos" no hace nada si no hay túneles parables', async () => {
+      calls.answer = { ...calls.answer, ports: [fila({ port: 8402, state: 'down' })] };
+      const { comp } = await montar();
+
+      await comp.stopAllUp();
+
+      expect(calls.stopped).toHaveLength(0);
+    });
+
+    it('los botones bulk sólo se habilitan cuando hay filas elegibles en esta vista', async () => {
+      calls.answer = {
+        ...calls.answer,
+        ports: [
+          fila({ port: 8402, state: 'up', pid: 10 }),
+          fila({ port: 8403, state: 'down' }),
+        ],
+      };
+      const { comp } = await montar();
+
+      expect(comp.hasRestartable()).toBe(true);
+      expect(comp.hasStoppable()).toBe(true);
+      expect(comp.hasDown()).toBe(true);
+
+      calls.answer = { ...calls.answer, ports: [fila({ port: 8402, state: 'down' })] };
+      const { comp: comp2 } = await montar();
+      expect(comp2.hasRestartable()).toBe(false);
+      expect(comp2.hasStoppable()).toBe(false);
     });
   });
 

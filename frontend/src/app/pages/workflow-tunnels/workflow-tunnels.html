@@ -29,12 +29,6 @@
   </div>
 
   @if (isLocal()) {
-    <p class="callout warn">
-      <strong>{{ env() }} es un ambiente local.</strong>
-      Los túneles del catálogo son sesiones SSM contra el cluster, y este ambiente
-      no tiene AWS: se conecta directo por TCP. Cambiá a un ambiente remoto para
-      ver el catálogo y levantarlos.
-    </p>
   } @else {
   <div class="columns">
     <div class="field">
@@ -103,6 +97,9 @@
               }
               @if (canStop(row)) {
                 <button type="button" class="danger-tinted" (click)="stopOne(row)" [disabled]="busy()">Parar</button>
+              }
+              @if (canRestart(row)) {
+                <button type="button" class="secondary" (click)="restartPort(row)" [disabled]="busy()">Reiniciar</button>
               }
               @if (row.state === 'starting') {
                 <button type="button" disabled>Levantando…</button>
@@ -177,17 +174,26 @@
     >
       Levantar todos
     </button>
+    <button
+      type="button"
+      class="secondary"
+      (click)="restartAllUp()"
+      [disabled]="busy() || !hasRestartable()"
+    >
+      Reiniciar todos
+    </button>
+    <button
+      type="button"
+      class="danger-tinted"
+      (click)="stopAllUp()"
+      [disabled]="busy() || !hasStoppable()"
+    >
+      Apagar todos
+    </button>
   </div>
   @if (addPortError()) {
     <p id="wf-add-err" class="muted hint-error">{{ addPortError() }}</p>
   }
-
-  <p class="callout warn">
-    <strong>El túnel no levanta cuando el puerto bindea.</strong>
-    <code>session-manager-plugin</code> abre el puerto local apenas arranca y puede seguir aceptando
-    conexiones que no producen un byte. Por eso la fila queda en <em>levantando…</em> hasta un
-    readiness check de verdad, y no sólo hasta que el proceso existe.
-  </p>
   }
 </section>
 
