@@ -115,6 +115,23 @@ def detached_popen_kwargs() -> dict:
     return {"start_new_session": True}
 
 
+def hidden_console_popen_kwargs() -> dict:
+    """The ``Popen`` keywords for a background child with a hidden console.
+
+    ``DETACHED_PROCESS`` is not enough for the SSM plugin: a console program
+    started with no console at all allocates one on its own, and that new
+    console is *visible* — the user sees a terminal pop up for every tunnel.
+    Giving the child its own hidden console keeps it out of uvicorn's console
+    (so a ``CTRL_C`` cannot reach the server) while still giving the plugin a
+    console, so it behaves as it does when started from a terminal.
+
+    ``stdin`` is deliberately ``DEVNULL``: the child owns a different console,
+    so inheriting our input handle would make it read from the web server's
+    terminal instead of its own.
+    """
+    return {**own_console_popen_kwargs(), "stdin": subprocess.DEVNULL}
+
+
 def own_console_popen_kwargs() -> dict:
     """The ``Popen`` keywords for a child with **its own console**, hidden.
 
@@ -529,6 +546,7 @@ class BaseCommand:
         stderr=None,
         *,
         detached: bool = False,
+        hidden_console: bool = False,
     ) -> subprocess.Popen:
         """Spawn ``cmd``, or say the binary is not there.
 
@@ -540,16 +558,18 @@ class BaseCommand:
         reinstall in progress, an AppLocker refusal — so it is rare, but it is
         not rarer than the thing this class was written for.
 
-        ``detached`` is the difference between a tunnel the developer opened in
-        their terminal —where ``Ctrl+C`` should reach it— and one the web opened.
-        A child that inherits our console is in the same group as uvicorn, and a
-        ``CTRL_C_EVENT`` aimed at *its* console goes to every process attached to
-        it: pressing "Parar" on a web tunnel was also shutting the server down.
-        The web asks for detachment; the CLI keeps the old behaviour.
+        ``hidden_console`` is what the web asks for. The child gets its own,
+        invisible console: it is outside uvicorn's console —so a ``CTRL_C``
+        cannot reach the server— but the SSM plugin still has a console and does
+        not pop a visible terminal window. ``detached`` remains the harsher
+        "no console at all" mode; it is kept for callers that need it, and it is
+        not what a tunnel wants (see :func:`hidden_console_popen_kwargs`).
         """
         log_command(" ".join(cmd))
         kwargs: dict[str, Any] = {"stdout": stdout, "stderr": stderr}
-        if detached:
+        if hidden_console:
+            kwargs.update(hidden_console_popen_kwargs())
+        elif detached:
             kwargs.update(detached_popen_kwargs())
         try:
             return subprocess.Popen(cmd, **kwargs)
@@ -571,6 +591,7 @@ class BaseCommand:
         label: str = "",
         owner: str = process_tracker.OWNER_CLI,
         detached: bool = False,
+        hidden_console: bool = False,
     ) -> subprocess.Popen:
         """Start one ``ssm start-session`` forwarding ``port`` to ``local_port``.
 
@@ -579,9 +600,9 @@ class BaseCommand:
         to — see :mod:`yappy_library.adapters.process_tracker`, which is the
         whole reason they are here.
 
-        ``detached`` is passed by the web caller only. Without it the tunnel
-        shares uvicorn's console, and stopping it sends the ``Ctrl+C`` that
-        closes the server as well (see :meth:`popen`).
+        ``hidden_console`` is passed by the web caller only. Without it the
+        tunnel shares uvicorn's console, and stopping it sends the ``Ctrl+C``
+        that closes the server as well (see :meth:`popen`).
         """
         if remote_host and sys.platform == "linux":
             # Was `sys.exit(1)`, bare, with nothing written anywhere. On Linux,
@@ -633,7 +654,8 @@ class BaseCommand:
                 "--parameters", json.dumps(params),
                 "--profile", profile,
                 "--region", region,
-            ], stdout=sink, stderr=sink, detached=detached)
+            ], stdout=sink, stderr=sink, detached=detached,
+               hidden_console=hidden_console)
         finally:
             if handle is not None:
                 handle.close()

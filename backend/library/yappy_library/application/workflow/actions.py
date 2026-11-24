@@ -149,10 +149,11 @@ def _spawn_tunnel(
             label=label,
             owner=process_tracker.OWNER_WEB,
             # Sin esto el túnel hereda la consola de uvicorn: un CTRL_C para
-            # pararlo alcanza a todos los que comparten esa consola, incluido el
-            # server que está atendiendo el click. La CLI no lo pide —ahí el
-            # Ctrl+C del terminal sí debe llegar al túnel—, la web sí.
-            detached=True,
+            # pararlo alcanza al server que atiende el click. Con
+            # DETACHED_PROCESS el plugin se crea su propia consola *visible* y
+            # aparece una terminal por túnel; una consola propia y oculta lo
+            # deja en background y fuera de la nuestra. La CLI no lo pide.
+            hidden_console=True,
         )
     except ToolUnavailable as exc:
         raise StartRefused(

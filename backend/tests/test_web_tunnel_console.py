@@ -7,6 +7,11 @@ se manda a **todos** los procesos enganchados a una consola. Los túneles se
 lanzaban con un ``Popen`` sin flags, heredaban la de uvicorn, y parar uno
 cerraba también la API que estaba atendiendo el click.
 
+``DETACHED_PROCESS`` no es la solución: el plugin de Session Manager se crea su
+propia consola y aparece una terminal visible por túnel. El túnel web necesita
+una consola propia **oculta**, fuera de la del server pero con un ``Ctrl+C``
+que sí le llegue a él.
+
 La CLI es el caso contrario y también está acá: en una terminal el ``Ctrl+C``
 sí tiene que llegar al túnel, así que ese camino no cambia.
 """
@@ -44,7 +49,7 @@ def _record_popen(monkeypatch) -> dict:
     return seen
 
 
-def test_el_tunnel_de_la_web_pide_detach(monkeypatch):
+def test_el_tunnel_de_la_web_pide_consola_oculta(monkeypatch):
     seen: dict = {}
     monkeypatch.setattr(
         processes.BaseCommand,
@@ -57,12 +62,13 @@ def test_el_tunnel_de_la_web_pide_detach(monkeypatch):
         cluster="cap", label="Commerce", env="qa",
     )
 
-    assert seen["detached"] is True
+    assert seen["hidden_console"] is True
+    assert seen.get("detached", False) is False
     assert seen["owner"] == process_tracker.OWNER_WEB
 
 
 @pytest.mark.parametrize("platform", ["win32", "linux"])
-def test_el_detach_llega_hasta_el_popen(monkeypatch, platform):
+def test_la_consola_oculta_llega_hasta_el_popen(monkeypatch, platform):
     """El permiso viaja de `_spawn_tunnel` a `Popen`, no se queda en el action."""
     seen = _record_popen(monkeypatch)
     monkeypatch.setattr(processes.sys, "platform", platform)
@@ -74,11 +80,16 @@ def test_el_detach_llega_hasta_el_popen(monkeypatch, platform):
         cluster="cap", label="Commerce", env="qa",
     )
 
-    for key, value in processes.detached_popen_kwargs().items():
-        assert seen[key] == value
+    for key, value in processes.hidden_console_popen_kwargs().items():
+        if key == "startupinfo":
+            # Dos STARTUPINFO son objetos distintos aunque tengan igual contenido.
+            assert seen[key].dwFlags == value.dwFlags
+            assert seen[key].wShowWindow == value.wShowWindow
+        else:
+            assert seen[key] == value
 
 
-def test_la_cli_no_pide_detach(monkeypatch):
+def test_la_cli_no_pide_consola_oculta(monkeypatch):
     """Desde un terminal el Ctrl+C del developer sí debe cerrar el túnel."""
     seen: dict = {}
     monkeypatch.setattr(
@@ -94,9 +105,10 @@ def test_la_cli_no_pide_detach(monkeypatch):
     )
 
     assert seen["detached"] is False
+    assert seen["hidden_console"] is False
 
 
-def test_un_popen_sin_detach_no_hereda_flags(monkeypatch):
+def test_un_popen_sin_consola_oculta_no_hereda_flags(monkeypatch):
     """Ningún otro llamador de `popen` ve cambiado su comportamiento."""
     seen = _record_popen(monkeypatch)
 
@@ -115,6 +127,28 @@ def test_los_flags_son_los_mismos_que_usa_el_navegador(monkeypatch):
 
     assert flags & getattr(subprocess, "DETACHED_PROCESS", 0x8)
     assert flags & getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)
+
+
+def test_la_consola_oculta_no_es_la_del_navegador(monkeypatch):
+    """El túnel tiene consola propia invisible; sin DETACHED_PROCESS."""
+    monkeypatch.setattr(processes.sys, "platform", "win32")
+
+    kwargs = processes.hidden_console_popen_kwargs()
+    flags = kwargs["creationflags"]
+
+    assert flags & getattr(subprocess, "CREATE_NEW_CONSOLE", 0x10)
+    assert not flags & getattr(subprocess, "DETACHED_PROCESS", 0x8)
+    assert kwargs["startupinfo"].dwFlags & getattr(subprocess, "STARTF_USESHOWWINDOW", 0x1)
+    assert kwargs["startupinfo"].wShowWindow == getattr(subprocess, "SW_HIDE", 0)
+    assert kwargs["stdin"] is subprocess.DEVNULL
+
+
+def test_la_consola_oculta_en_posix_solo_cambia_la_sesion(monkeypatch):
+    monkeypatch.setattr(processes.sys, "platform", "linux")
+
+    kwargs = processes.hidden_console_popen_kwargs()
+
+    assert kwargs == {"start_new_session": True, "stdin": subprocess.DEVNULL}
 
 
 # --- el freno para entradas viejas del tracker ---------------------------------
