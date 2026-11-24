@@ -101,7 +101,7 @@ def _one_set(columns, rows):
 def test_empty_input_is_rejected():
     with pytest.raises(q.QueryError) as exc:
         q.ensure_single_read_statement("   ")
-    assert "Pegá la consulta" in str(exc.value)
+    assert "Pega la consulta" in str(exc.value)
 
 
 def test_multiple_statements_are_rejected():

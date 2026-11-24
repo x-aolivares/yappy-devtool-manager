@@ -68,18 +68,18 @@ describe('explainDeploymentFailure', () => {
     ]);
   });
 
-  it('un 401 no dice "agregá la variable" sino cómo corregirla', () => {
+  it('un 401 no dice "agrega la variable" sino cómo corregirla', () => {
     // La variable ya está cargada: es la que se está rechazando. Mandar a
     // cargarla de nuevo hace que el usuario repita lo que ya hizo.
     const fail = explainDeploymentFailure(502, 'Bitbucket rechazó el token (401).');
 
     expect(fail.title).toBe('Bitbucket rechazó las credenciales');
-    expect(fail.steps.join(' ')).not.toContain('Agregá estas variables');
+    expect(fail.steps.join(' ')).not.toContain('Agrega estas variables');
   });
 
   it('un 401 aclara que va como Bearer, sin usuario', () => {
-    // El error anterior venía de mandar Basic con usuario: el arreglo tiene que
-    // decir el esquema, no sólo "probá otra vez".
+    // El error anterior vena de mandar Basic con usuario: el arreglo tiene que
+    // decir el esquema, no sólo "prueba otra vez".
     const fail = explainDeploymentFailure(502, 'Bitbucket rechazó el token (401).');
 
     expect(fail.steps.join(' ')).toContain('Bearer');
@@ -105,8 +105,8 @@ describe('explainDeploymentFailure', () => {
 
   it('las variables que no se generan no inventan un link', () => {
     // `BITBUCKET_WORKSPACE` no es una credencial: se copia de una URL que ya
-    // tenés. Enmandarlo a una página de tokens sería mandar al lugar errado.
-    const fail = explainDeploymentFailure(502, 'Revisá BITBUCKET_WORKSPACE');
+    // tienes. Enmandarlo a una página de tokens sería mandar al lugar errado.
+    const fail = explainDeploymentFailure(502, 'Revisa BITBUCKET_WORKSPACE');
 
     expect(fail.links).toBeUndefined();
   });

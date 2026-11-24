@@ -165,7 +165,7 @@ def api_db_objects(env: str, schema: str, object_type: str):
     if object_type not in ("table", "procedure"):
         raise HTTPException(status_code=400, detail="object_type debe ser 'table' o 'procedure'")
     if not schema.strip():
-        raise HTTPException(status_code=400, detail="Completá el schema.")
+        raise HTTPException(status_code=400, detail="Completa el schema.")
 
     schema = schema.strip()
     cfg = env_config(env)
@@ -195,9 +195,9 @@ def api_db_date_columns(env: str, schema: str, table: str):
     is the answer that says "migrate this one whole".
     """
     if not schema.strip():
-        raise HTTPException(status_code=400, detail="Completá el schema.")
+        raise HTTPException(status_code=400, detail="Completa el schema.")
     if not table.strip():
-        raise HTTPException(status_code=400, detail="Completá la tabla.")
+        raise HTTPException(status_code=400, detail="Completa la tabla.")
 
     schema, table = schema.strip(), table.strip()
     cfg = env_config(env)
@@ -284,7 +284,7 @@ def api_compile(req: CompileRequest):
     if req.object_type not in ("table", "procedure"):
         raise HTTPException(status_code=400, detail="object_type debe ser 'table' o 'procedure'")
     if not req.schema_name.strip() or not req.object_name.strip():
-        raise HTTPException(status_code=400, detail="Completá el schema y el nombre del objeto.")
+        raise HTTPException(status_code=400, detail="Completa el schema y el nombre del objeto.")
 
     cfg_b = env_config(req.env_b)  # origen
     cfg_a = env_config(req.env_a)  # destino
@@ -416,7 +416,7 @@ def api_compile_schema(req: SchemaCompileRequest):
         raise HTTPException(status_code=400, detail="El origen y el destino deben ser distintos")
     schema = req.schema_name.strip()
     if not schema:
-        raise HTTPException(status_code=400, detail="Completá el schema.")
+        raise HTTPException(status_code=400, detail="Completa el schema.")
 
     # An explicit list is the user's own selection, so the flags do not apply and
     # only the list has to be non-empty. An empty list is a refusal, not a
@@ -553,9 +553,9 @@ def api_migrate_tables(req: TableMigrateRequest):
         raise HTTPException(status_code=400, detail="El origen y el destino deben ser distintos")
     schema = req.schema_name.strip()
     if not schema:
-        raise HTTPException(status_code=400, detail="Completá el schema.")
+        raise HTTPException(status_code=400, detail="Completa el schema.")
     if not req.tables:
-        raise HTTPException(status_code=400, detail="Elegí al menos una tabla para migrar.")
+        raise HTTPException(status_code=400, detail="Elige al menos una tabla para migrar.")
     if not req.dry_run and not req.confirm:
         raise HTTPException(
             status_code=400, detail="La migración requiere confirmación (confirm=true)."

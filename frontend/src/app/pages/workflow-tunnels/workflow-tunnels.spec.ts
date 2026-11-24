@@ -76,7 +76,7 @@ describe('WorkflowTunnelsPage', () => {
       expect(row.textContent).toContain('abajo');
     });
 
-    it('una fila levantándose NO ofrece levantar de nuevo', async () => {
+    it('una fila levantandose NO ofrece levantar de nuevo', async () => {
       // El proceso ya está en marcha. Un segundo click abre otro start-session
       // sobre un puerto que ya está bindeado.
       calls.answer = { ...calls.answer, ports: [fila({ state: 'starting' })] };

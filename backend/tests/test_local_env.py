@@ -113,7 +113,7 @@ def test_params_guard_never_builds_a_session(monkeypatch):
     """El punto del guard es que no haya sesión, no sólo que avise.
 
     Si se construyera la sesión y después se validara, el intento de AWS ya
-    habría ocurrido: el error 1064/AccessDenied del profile real llegaría antes
+    habrea ocurrido: el error 1064/AccessDenied del profile real llegaría antes
     de que esta guarda pudiera cortarlo.
     """
     called = []

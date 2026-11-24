@@ -78,7 +78,7 @@ todo. Lo que queda, y el criterio:
 
 **Se fue**
 - "Se lee el objeto del ambiente de origen y Generar deja en el editor…".
-- "Elegí dos: el primero es el de origen y el segundo el de destino." — la
+- "Elige dos: el primero es el de origen y el segundo el de destino." — la
   información **sigue visible**: `app-region-controls` reenvía
   `roleLabels: ['Origen','Destino']` y `env-picker` las pinta como badge
   `.env-role` en cada píldora.
@@ -185,7 +185,7 @@ de aplastar los controles. Va envuelta en `.table-scroll`.
 
 El filtro empezó con cuatro columnas —`Columna de fecha`, `Modo` y `Rango`, además
 de la de la tabla— y las tres últimas salieron de la fila. La razón no es
-estética: **el período es la misma pregunta para todas las tablas** ("copiáselo de
+estética: **el período es la misma pregunta para todas las tablas** ("copiaselo de
 marzo") y la columna no ("`fecha` en una, `created_at` en otra, ninguna en una
 tercera").
 
@@ -243,7 +243,7 @@ Lo que lo cubre es que el contador del título (`N de 60 marcadas`) siempre habl
 **total**, nunca de la página, y que `toggleAll` y `selection` operan sobre la lista
 **entera**: "Todas" marca las 60 aunque se vean 25, y la migración manda las 60. Si
 alguno de los dos leyera la página, el script sincronizaría 25 objetos de los 60 que
-el usuario marcó y no habría forma de enterarse.
+el usuario marcó y no habrea forma de enterarse.
 
 ### Dos piezas, una de estado y otra de dibujo.
 
@@ -525,7 +525,7 @@ aparece el scroll. Por eso el tope se cambia en CSS, con cualquier unidad.
 
 El selector es **por atributo y no global** a propósito: un `max-height` en
 `textarea` pelaría con el `textarea.value-box` de Leer Parámetros, que está
-diseñado para crecer con el contenido que copiás.
+diseñado para crecer con el contenido que copias.
 
 Dos interacciones que conviene conocer:
 

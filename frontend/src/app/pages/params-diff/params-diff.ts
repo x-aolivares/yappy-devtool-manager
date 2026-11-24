@@ -217,11 +217,11 @@ export class ParamsDiffPage {
     const envB = this.envB();
     const name = this.name().trim();
     if (!envA || !envB) {
-      this.error.set('Seleccioná las dos regiones.');
+      this.error.set('Selecciona las dos regiones.');
       return;
     }
     if (!name) {
-      this.error.set('Ingresá el nombre del parámetro o secreto.');
+      this.error.set('Ingresa el nombre del parámetro o secreto.');
       return;
     }
 

@@ -1,6 +1,6 @@
 """Quién abre el navegador de Kafdrop, y quién no.
 
-`KafkaService._start_ui(detach=True)` abría el navegador siempre, sin mirar quién
+`KafkaService._start_ui(detach=True)` abrea el navegador siempre, sin mirar quién
 lo pidió. La web usa ese mismo camino —`actions._start_kafka` pasa
 `owner=OWNER_WEB`— así que levantar Kafdrop desde la pantalla le robaba el foco
 al developer con una ventana que él no pidió, duplicando el link "Abrir ↗" que la
@@ -11,7 +11,7 @@ abrir el link gana a hacer que el developer busque un botón, y abrir otra
 terminal para clickearlo es peor.
 
 El `os.system` sin detach que usaba este opener ya no está: vive ahora en
-`processes.open_url`, y lo comparten los dos que abrían un navegador
+`processes.open_url`, y lo comparten los dos que abrean un navegador
 (`test_open_url_detached.py`).
 
 El 404 queda fuera de acá a propósito: es otro problema, con otro arreglo.

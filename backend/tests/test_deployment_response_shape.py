@@ -60,7 +60,7 @@ def _row(**overrides) -> dict:
 
 
 def test_la_fila_valida_contra_el_schema(circleci_real):
-    """El 500 venía de acá: el modelo decía string y CircleCI manda un dict."""
+    """El 500 vena de acá: el modelo decía string y CircleCI manda un dict."""
 
     circleci_real()
     source = ecs_branch.pipeline_source(

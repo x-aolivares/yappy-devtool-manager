@@ -162,13 +162,13 @@
     rows="12"
     [value]="script()"
     (input)="script.set($any($event.target).value)"
-    placeholder="Generá el script con el botón de arriba, o pegá acá el SQL que quieras ejecutar."
+    placeholder="Genera el script con el botón de arriba, o pega aquí el SQL que quieras ejecutar."
   ></textarea>
   @if (selected().tables.length) {
     <p class="muted hint-error" style="margin-top:0.5rem; font-size:0.75rem;">
       Ojo: el script borra y vuelve a crear {{ scopeLabel() }} en
       {{ envA() || 'el destino' }}. Las filas que están allá en esas tablas se pierden. Si
-      querés conservar los datos del destino, editá el script y dejá solo los ALTER que faltan.
+      quieres conservar los datos del destino, editá el script y dejá solo los ALTER que faltan.
     </p>
   } @else {
     <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
@@ -179,7 +179,7 @@
 
   @if (!canSync() && envA()) {
     <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
-      Escribí o generá un script para habilitar el botón.
+      Escribí o genera un script para habilitar el botón.
     </p>
   }
 </div>

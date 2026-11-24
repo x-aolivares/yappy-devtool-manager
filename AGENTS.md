@@ -46,7 +46,7 @@ otro.
 | Foco | `--sys-focus-ring` | halo del anillo de foco |
 | Tipografía | `--sys-sans`, `--sys-mono` | tipografía del sistema del usuario |
 
-Son 39 tokens en total y esta tabla los cubre todos: si agregás uno, agregalo
+Son 39 tokens en total y esta tabla los cubre todos: si agregas uno, agregalo
 acá.
 
 En modo oscuro, `html[data-theme='dark']` **redefine** los tokens. Un componente
@@ -66,7 +66,7 @@ no consulta el tema: consume la misma variable y hereda el valor del tema activo
 - **El `.secondary` y el toggle de tema conservan el `outline` en el foco.** Su
   borde ya es del color de acento, así que el anillo de acento no se distingue
   del control. Es la excepción consciente a la regla del anillo.
-- **Todo movimiento nuevo respeta `prefers-reduced-motion`.** Si agregás una
+- **Todo movimiento nuevo respeta `prefers-reduced-motion`.** Si agregas una
   animación o una transición, agregala también al bloque del final de
   `styles.scss`. Una animación de *entrada* es la que más molesta, porque no se
   puede esquivar mirando.

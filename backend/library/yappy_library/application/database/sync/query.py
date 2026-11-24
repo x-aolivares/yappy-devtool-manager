@@ -100,7 +100,7 @@ def ensure_single_read_statement(sql: str) -> str:
     write, and refusing it meant the section could not run one at all.
     """
     if not sql or not sql.strip():
-        raise QueryError("Pegá la consulta que querés ejecutar.")
+        raise QueryError("Pega la consulta que quieres ejecutar.")
 
     statements = split_statements(sql)
     if not statements:

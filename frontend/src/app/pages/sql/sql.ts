@@ -181,11 +181,11 @@ export class SqlPage {
   runQuery() {
     const env = this.env();
     if (!env) {
-      this.fail('Seleccioná el ambiente.');
+      this.fail('Selecciona el ambiente.');
       return;
     }
     if (!this.sql().trim()) {
-      this.fail('Pegá la consulta que querés ejecutar.');
+      this.fail('Pega la consulta que quieres ejecutar.');
       return;
     }
 
@@ -229,11 +229,11 @@ export class SqlPage {
   private migrate(dryRun: boolean): void {
     const text = this.sql().trim();
     if (!this.destEnv()) {
-      this.fail('Elegí el ambiente destino.');
+      this.fail('Elige el ambiente destino.');
       return;
     }
     if (!dryRun && !this.confirmChecked()) {
-      this.fail('Confirmá que querés migrar los datos a ' + this.destEnv() + '.');
+      this.fail('Confirma que quieres migrar los datos a ' + this.destEnv() + '.');
       return;
     }
 

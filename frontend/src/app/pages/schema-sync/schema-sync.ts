@@ -223,9 +223,9 @@ export class SchemaSyncPage {
 
   /** Por qué está deshabilitado Generar, en una línea. */
   readonly generateHint = computed(() => {
-    if (!this.envB() || !this.envA()) return 'Elegí el ambiente de origen y el de destino.';
+    if (!this.envB() || !this.envA()) return 'Elige el ambiente de origen y el de destino.';
     if (this.sameEnv()) return 'El origen y el destino tienen que ser distintos.';
-    if (!this.schema()) return 'Elegí el esquema del origen.';
+    if (!this.schema()) return 'Elige el esquema del origen.';
     if (this.objectsLoading()) return 'Esperando los objetos del esquema de origen.';
     if (this.objectsError()) return 'No se pudieron leer los objetos del esquema de origen.';
     if (!this.objectRows().length) return 'El origen no tiene tablas ni procedures en ese esquema.';
@@ -481,7 +481,7 @@ export class SchemaSyncPage {
     const schema = this.schema();
 
     if (!envB || !envA) {
-      this.error.set('Seleccioná el ambiente de origen y el de destino.');
+      this.error.set('Selecciona el ambiente de origen y el de destino.');
       return;
     }
     if (this.sameEnv()) {
@@ -489,7 +489,7 @@ export class SchemaSyncPage {
       return;
     }
     if (!schema) {
-      this.error.set('Elegí el esquema del origen.');
+      this.error.set('Elige el esquema del origen.');
       return;
     }
     if (!this.scopeSelected()) {
@@ -547,11 +547,11 @@ export class SchemaSyncPage {
     const env = this.envA();
     const code = this.script();
     if (!env) {
-      this.error.set('Elegí el ambiente destino.');
+      this.error.set('Elige el ambiente destino.');
       return;
     }
     if (!code.trim()) {
-      this.error.set('Generá o pegá el SQL que querés ejecutar.');
+      this.error.set('Genera o pega el SQL que quieres ejecutar.');
       return;
     }
 

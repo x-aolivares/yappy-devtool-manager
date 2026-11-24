@@ -242,7 +242,7 @@ describe('WorkflowLogs', () => {
     });
 
     it('no ofrece nada si ninguna fila tiene archivo de log', () => {
-      // Una fila levantándose sin `log_file` no es un bug: el proceso todavía no
+      // Una fila levantandose sin `log_file` no es un bug: el proceso todavía no
       // abrió el archivo. El botón queda deshabilitado en vez de abrir un panel
       // que va a decir "Sin contenido todavía" para siempre.
       const { comp } = montar([kafkaArriba({ log_file: '', state: 'starting' })]);

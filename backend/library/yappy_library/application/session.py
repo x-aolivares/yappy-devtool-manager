@@ -139,7 +139,7 @@ class Session:
         elif not ready:
             warn(
                 f"El túnel abrió el puerto {cfg.db_port} pero MySQL no respondió en "
-                f"{DB_TUNNEL_READY_TIMEOUT:g}s. Revisá el log del túnel antes de correr "
+                f"{DB_TUNNEL_READY_TIMEOUT:g}s. Revisa el log del túnel antes de correr "
                 f"cualquier cosa contra la base."
             )
         else:

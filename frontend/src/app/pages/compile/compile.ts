@@ -175,7 +175,7 @@ export class CompilePage {
     return (
       `Compilar ${r.schema_name}.${r.object_name} borra la tabla y todas sus filas en ` +
       `${r.env_a}, y la vuelve a crear con la definición de ${r.env_b}. ` +
-      'Si querés conservar los datos del destino, editá el script y dejá solo ' +
+      'Si quieres conservar los datos del destino, editá el script y dejá solo ' +
       'los ALTER que faltan.'
     );
   });
@@ -278,7 +278,7 @@ export class CompilePage {
     const schema = this.schema();
     const objectName = this.objectName();
     if (!this.envA() || !this.envB()) {
-      this.error.set('Seleccioná el ambiente de origen y el de destino.');
+      this.error.set('Selecciona el ambiente de origen y el de destino.');
       return;
     }
     if (this.sameEnv()) {
@@ -286,7 +286,7 @@ export class CompilePage {
       return;
     }
     if (!schema || !objectName) {
-      this.error.set('Completá el schema y elegí el objeto.');
+      this.error.set('Completa el schema y elige el objeto.');
       return;
     }
 
@@ -336,11 +336,11 @@ export class CompilePage {
     const env = this.envA();
     const code = this.script();
     if (!env) {
-      this.error.set('Elegí el ambiente destino.');
+      this.error.set('Elige el ambiente destino.');
       return;
     }
     if (!code.trim()) {
-      this.error.set('Pegá el SQL que querés ejecutar.');
+      this.error.set('Pega el SQL que quieres ejecutar.');
       return;
     }
 

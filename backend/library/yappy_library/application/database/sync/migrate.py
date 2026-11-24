@@ -324,7 +324,7 @@ def parse_select(sql: str, default_schema: str = "") -> QueryPlan:
         if not schema:
             raise MigrationError(
                 f"La tabla '{table}' no tiene schema. "
-                "Elegí un schema por defecto en el selector o calificá la tabla."
+                "Elige un schema por defecto en el selector o califica la tabla."
             )
 
         key = f"{schema}.{table}"

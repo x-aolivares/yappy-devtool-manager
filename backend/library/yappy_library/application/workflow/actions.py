@@ -363,7 +363,7 @@ def stop_entry(pid: int, *, allow_foreign: bool = False) -> dict:
     if is_foreign(entry) and not allow_foreign:
         raise StopRefused(
             f"El proceso {pid} no lo levantó la web. Paralo desde la terminal "
-            f"si querés cerrarlo."
+            f"si quieres cerrarlo."
         )
 
     return {"pid": pid, "stopped": stop_pid(pid)}

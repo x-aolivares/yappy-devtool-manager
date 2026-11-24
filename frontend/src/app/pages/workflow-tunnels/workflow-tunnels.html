@@ -129,11 +129,11 @@
           <tr>
             <td colspan="5" class="muted">
               @if (catalogConfigured()) {
-                El cluster <code>{{ cluster() }}</code> no tiene puertos cargados. Agregá el primero
+                El cluster <code>{{ cluster() }}</code> no tiene puertos cargados. Agrega el primero
                 con el campo de abajo.
               } @else {
                 No hay <code>CLUSTER_PORTS</code> en <code>env.base</code>, así que todavía no hay
-                un catálogo. Agregá el primero con el campo de abajo y se escribe solo.
+                un catálogo. Agrega el primero con el campo de abajo y se escribe solo.
               }
             </td>
           </tr>
@@ -206,7 +206,7 @@
   <section class="panel">
     <div class="section-title"><strong>Sin puerto conocido</strong></div>
     <p class="muted">
-      Trackeados antes de que el registro guardara el puerto. Bajalos y volvé a levantarlos una vez.
+      Trackeados antes de que el registro guardara el puerto. Bajalos y vuelve a levantarlos una vez.
     </p>
     @for (row of unattributed(); track trackUnattributed($index, row)) {
       <p class="res-card__meta">{{ row.resource }} · pid {{ row.pid }} @if (row.env) { ({{ row.env }}) }</p>

@@ -458,7 +458,7 @@ describe('MigrateDataPage la tabla se pagina', () => {
     await settle(fixture);
 
     // La fila desmarcada está en la página 2. Si el contador dijera "24 de 25" el
-    // usuario no sabría que hay 35 marcadas fuera de la pantalla.
+    // usuario no sabrea que hay 35 marcadas fuera de la pantalla.
     comp.toggle('tabla_30', false);
     await settle(fixture);
 
@@ -959,7 +959,7 @@ describe('MigrateDataPage simular y migrar', () => {
 
     expect(comp.canSubmit()).toBe(false);
     expect(el.querySelector('#migrate-table-orders')).toBeNull();
-    expect(el.textContent).toContain('Elegí el ambiente de origen y el de destino.');
+    expect(el.textContent).toContain('Elige el ambiente de origen y el de destino.');
     expect(button(el, 'Simular').disabled).toBe(true);
     expect(button(el, 'Migrar a').disabled).toBe(true);
   });

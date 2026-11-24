@@ -504,7 +504,7 @@ describe('SchemaSyncPage la tabla de objetos', () => {
     const { fixture, comp } = await ready();
 
     // Dos filas, no una: la tabla `sp_sync` no está en el destino y el procedure
-    // del mismo nombre sí. Un set plano de nombres habría reportado "Sí" para las
+    // del mismo nombre sí. Un set plano de nombres habrea reportado "Sí" para las
     // dos, o "No" para las dos.
     const filas = comp.objectRows().filter((r: { name: string }) => r.name === 'sp_sync');
     expect(filas.length).toBe(2);
@@ -525,7 +525,7 @@ describe('SchemaSyncPage la tabla de objetos', () => {
     comp.toggle('sp_sync', false, 'procedure');
     await settle(fixture);
 
-    // Buscar por nombre solamente habría marcado la tabla —la primera fila— y
+    // Buscar por nombre solamente habrea marcado la tabla —la primera fila— y
     // dejado el procedure sin poder sacarse del alcance.
     expect(comp.objectRows().find((r: { kind: string }) => r.kind === 'procedure').selected).toBe(
       false,
@@ -584,7 +584,7 @@ describe('SchemaSyncPage la tabla de objetos', () => {
     await settle(fixture);
 
     // La fila desmarcada está en la página 2 y el contador tiene que contarla:
-    // si dijera "25 de 25" el usuario no sabría que hay cuatro fuera de pantalla.
+    // si dijera "25 de 25" el usuario no sabrea que hay cuatro fuera de pantalla.
     comp.toggle('tabla_30', false);
     await settle(fixture);
 

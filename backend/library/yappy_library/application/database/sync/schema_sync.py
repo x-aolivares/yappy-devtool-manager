@@ -221,7 +221,7 @@ def _in_scope(
         detalle = ", ".join(exists) if exists else "no tiene ninguno"
         raise SyncError(
             f"{', '.join(unknown)} no {('existe' if len(unknown) == 1 else 'existen')} como "
-            f"{kind} en {schema} del origen. Volvé a cargar la lista: {detalle}."
+            f"{kind} en {schema} del origen. Vuelve a cargar la lista: {detalle}."
         )
     return sorted(set(wanted))
 
@@ -260,7 +260,7 @@ def plan(
     if schema not in obj.list_schemas(conn_b):
         raise SyncError(
             f"El schema '{schema}' no existe en el origen. "
-            "Elegí un schema que exista en el ambiente de origen."
+            "Elige un schema que exista en el ambiente de origen."
         )
 
     create_schema = schema not in obj.list_schemas(conn_a)
@@ -421,7 +421,7 @@ def _table_ddl(conn_b, schema: str, table: str) -> str:
     if code is None:
         raise SyncError(
             f"La tabla {schema}.{table} ya no existe en el origen. "
-            "Volvé a compilar el schema."
+            "Vuelve a compilar el schema."
         )
     return _terminate(ddl.create_table_script(code))
 
@@ -440,7 +440,7 @@ def _procedure_ddl(conn_b, schema: str, procedure: str) -> str:
     if code is None:
         raise SyncError(
             f"El stored procedure {schema}.{procedure} ya no existe en el origen. "
-            "Volvé a compilar el schema."
+            "Vuelve a compilar el schema."
         )
     return _terminate(ddl.replace_procedure_script(code, schema, procedure))
 

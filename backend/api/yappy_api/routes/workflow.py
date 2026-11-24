@@ -333,7 +333,7 @@ def api_workflow_port_start(req: WorkflowStartPortRequest, env: str = "", cluste
     """Abrir un túnel de cluster: esto **sí** necesita un ambiente.
 
     A diferencia del resto de los endpoints del dominio, un `env` vacío aquí no
-    es "sin ambiente": es "no dijiste con qué cluster-abierto querés hablar".
+    es "sin ambiente": es "no dijiste con qué cluster-abierto quieres hablar".
     El handler lo dice con un motivo, no con un `500`.
     """
     cfg = _cfg(env)

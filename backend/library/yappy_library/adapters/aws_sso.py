@@ -163,7 +163,7 @@ def login(profile: str) -> Path:
                 if time.monotonic() >= deadline:
                     die(
                         f"El login de SSO expiró después de {expires_in}s. "
-                        "Volvé a correr el comando y completá la autorización "
+                        "Vuelve a correr el comando y completa la autorización "
                         "en el navegador."
                     )
                 time.sleep(interval)

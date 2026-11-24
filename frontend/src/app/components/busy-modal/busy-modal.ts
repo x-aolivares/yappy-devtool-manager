@@ -62,7 +62,7 @@ export class BusyModal {
   protected readonly readLabel = 'Cancelar';
 
   /**
-   * El elemento que tenía el foco cuando se abrió, para devolvérselo.
+   * El elemento que tenía el foco cuando se abrió, para devuelverselo.
    *
    * El modal no toma el foco nunca, así que en el caso normal —el usuario ni
    * siquiera llegó al botón— el foco nunca se fue y no hay nada que hacer. Lo que

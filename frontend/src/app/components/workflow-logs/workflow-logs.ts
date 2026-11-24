@@ -55,7 +55,7 @@ export class WorkflowLogs {
    *
    * Va en la URL porque el access log del server imprime el path y nada más. Con
    * las cuatro secciones usando el mismo panel, `GET /api/workflow/logs?pid=20192`
-   * no dice si la pregunta venía de Kafka o de Túneles — y en medio de un log lleno
+   * no dice si la pregunta vena de Kafka o de Túneles — y en medio de un log lleno
    * de líneas iguales, esa es justo la información que falta.
    */
   readonly section = input<string>('workflow');

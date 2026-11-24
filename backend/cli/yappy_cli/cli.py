@@ -183,7 +183,7 @@ def web(
         "--watch",
         help="Recompilar el frontend en caliente y servirlo con ng serve. "
         "La web queda en el puerto 4200 y el backend sigue en el que sea. "
-        "Cada vez que guardás un archivo de frontend/ se actualiza solo.",
+        "Cada vez que guardas un archivo de frontend/ se actualiza solo.",
     ),
 ):
     """Abrir la web de Region Sync (diff de DB y de parámetros/secretos entre ambientes)."""
@@ -801,7 +801,7 @@ def setup(
     if front and back:
         die(
             "--front y --back no se pueden combinar: "
-            "elegí uno, o ninguno para hacer el setup completo"
+            "elige uno, o ninguno para hacer el setup completo"
         )
 
     # Sin flags hace todo; con un flag, solo esa mitad. Cada flag apagado es el

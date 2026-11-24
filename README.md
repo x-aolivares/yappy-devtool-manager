@@ -220,7 +220,7 @@ yappy web --no-build
 ```
 
 `npm run watch` escribe en el mismo `dist/browser` que sirve la API, en
-configuración `development` (sin hash de nombre ni minificación). Guardás el
+configuración `development` (sin hash de nombre ni minificación). Guardas el
 archivo, esperás el "Bundle generation complete" y recargás el navegador.
 
 Sólo hay que reiniciar `yappy web` cuando cambia el **backend** (Python).

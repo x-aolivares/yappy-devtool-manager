@@ -141,7 +141,7 @@ def test_clusters_reports_the_domain_from_the_config(tmp_path, monkeypatch):
     """El dominio sale de la config, no de un literal.
 
     Con un `CLUSTER_DOMAIN` custom, la web informaba un dominio y los túneles
-    usaban otro: el browser abría un host que no era el que el túnel servía.
+    usaban otro: el browser abrea un host que no era el que el túnel servía.
     """
     monkeypatch.setattr(Config, "_config_dir", tmp_path)
     (tmp_path / "env.base").write_text(

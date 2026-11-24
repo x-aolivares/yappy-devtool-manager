@@ -45,7 +45,7 @@ describe('ResourceCards', () => {
       expect(botones(tarjeta([recurso()], 'Bastion'))).toEqual(['Levantar']);
     });
 
-    it('levantándose NO ofrece levantar de nuevo', () => {
+    it('levantandose NO ofrece levantar de nuevo', () => {
       // El proceso ya está en marcha. Un segundo click abre otro start-session
       // sobre un puerto que ya está bindeado.
       const labels = botones(tarjeta([recurso({ state: 'starting' })], 'Bastion'));

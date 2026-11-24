@@ -98,7 +98,7 @@ def api_sessions_delete(session_id: str):
 )
 def api_sessions_item_update(session_id: str, req: UpdateSessionItemRequest):
     if not req.name or not req.name.strip():
-        raise HTTPException(status_code=400, detail="Ingresá el nombre del ítem.")
+        raise HTTPException(status_code=400, detail="Ingresa el nombre del ítem.")
     if req.status is not None and req.status not in S.VALID_STATUSES:
         raise HTTPException(
             status_code=400,
@@ -128,7 +128,7 @@ def api_sessions_item_update(session_id: str, req: UpdateSessionItemRequest):
 )
 def api_sessions_item_create(session_id: str, req: UpdateSessionItemRequest):
     if not req.name or not req.name.strip():
-        raise HTTPException(status_code=400, detail="Ingresá el nombre del ítem.")
+        raise HTTPException(status_code=400, detail="Ingresa el nombre del ítem.")
     if req.status is not None and req.status not in S.VALID_STATUSES:
         raise HTTPException(
             status_code=400,

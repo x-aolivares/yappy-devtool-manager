@@ -53,7 +53,7 @@ const CONFIG_HELP: Array<{
     needle: /CIRCLECI_SLUG_PREFIX|BITBUCKET_WORKSPACE/,
     // Sólo se completan si el proyecto no está donde la app asume; por eso no
     // lleva link a dónde generarlos: no hay nada que generar, hay que copiar
-    // el valor de una URL que ya tenés abierta.
+    // el valor de una URL que ya tienes abierta.
     keys: ['BITBUCKET_WORKSPACE', 'CIRCLECI_SLUG_PREFIX'],
     where: 'backend/config/env.base',
   },
@@ -86,7 +86,7 @@ export function explainDeploymentFailure(
   const detail = message?.trim() || `Error ${status ?? 'desconocido'}`;
 
   // 405 desde una ruta que sí debería existir = backend corriendo sin esta ruta.
-  // Es el caso de "levantá y probá": el proceso se importó antes de que la ruta
+  // Es el caso de "levanta y prueba": el proceso se importó antes de que la ruta
   // existiera y Python no recarga módulos.
   if (status === 405 || /Method Not Allowed/i.test(detail)) {
     return {
@@ -94,7 +94,7 @@ export function explainDeploymentFailure(
       detail,
       steps: [
         'El servidor web se levantó antes de que existiera el endpoint, y Python no recarga el código solo.',
-        'Cortá el comando (Ctrl+C) y volvé a correr `yappy web --watch`.',
+        'Corta el comando (Ctrl+C) y vuelve a correr `yappy web --watch`.',
         'El frontend no hace falta reiniciarlo: esa parte se recompila sola.',
       ],
       snippet: 'Ctrl+C   yappy web --watch',
@@ -105,7 +105,7 @@ export function explainDeploymentFailure(
     if (!help.needle.test(detail)) continue;
     // 401 no es "falta la variable": la variable está y no sirve. El arreglo es
     // otro —el usuario es el email, o el token tiene basura pegada— y decir
-    // "agregá esto" mandaría a hacer algo que ya hicieron.
+    // "agrega esto" mandaría a hacer algo que ya hicieron.
     const rejected = /401/i.test(detail);
     return {
       title: rejected
@@ -115,11 +115,11 @@ export function explainDeploymentFailure(
       steps: rejected
         ? [
             'El token va como Bearer: no hacen falta usuario ni password.',
-            'Revisá que no tenga espacios copiados de más: el final con espacio es el error más común al pegar.',
+            'Revisa que no tenga espacios copiados de más: el final con espacio es el error más común al pegar.',
             'Verificá que el token siga vigente en la página de Atlassian.',
           ]
         : [
-            `Agregá estas variables a ${help.where}:`,
+            `Agrega estas variables a ${help.where}:`,
             ...help.keys.map((key) => `${key}=`),
             'El archivo no se commitea, así que la clave queda sólo en tu máquina.',
           ],
@@ -134,7 +134,7 @@ export function explainDeploymentFailure(
       detail,
       steps: [
         'El backend respondió pero la cadena se cortó antes de llegar a AWS.',
-        'Revisá que el repositorio exista y que BITBUCKET_WORKSPACE sea el correcto.',
+        'Revisa que el repositorio exista y que BITBUCKET_WORKSPACE sea el correcto.',
         'Si es un proyecto que no es de ECS, esta pantalla todavía no lo cubre.',
       ],
     };
@@ -148,8 +148,8 @@ export function explainDeploymentFailure(
       title: 'Bitbucket no devuelve ese repositorio',
       detail,
       steps: [
-        'Bitbucket responde igual si el repo no existe y si no tenés acceso: por eso no se puede distinguir.',
-        'Revisá que BITBUCKET_WORKSPACE y el nombre del repo estén bien escritos.',
+        'Bitbucket responde igual si el repo no existe y si no tienes acceso: por eso no se puede distinguir.',
+        'Revisa que BITBUCKET_WORKSPACE y el nombre del repo estén bien escritos.',
         'Verificá que la cuenta del token tenga lectura sobre ese repositorio.',
       ],
     };

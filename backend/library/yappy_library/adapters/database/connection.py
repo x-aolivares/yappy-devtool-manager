@@ -57,7 +57,7 @@ def open_db_tunnel(
 ):
     """Abrir el túnel SSM a la base de datos de un ambiente.
 
-    Los cinco lugares que lo abrían pasan los mismos seis datos —instancia,
+    Los cinco lugares que lo abrean pasan los mismos seis datos —instancia,
     puerto remoto de Aurora, puerto local, región, perfil y host— y cada uno
     los pasaba por su cuenta. Una diferencia de un puerto entre ellos es un
     túnel que no llega a la base, y no falla: no trae bytes, y la pantalla
@@ -156,7 +156,7 @@ def _wait_for_port(port: int, timeout: float = 30.0) -> None:
     raise SyncError(
         f"El túnel SSM no respondió en localhost:{port}: el puerto está abierto pero no "
         f"llegó el saludo de MySQL. Suele significar que la instancia no puede alcanzar "
-        f"el host remoto — revisá el security group que permite el puerto y que el "
+        f"el host remoto — revisa el security group que permite el puerto y que el "
         f"endpoint resuelva desde la instancia. El log del túnel está en "
         f"{tunnel_log_path(port)}"
     )

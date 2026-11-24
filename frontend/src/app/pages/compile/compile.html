@@ -1,6 +1,6 @@
 <h1>Compilar</h1>
 <p class="muted">
-  Elegí de dónde sale el SQL y a qué ambiente se compila. En los dos casos el destino queda
+  Elige de dónde sale el SQL y a qué ambiente se compila. En los dos casos el destino queda
   igual al origen.
 </p>
 
@@ -187,8 +187,8 @@
     (input)="script.set($any($event.target).value)"
     [placeholder]="
       source() === 'env'
-        ? 'Generá el script con el botón de arriba, o pegá acá el SQL que quieras ejecutar.'
-        : 'Pegá el SQL a compilar: un CREATE TABLE, un ALTER, un CREATE PROCEDURE...'
+        ? 'Genera el script con el botón de arriba, o pega aquí el SQL que quieras ejecutar.'
+        : 'Pega el SQL a compilar: un CREATE TABLE, un ALTER, un CREATE PROCEDURE...'
     "
   ></textarea>
   @if (replaceNotice(); as aviso) {
@@ -199,10 +199,10 @@
   @if (!canExecute() && envA()) {
     <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
       @if (source() === 'env') {
-        Escribí o generá un script para poder ejecutarlo. No hace falta elegir un objeto:
+        Escribí o genera un script para poder ejecutarlo. No hace falta elegir un objeto:
         alcanza con el SQL.
       } @else {
-        Pegá el SQL que querés compilar para habilitar el botón.
+        Pega el SQL que quieres compilar para habilitar el botón.
       }
     </p>
   }

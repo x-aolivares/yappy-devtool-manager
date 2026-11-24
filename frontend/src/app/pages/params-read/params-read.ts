@@ -118,7 +118,7 @@ export class ParamsReadPage {
     const clipboard = navigator.clipboard;
     if (!clipboard) {
       this.error.set(
-        'El navegador no expone el portapapeles acá. Abrí la web en localhost o en https.',
+        'El navegador no expone el portapapeles acá. Abre la web en localhost o en https.',
       );
       return;
     }
@@ -136,12 +136,12 @@ export class ParamsReadPage {
   search() {
     const name = this.name().trim();
     if (!name) {
-      this.error.set('Ingresá el nombre del parámetro o secreto.');
+      this.error.set('Ingresa el nombre del parámetro o secreto.');
       return;
     }
     const envs = this.envs();
     if (!envs.length) {
-      this.error.set('Seleccioná al menos un ambiente.');
+      this.error.set('Selecciona al menos un ambiente.');
       return;
     }
 
@@ -236,7 +236,7 @@ export class ParamsReadPage {
         ...s,
         [panel.env]: {
           ok: false,
-          message: 'No podés guardar un valor vacío; borrá el parámetro desde Crear.',
+          message: 'No puedes guardar un valor vacío; borrá el parámetro desde Crear.',
         },
       }));
       return;

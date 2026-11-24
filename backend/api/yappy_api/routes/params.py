@@ -277,9 +277,9 @@ def api_params_multi(req: CreateMultiParamsRequest):
             detail="service debe ser 'ssm', 'secretsmanager' o 'ssm+secret'.",
         )
     if not req.name or not req.name.strip():
-        raise HTTPException(status_code=400, detail="Ingresá el nombre del parámetro.")
+        raise HTTPException(status_code=400, detail="Ingresa el nombre del parámetro.")
     if not req.envs:
-        raise HTTPException(status_code=400, detail="Elegí al menos una región destino.")
+        raise HTTPException(status_code=400, detail="Elige al menos una región destino.")
     if req.value_type not in ("String", "StringList", "SecureString"):
         raise HTTPException(
             status_code=400,
@@ -370,7 +370,7 @@ def api_params_multi(req: CreateMultiParamsRequest):
 def api_params_get(env: str, name: str):
     cfg = env_config(env)
     if not name or not name.strip():
-        raise HTTPException(status_code=400, detail="Ingresá el nombre del parámetro.")
+        raise HTTPException(status_code=400, detail="Ingresa el nombre del parámetro.")
     try:
         value, type_ = p.read_parameter(cfg, name)
     except p.ParamNotFound as exc:
@@ -395,7 +395,7 @@ def api_params_read(envs: list[str], entries: list[ReadParamsEntry | str]):
     carrying that environment's name.
     """
     if not envs:
-        raise HTTPException(status_code=400, detail="Seleccioná al menos un ambiente.")
+        raise HTTPException(status_code=400, detail="Selecciona al menos un ambiente.")
     normalized = [e if isinstance(e, str) else e.model_dump() for e in entries]
     if not normalized:
         raise HTTPException(status_code=400, detail="La lista de parámetros está vacía.")

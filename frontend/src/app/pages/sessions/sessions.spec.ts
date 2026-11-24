@@ -3,7 +3,7 @@
  *
  * El riesgo de esta página es uno concreto y silencioso: **filtrar después de
  * paginar**. Si el filtro corriera sobre las 25 filas de la página actual, buscar
- * "release" daría un resultado distinto según dónde estés parado, y no habría
+ * "release" daría un resultado distinto según dónde estés parado, y no habrea
  * ningún error —solo una lista que no es la que se buscó. Estos tests fijan que el
  * filtro va primero.
  */

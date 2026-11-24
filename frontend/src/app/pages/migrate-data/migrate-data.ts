@@ -90,7 +90,7 @@ function lastDayOfMonth(month: string): string {
  * **La ventana de fechas es una sola para toda la migración; la columna no.** La
  * columna de cada tabla es una pregunta distinta por tabla —`fecha` en una,
  * `created_at` en otra, y algunas no tienen ninguna— así que sigue en la fila. El
- * *período* es la misma pregunta para todas: "copiáseto de marzo". Ponerlo en cada
+ * *período* es la misma pregunta para todas: "copia esto de marzo". Ponerlo en cada
  * fila obligaba a repetir el mismo modo y las mismas fechas seis veces y dejaba
  * seis posibilidades de que una se quedara distinta, que es el error que esta
  * página existe para evitar.
@@ -364,9 +364,9 @@ export class MigrateDataPage {
 
   /** Por qué está deshabilitado, en una línea. */
   readonly submitHint = computed(() => {
-    if (!this.envB() || !this.envA()) return 'Elegí el ambiente de origen y el de destino.';
+    if (!this.envB() || !this.envA()) return 'Elige el ambiente de origen y el de destino.';
     if (this.sameEnv()) return 'El origen y el destino tienen que ser distintos.';
-    if (!this.schema()) return 'Elegí el esquema del origen.';
+    if (!this.schema()) return 'Elige el esquema del origen.';
     if (!this.includedTables().length) return 'Marcá al menos una tabla para migrar.';
     if (this.includedTables().some((t) => this.filters()[t]?.loading))
       return 'Esperando las columnas de fecha de las tablas marcadas.';
@@ -377,10 +377,10 @@ export class MigrateDataPage {
     // no de una tabla: una columna elegida sin ventana se copiaría entera.
     if (!this.window() && this.includedTables().some((t) => this.filters()[t]?.column)) {
       const reversed = this.dateMode() === 'range' && !!this.dateFrom() && !!this.dateTo();
-      if (reversed) return 'La fecha inicial es posterior a la final: revisá el orden.';
+      if (reversed) return 'La fecha inicial es posterior a la final: revisa el orden.';
       return (
-        'Elegí la ventana de fechas: hay tablas con columna de fecha elegida y sin filtro, ' +
-        'y se copiarían enteras. O completá la ventana, o elegí "Todo (sin filtro)" en esas tablas.'
+        'Elige la ventana de fechas: hay tablas con columna de fecha elegida y sin filtro, ' +
+        'y se copiarían enteras. O completa la ventana, o elige "Todo (sin filtro)" en esas tablas.'
       );
     }
     return '';
@@ -593,7 +593,7 @@ export class MigrateDataPage {
       `Esto escribe filas en ${destino}: cada fila que ya está en el destino y coincide ` +
       'en la primary key se reemplaza por la del origen. No borra las filas del destino que ' +
       'quedan fuera de la ventana, no crea las tablas que falten allá, y no corre en una ' +
-      'transacción: si una tabla falla, las que venían antes ya quedaron copiadas.';
+      'transacción: si una tabla falla, las que venan antes ya quedaron copiadas.';
 
     this.pendingRun.set({
       titulo:
@@ -630,7 +630,7 @@ export class MigrateDataPage {
     const schema = this.schema();
 
     if (!envB || !envA) {
-      this.error.set('Elegí el ambiente de origen y el de destino.');
+      this.error.set('Elige el ambiente de origen y el de destino.');
       return;
     }
     if (this.sameEnv()) {
@@ -638,7 +638,7 @@ export class MigrateDataPage {
       return;
     }
     if (!schema) {
-      this.error.set('Elegí el esquema del origen.');
+      this.error.set('Elige el esquema del origen.');
       return;
     }
     if (!this.selection().length) {

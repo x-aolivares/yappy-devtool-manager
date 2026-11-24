@@ -183,7 +183,7 @@ def _check_column(conn_b, schema: str, table: str, column: str) -> None:
     raise SyncError(
         f"La tabla {where} no tiene columnas DATE/DATETIME/TIMESTAMP en el origen, "
         f"así que no se puede filtrar por '{column}'. Migrá la tabla completa "
-        "(sin columna de fecha) o revisá el nombre de la columna."
+        "(sin columna de fecha) o revisa el nombre de la columna."
     )
 
 
@@ -208,7 +208,7 @@ def build_plan(
     if schema not in obj.list_schemas(conn_b):
         raise SyncError(
             f"El schema '{schema}' no existe en el origen. "
-            "Elegí un schema que exista en el ambiente de origen."
+            "Elige un schema que exista en el ambiente de origen."
         )
 
     available = obj.list_tables(conn_b, schema)
@@ -225,7 +225,7 @@ def build_plan(
         if table not in available:
             raise SyncError(
                 f"La tabla {schema}.{table} no existe en el origen. "
-                "Elegí tablas que existan en el ambiente de origen."
+                "Elige tablas que existan en el ambiente de origen."
             )
         flt = flt or TableFilter()
 
@@ -253,7 +253,7 @@ def build_plan(
             raise SyncError(
                 f"La ventana de {name} está al revés: la fecha inicial "
                 f"({flt.date_from.isoformat()}) es posterior a la final "
-                f"({flt.date_to.isoformat()}). Revisá el orden."
+                f"({flt.date_to.isoformat()}). Revisa el orden."
             )
         if flt.date_from is None and flt.date_to is None:
             unbounded.append(name)
