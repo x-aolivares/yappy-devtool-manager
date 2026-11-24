@@ -148,6 +148,11 @@ def _spawn_tunnel(
             cluster=cluster,
             label=label,
             owner=process_tracker.OWNER_WEB,
+            # Sin esto el túnel hereda la consola de uvicorn: un CTRL_C para
+            # pararlo alcanza a todos los que comparten esa consola, incluido el
+            # server que está atendiendo el click. La CLI no lo pide —ahí el
+            # Ctrl+C del terminal sí debe llegar al túnel—, la web sí.
+            detached=True,
         )
     except ToolUnavailable as exc:
         raise StartRefused(

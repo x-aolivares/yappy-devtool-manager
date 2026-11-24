@@ -246,13 +246,63 @@ def stop_gracefully(pid: int, timeout: float = 30.0) -> bool:
     return False
 
 
+def _console_members() -> set[int] | None:
+    """Pids attached to *our* console; ``None`` when that cannot be read.
+
+    ``GenerateConsoleCtrlEvent(0, 0)`` cannot be aimed at a pid: it reaches
+    everyone attached to the console the sender is in. So before attaching to a
+    target we need to know whether that target's console is also ours — and a
+    stale tracker entry, or a tunnel started by an older build, can put it there
+    even when the ancestry guard passes.
+
+    ``None`` is deliberately different from an empty set. An empty set means
+    "there is no console here", which is fine; ``None`` means "the query failed",
+    and in that case the caller has to skip the event rather than guess.
+    """
+    if sys.platform != "win32":
+        return set()
+    try:
+        import ctypes
+
+        kernel = ctypes.windll.kernel32
+        kernel.GetConsoleProcessList.argtypes = [
+            ctypes.POINTER(ctypes.c_ulong),
+            ctypes.c_ulong,
+        ]
+        kernel.GetConsoleProcessList.restype = ctypes.c_ulong
+        # Passing a null buffer first asks Windows how many pids to allocate;
+        # capping it at 1024 used to silently leave the last ones out.
+        needed = kernel.GetConsoleProcessList(None, 0)
+        if not needed:
+            return set()
+        members = (ctypes.c_ulong * needed)()
+        count = kernel.GetConsoleProcessList(members, needed)
+        return {int(p) for p in members[:count]}
+    except (AttributeError, OSError, TypeError, ValueError):
+        return None
+
+
 def _send_ctrl_c(pid: int) -> bool:
     """Send a ``CTRL_C`` to the console of that process, from a throwaway process.
 
     ``False`` when the process has no console of its own —the common case for
-    everything this project detaches— and also when the event could not be
-    generated. Either way, the caller has the hard kill.
+    everything this project detaches— when its console is also ours, when that
+    cannot be determined, and when the event could not be generated. Either
+    way, the caller has the hard kill.
+
+    The console check is not redundant with the ancestry check in ``_kill_pid``:
+    a sibling in the same console is not an ancestor and would still receive the
+    event we send, which is how "Parar todo" used to shut down the web server.
     """
+    if sys.platform == "win32":
+        try:
+            members = _console_members()
+        except Exception:
+            # Capa final: ni un cambio en el helper ni una API de Windows que se
+            # comporte distinto puede convertir una duda en un CTRL_C a ciegas.
+            return False
+        if members is None or pid in members:
+            return False
     try:
         result = subprocess.run(
             [sys.executable, "-c", _CTRL_C_SENDER, str(pid)],
@@ -477,6 +527,8 @@ class BaseCommand:
         cmd: list[str],
         stdout=None,
         stderr=None,
+        *,
+        detached: bool = False,
     ) -> subprocess.Popen:
         """Spawn ``cmd``, or say the binary is not there.
 
@@ -487,10 +539,20 @@ class BaseCommand:
         exact binary that ``_aws_cmd()`` just ran successfully — a PATH race, a
         reinstall in progress, an AppLocker refusal — so it is rare, but it is
         not rarer than the thing this class was written for.
+
+        ``detached`` is the difference between a tunnel the developer opened in
+        their terminal —where ``Ctrl+C`` should reach it— and one the web opened.
+        A child that inherits our console is in the same group as uvicorn, and a
+        ``CTRL_C_EVENT`` aimed at *its* console goes to every process attached to
+        it: pressing "Parar" on a web tunnel was also shutting the server down.
+        The web asks for detachment; the CLI keeps the old behaviour.
         """
         log_command(" ".join(cmd))
+        kwargs: dict[str, Any] = {"stdout": stdout, "stderr": stderr}
+        if detached:
+            kwargs.update(detached_popen_kwargs())
         try:
-            return subprocess.Popen(cmd, stdout=stdout, stderr=stderr)
+            return subprocess.Popen(cmd, **kwargs)
         except FileNotFoundError:
             raise ToolUnavailable(f"Command not found: {cmd[0]}. Is it installed?") from None
 
@@ -508,6 +570,7 @@ class BaseCommand:
         cluster: str = "",
         label: str = "",
         owner: str = process_tracker.OWNER_CLI,
+        detached: bool = False,
     ) -> subprocess.Popen:
         """Start one ``ssm start-session`` forwarding ``port`` to ``local_port``.
 
@@ -515,6 +578,10 @@ class BaseCommand:
         recorded so a tracked tunnel can be attributed back to the row it belongs
         to — see :mod:`yappy_library.adapters.process_tracker`, which is the
         whole reason they are here.
+
+        ``detached`` is passed by the web caller only. Without it the tunnel
+        shares uvicorn's console, and stopping it sends the ``Ctrl+C`` that
+        closes the server as well (see :meth:`popen`).
         """
         if remote_host and sys.platform == "linux":
             # Was `sys.exit(1)`, bare, with nothing written anywhere. On Linux,
@@ -566,7 +633,7 @@ class BaseCommand:
                 "--parameters", json.dumps(params),
                 "--profile", profile,
                 "--region", region,
-            ], stdout=sink, stderr=sink)
+            ], stdout=sink, stderr=sink, detached=detached)
         finally:
             if handle is not None:
                 handle.close()
