@@ -222,8 +222,14 @@ def _process_alive(pid) -> bool:
     if not pid:
         return False
     try:
-        if sys.platform == "win32" and os.name == "nt":
-            return process_identity.identity(int(pid)) is not None
+        if sys.platform == "win32":
+            ident = process_identity.identity(int(pid))
+            if ident is not None:
+                return True
+            # A real Windows host: identity() is authoritative here.
+            # On Linux with a faked sys.platform (tests), fall back to the POSIX probe.
+            if os.name == "nt":
+                return False
         os.kill(int(pid), 0)
         return True
     except PermissionError:
