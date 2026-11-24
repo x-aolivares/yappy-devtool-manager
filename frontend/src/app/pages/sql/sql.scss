@@ -16,7 +16,7 @@
   text-align: left;
   padding: 0.625rem 0.875rem;
   border: 1px solid var(--err);
-  border-radius: 6px;
+  border-radius: var(--sys-radius-md);
   background: color-mix(in srgb, var(--err) 10%, transparent);
   color: var(--err);
   font: inherit;
