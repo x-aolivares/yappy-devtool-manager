@@ -222,7 +222,7 @@ def _process_alive(pid) -> bool:
     if not pid:
         return False
     try:
-        if sys.platform == "win32":
+        if sys.platform == "win32" and os.name == "nt":
             return process_identity.identity(int(pid)) is not None
         os.kill(int(pid), 0)
         return True
