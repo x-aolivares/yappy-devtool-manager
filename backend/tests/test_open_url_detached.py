@@ -59,9 +59,9 @@ def test_a_url_is_opened_out_of_the_callers_console_group(spawned):
     open_url("http://localhost:8080")
 
     (cmd, kwargs), = spawned
-    assert kwargs["creationflags"] == (
-        subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-    )
+    detached_process = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+    create_new_process_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+    assert kwargs["creationflags"] == (detached_process | create_new_process_group)
     assert "start_new_session" not in kwargs
 
 
@@ -182,12 +182,15 @@ def test_the_kafka_spawn_uses_the_flags_that_let_it_leave_by_itself(
 
     # El broker tiene consola propia —no DETACHED_PROCESS— y la ventana
     # escondida; y lo lanza un shim, que es lo que rehabilita el Ctrl+C.
-    assert broker_kwargs["creationflags"] & subprocess.CREATE_NEW_CONSOLE
-    assert not broker_kwargs["creationflags"] & subprocess.DETACHED_PROCESS
-    assert broker_kwargs["startupinfo"].wShowWindow == subprocess.SW_HIDE
+    create_new_console = getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010)
+    detached_process = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+    sw_hide = getattr(subprocess, "SW_HIDE", 0)
+    assert broker_kwargs["creationflags"] & create_new_console
+    assert not broker_kwargs["creationflags"] & detached_process
+    assert broker_kwargs["startupinfo"].wShowWindow == sw_hide
     assert "SetConsoleCtrlHandler(None, False)" in broker_cmd[3]
     # El navegador sigue como estaba: sin consola.
-    assert browser_kwargs["creationflags"] & subprocess.DETACHED_PROCESS
+    assert browser_kwargs["creationflags"] & detached_process
 
 
 def _backend_sources() -> list[Path]:
@@ -241,7 +244,7 @@ def test_os_system_is_gone_from_the_backend():
     assert _sources_using_os_system() == []
 
 
-def test_the_detach_helper_is_the_only_place_the_flags_are_written():
+def test_the_detach_helper_is_the_only_place_the_flags_are_written(monkeypatch):
     """One definition, not two that happen to agree today.
 
     `CREATE_NEW_PROCESS_GROUP` without `DETACHED_PROCESS` still leaves the child
@@ -249,8 +252,11 @@ def test_the_detach_helper_is_the_only_place_the_flags_are_written():
     are only correct together, which is the kind of fact that is easy to get
     wrong the second time it is typed out.
     """
+    monkeypatch.setattr(base.sys, "platform", "win32")
+    detached_process = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+    create_new_process_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
     assert detached_popen_kwargs() == {
-        "creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        "creationflags": detached_process | create_new_process_group
     }
 
     backend = Path(base.__file__).resolve().parents[3]
@@ -263,6 +269,19 @@ def test_the_detach_helper_is_the_only_place_the_flags_are_written():
                 and node.attr in ("DETACHED_PROCESS", "CREATE_NEW_PROCESS_GROUP")
                 and isinstance(node.value, ast.Name)
                 and node.value.id == "subprocess"
+            ):
+                writers.add(source.relative_to(backend).as_posix())
+            # También cuenta getattr(subprocess, "DETACHED_PROCESS", ...) para que
+            # el helper pueda ser cross-platform en CI Linux.
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "getattr"
+                and len(node.args) >= 2
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id == "subprocess"
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value in ("DETACHED_PROCESS", "CREATE_NEW_PROCESS_GROUP")
             ):
                 writers.add(source.relative_to(backend).as_posix())
     assert writers == {"library/yappy_library/adapters/processes.py"}

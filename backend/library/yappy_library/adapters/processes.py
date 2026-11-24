@@ -108,7 +108,8 @@ def detached_popen_kwargs() -> dict:
     if sys.platform == "win32":
         return {
             "creationflags": (
-                subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+                getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+                | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
             )
         }
     return {"start_new_session": True}
@@ -131,11 +132,15 @@ def own_console_popen_kwargs() -> dict:
     """
     if sys.platform != "win32":
         return {"start_new_session": True}
-    startupinfo = subprocess.STARTUPINFO()
-    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    startupinfo.wShowWindow = subprocess.SW_HIDE
+    startupinfo_cls = getattr(subprocess, "STARTUPINFO", None)
+    if startupinfo_cls is None:
+        startupinfo = type("STARTUPINFO", (), {"dwFlags": 0, "wShowWindow": 0})()
+    else:
+        startupinfo = startupinfo_cls()
+    startupinfo.dwFlags |= getattr(subprocess, "STARTF_USESHOWWINDOW", 0x00000001)
+    startupinfo.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
     return {
-        "creationflags": subprocess.CREATE_NEW_CONSOLE,
+        "creationflags": getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010),
         "startupinfo": startupinfo,
     }
 

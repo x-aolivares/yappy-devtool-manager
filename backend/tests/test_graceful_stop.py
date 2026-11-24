@@ -43,10 +43,13 @@ def test_el_broker_tiene_consola_propia_y_oculta(monkeypatch):
 
     kwargs = processes.own_console_popen_kwargs()
 
-    assert kwargs["creationflags"] & subprocess.CREATE_NEW_CONSOLE
-    assert not kwargs["creationflags"] & subprocess.DETACHED_PROCESS
+    create_new_console = getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010)
+    detached_process = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+    sw_hide = getattr(subprocess, "SW_HIDE", 0)
+    assert kwargs["creationflags"] & create_new_console
+    assert not kwargs["creationflags"] & detached_process
     # Y la ventana no aparece en el escritorio del developer.
-    assert kwargs["startupinfo"].wShowWindow == subprocess.SW_HIDE
+    assert kwargs["startupinfo"].wShowWindow == sw_hide
 
 
 def test_el_shim_devuelve_el_ctrl_c_al_grupo(monkeypatch):
@@ -76,7 +79,7 @@ def test_el_navegador_sigue_detachado(monkeypatch):
 
     flags = processes.detached_popen_kwargs()["creationflags"]
 
-    assert flags & subprocess.DETACHED_PROCESS
+    assert flags & getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
 
 
 # --- pedirle que se vaya --------------------------------------------------------

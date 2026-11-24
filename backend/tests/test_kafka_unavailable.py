@@ -478,6 +478,10 @@ def test_no_se_puede_levantar_un_segundo_broker(tmp_path, tracker, monkeypatch):
     """
     monkeypatch.setattr(api_kafka.sys, "platform", "win32")
     monkeypatch.setattr(api_kafka, "_port_in_use", lambda port, **kw: False)
+    monkeypatch.setattr(
+        api_kafka.subprocess, "Popen",
+        lambda *a, **k: SimpleNamespace(pid=os.getpid(), poll=lambda: None),
+    )
     process_tracker.track_process(
         os.getpid(), "kafka", target="server", owner=process_tracker.OWNER_WEB,
     )

@@ -455,7 +455,11 @@ def test_the_route_answers_409_with_the_reason(
         )
 
     assert response.status_code == 409
-    assert AWS_CLI_MESSAGE in response.json()["detail"]
+    detail = response.json()["detail"]
+    if sys.platform == "linux":
+        assert "port-forwarding a un host remoto no anda en Linux" in detail
+    else:
+        assert AWS_CLI_MESSAGE in detail
 
 
 def test_a_db_request_is_an_error_row_not_a_dead_server(no_aws_cli, tunnel_logs, monkeypatch):
@@ -499,7 +503,11 @@ def test_a_db_request_is_an_error_row_not_a_dead_server(no_aws_cli, tunnel_logs,
         with connection.connect(cfg):
             pass
 
-    assert AWS_CLI_MESSAGE in str(excinfo.value)
+    detail = str(excinfo.value)
+    if sys.platform == "linux":
+        assert "port-forwarding a un host remoto no anda en Linux" in detail
+    else:
+        assert AWS_CLI_MESSAGE in detail
     assert not isinstance(excinfo.value, SystemExit)
 
 
