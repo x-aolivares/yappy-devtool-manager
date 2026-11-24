@@ -33,6 +33,7 @@
     <app-resource-cards
       [rows]="rows()"
       [busy]="busy()"
+      [passwords]="passwords()"
       emptyText="El túnel a la base de datos no está levantado. Sin él no contesta Migrar datos ni Ejecutar SQL."
       (start)="startResource($event)"
       (stop)="stopOne($event)"

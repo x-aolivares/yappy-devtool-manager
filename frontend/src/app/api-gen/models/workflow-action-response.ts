@@ -3,6 +3,7 @@
 
 export interface WorkflowActionResponse {
   ok?: boolean;
+  password?: (string | null);
   pid?: (number | null);
   port?: (number | null);
   state?: (string | null);

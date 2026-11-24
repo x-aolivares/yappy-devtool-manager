@@ -4445,6 +4445,17 @@
               }
             ],
             "title": "State"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
           }
         },
         "type": "object",

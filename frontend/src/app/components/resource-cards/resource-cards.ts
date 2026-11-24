@@ -13,7 +13,7 @@
  * la página. Así el `busy` es de la página, que es la que sabe si hay una
  * operación en vuelo, y el log es el del panel compartido.
  */
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, signal } from '@angular/core';
 
 import type { WorkflowResourceInfo } from '../../api-gen/models';
 import {
@@ -51,6 +51,10 @@ export class ResourceCards {
    * componente adivine por `group`.
    */
   readonly emptyText = input('Acá no hay nada levantado.');
+
+  /** Passwords/tokens by resource key, shown as a copy action when present. */
+  readonly passwords = input<Record<string, string>>({});
+  readonly copiedKey = signal<string | null>(null);
 
   readonly start = output<WorkflowResourceInfo>();
   readonly stop = output<WorkflowResourceInfo>();
@@ -100,6 +104,24 @@ export class ResourceCards {
 
   protected canStop(row: WorkflowResourceInfo): boolean {
     return canStop(row.state, !!row.foreign);
+  }
+
+  protected passwordOf(row: WorkflowResourceInfo): string {
+    return this.passwords()[row.key] ?? '';
+  }
+
+  protected async copyPassword(row: WorkflowResourceInfo): Promise<void> {
+    const password = this.passwordOf(row);
+    if (!password) return;
+    try {
+      await navigator.clipboard.writeText(password);
+      this.copiedKey.set(row.key);
+      setTimeout(() => {
+        if (this.copiedKey() === row.key) this.copiedKey.set(null);
+      }, 2000);
+    } catch {
+      // Clipboard may be unavailable; ignore silently.
+    }
   }
 
   protected trackRow(_index: number, row: WorkflowResourceInfo): string { return row.key; }

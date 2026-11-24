@@ -29,6 +29,7 @@
   <app-resource-cards
     [rows]="rows()"
     [busy]="busy()"
+    [passwords]="passwords()"
     emptyText="No hay Kafka corriendo en esta máquina. Levantá el broker para poder probar contra él."
     (start)="startResource($event)"
     (stop)="stopOne($event)"

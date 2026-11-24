@@ -346,6 +346,9 @@ export abstract class WorkflowSectionPage {
     });
   }
 
+  /** Passwords/tokens returned by start actions, keyed by resource key. */
+  readonly passwords = signal<Record<string, string>>({});
+
   // --- acciones -------------------------------------------------------------
 
   async startResource(row: WorkflowResourceInfo): Promise<void> {
@@ -353,7 +356,10 @@ export abstract class WorkflowSectionPage {
     try {
       // El ámbito, no `env()` a secas: una página full local levanta sin
       // ambiente, igual que lee sin ambiente.
-      await this.workflow.startResource(row.key, this.scope.env);
+      const res = await this.workflow.startResource(row.key, this.scope.env);
+      if (res.password) {
+        this.passwords.update((current) => ({ ...current, [row.key]: res.password! }));
+      }
       // Sin `reload()`. El backend ya escribió el tracker y ya publicó antes de
       // contestar, así que el frame está viniendo: la fila cambia en el mismo clic
       // y preguntar otra vez sería justamente la consulta de más.

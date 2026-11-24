@@ -684,6 +684,7 @@ class WorkflowActionResponse(BaseModel):
     pid: int | None = None
     port: int | None = None
     state: str | None = None
+    password: str | None = None
 
 
 class WorkflowStopResponse(BaseModel):

@@ -180,10 +180,11 @@ def start_resource(cfg: Config, key: str) -> dict:
 
     ensure_port_free(port)
 
+    password: str | None = None
     if definition.group == "kafka":
         proc = _start_kafka(definition)
     elif definition.group == "db":
-        proc = _start_db(cfg, port)
+        proc, password = _start_db(cfg, port)
     else:
         proc = _spawn_tunnel(
             cfg,
@@ -195,7 +196,10 @@ def start_resource(cfg: Config, key: str) -> dict:
             env=cfg.env or "",
         )
 
-    return _hand_off(proc, port, definition.probe, definition.name)
+    result = _hand_off(proc, port, definition.probe, definition.name)
+    if password:
+        result["password"] = password
+    return result
 
 
 def _start_kafka(definition) -> subprocess.Popen:
@@ -223,18 +227,19 @@ def _start_kafka(definition) -> subprocess.Popen:
     return proc
 
 
-def _start_db(cfg: Config, port: int) -> subprocess.Popen:
+def _start_db(cfg: Config, port: int) -> tuple[subprocess.Popen, str]:
     """Open the Aurora tunnel: token first, then the forward.
 
     Not the CLI's ``run db``: that one also wires the token refresher and the
     keep-alive loop, which are a terminal session's job. The screen opens the
     forward and supervises it, and the RDS token it writes is the same file the
-    other pages read.
+    other pages read. The token is returned so the UI can offer a copy action.
     """
     from yappy_library.adapters.database.credentials import generate_token, write_local_env
 
     try:
-        write_local_env(generate_token(cfg), cfg=cfg)
+        token = generate_token(cfg)
+        write_local_env(token, cfg=cfg)
         remote_host = cfg.require("AWS_HOST")
     except SystemExit as exc:
         raise StartRefused(f"No se pudo generar el token de RDS: {exc}") from exc
@@ -243,7 +248,7 @@ def _start_db(cfg: Config, port: int) -> subprocess.Popen:
         # The route already knows how to show a `StartRefused` (409 + reason).
         raise StartRefused(f"No se pudo generar el token de RDS: {exc}") from exc
 
-    return _spawn_tunnel(
+    proc = _spawn_tunnel(
         cfg,
         port=aws_port_of(cfg),
         local_port=port,
@@ -252,6 +257,7 @@ def _start_db(cfg: Config, port: int) -> subprocess.Popen:
         label="Tunnel Aurora",
         env=cfg.env or "",
     )
+    return proc, token
 
 
 def start_port(cfg: Config, cluster: str, port: int, label: str = "") -> dict:

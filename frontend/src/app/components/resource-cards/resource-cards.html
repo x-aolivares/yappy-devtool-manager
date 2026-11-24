@@ -60,6 +60,11 @@
         @if (canShowLogsRow(row.state) && row.pid) {
           <button type="button" class="secondary" (click)="logs.emit(row)">Ver logs</button>
         }
+        @if (passwordOf(row); as pwd) {
+          <button type="button" class="secondary" (click)="copyPassword(row)">
+            {{ copiedKey() === row.key ? 'Copiado' : 'Copiar contraseña' }}
+          </button>
+        }
         @if (fixOf(row)) {
           <button type="button" class="secondary" (click)="fix.emit(row)" [disabled]="busy()">
             {{ fixButton(fixOf(row)!) }}
