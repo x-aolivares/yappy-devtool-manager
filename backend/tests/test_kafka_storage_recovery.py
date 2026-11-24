@@ -34,6 +34,11 @@ CORRUPT_INDEX = """[2026-10-19 20:39:23,955] ERROR [SharedServer id=1] Got excep
 java.lang.NullPointerException: Cannot invoke "java.nio.MappedByteBuffer.duplicate()" because the return value of "org.apache.kafka.storage.internals.log.OffsetIndex.mmap()" is null
 """
 
+#: La misma falla vista desde el arranque siguiente: el log dir quedó offline.
+OFFLINE_DIR = """[2026-11-24 09:59:13,887] ERROR Encountered fatal fault: Error starting LogManager (org.apache.kafka.server.fault.ProcessTerminatingFaultHandler)
+org.apache.kafka.common.errors.KafkaStorageException: The log dir C:\\tmp\\kraft-combined-logs is already offline due to a previous IO exception.
+"""
+
 #: Un puerto donde nada escucha, para que el probe falle sin esperar.
 DEAD_PORT = 1
 
@@ -100,6 +105,33 @@ def test_un_storage_roto_se_rescata_solo(tracker, never_up, broken_storage, monk
     ).run(timeout=0.01)
 
     # Con el mismo dueño: la fila que aparece es la que el developer ya miraba.
+    assert rescued == [process_tracker.OWNER_WEB]
+
+
+def test_un_log_dir_offline_tambien_se_rescata(tracker, never_up, tmp_path, monkeypatch):
+    """El broker muere antes de escuchar, y esa firma también la resuelve el supervisor.
+
+    Sin esto, la pantalla se queda con la fila en 'error' y sin botón: el log
+    nombra el directorio, no un archivo dentro de él, y el detector no lo
+    reconocía.
+    """
+    log = tmp_path / "kafka-server.log"
+    log.write_text(OFFLINE_DIR, encoding="utf-8")
+    monkeypatch.setattr(
+        supervisor_mod, "log_dirs", lambda core: [r"C:\tmp\kraft-combined-logs"]
+    )
+    rescued = []
+    monkeypatch.setattr(
+        recovery_mod,
+        "recover_broken_kafka_storage",
+        lambda owner: rescued.append(owner) or True,
+    )
+    _track(str(log))
+
+    Supervisor(
+        pid=os.getpid(), port=DEAD_PORT, probe="kafka", log_file=str(log),
+    ).run(timeout=0.01)
+
     assert rescued == [process_tracker.OWNER_WEB]
 
 

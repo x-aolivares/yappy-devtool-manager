@@ -68,6 +68,17 @@ _CORRUPT_INDEX = "OffsetIndex.mmap()"
 #: The record that could not be read, which does name the file it was in.
 _CORRUPT_RECORD = "CorruptRecordException"
 
+#: A log dir that Kafka itself marked offline after a previous IO exception.
+#:
+#: "Encountered fatal fault: Error starting LogManager" followed by
+#: "KafkaStorageException: The log dir C:\\tmp\\kraft-combined-logs is already
+#: offline due to a previous IO exception" is the same broken storage seen from
+#: the next start instead of from recovery: the dir is dead and the broker
+#: refuses to open it. Unlike the other two, it names the directory, not a file
+#: inside it — so the configured ``log.dirs`` is compared directly.
+_OFFLINE_LOG_DIR = "KafkaStorageException"
+_OFFLINE_LOG_DIR_REASON = "already offline"
+
 #: A line of a Java stack trace. Pure noise for this purpose, and there can be
 #: dozens of them between two lines that actually say something.
 _FRAME = "\tat "
@@ -185,10 +196,16 @@ def needs_clean(text: str | list[str], dirs: list[str]) -> bool:
        on **every** start fails the same way, and the only fix is to wipe the
        storage.
 
+    3. A start after that: the dir is already marked offline by the previous IO
+       exception and ``LogManager`` refuses to open it (``KafkaStorageException``
+       naming the dir). Same storage, same wipe.
+
     The second one names no file — the NPE is about an index, not about a path —
     so it cannot be matched by "the exception names a file inside ``log.dirs``".
     It is matched by the exception itself, which is just as specific: nothing
-    else produces an ``OffsetIndex`` that is null.
+    else produces an ``OffsetIndex`` that is null. The third one does name a
+    path, but the dir itself rather than a file inside it; both are compared on
+    their normalised form below.
     """
     if not dirs:
         return False
@@ -196,7 +213,15 @@ def needs_clean(text: str | list[str], dirs: list[str]) -> bool:
     for line in failure_excerpt(text):
         if _CORRUPT_INDEX in line:
             return True
-        if "AccessDeniedException" not in line and _CORRUPT_RECORD not in line:
+        names_storage = (
+            "AccessDeniedException" in line
+            or _CORRUPT_RECORD in line
+            or (
+                _OFFLINE_LOG_DIR in line
+                and _OFFLINE_LOG_DIR_REASON in line
+            )
+        )
+        if not names_storage:
             continue
         haystack = _normalised(line)
         if any(needle in haystack for needle in needles):

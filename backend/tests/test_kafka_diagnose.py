@@ -52,6 +52,12 @@ CORRUPT_RECORD = """[2026-10-19 16:01:27,261] ERROR Encountered fatal fault: Une
 org.apache.kafka.common.errors.CorruptRecordException: Found record size 0 smaller than minimum record overhead (14) in file C:\\tmp\\kraft-combined-logs\\__cluster_metadata-0\\00000000000000000000.log.
 """
 
+# La misma historia vista desde el arranque siguiente: el directorio ya quedó
+# marcado como offline y el broker muere antes de intentar recuperar nada.
+OFFLINE_DIR = """[2026-11-24 09:59:13,887] ERROR Encountered fatal fault: Error starting LogManager (org.apache.kafka.server.fault.ProcessTerminatingFaultHandler)
+org.apache.kafka.common.errors.KafkaStorageException: The log dir C:\\tmp\\kraft-combined-logs is already offline due to a previous IO exception.
+"""
+
 KRAFT_DIRS = [r"C:\tmp\kraft-combined-logs"]
 
 
@@ -182,6 +188,38 @@ def test_un_registro_corrupto_pide_la_limpieza():
     mismo storage y el mismo arreglo.
     """
     assert needs_clean(CORRUPT_RECORD, KRAFT_DIRS) is True
+
+
+def test_un_log_dir_offline_pide_la_limpieza():
+    """La firma con la que muere el broker cuando el storage ya está offline.
+
+    Antes no se ofrecía nada: el supervisor no veía un arreglo conocido, la fila
+    se quedaba en 'error' y el developer no tenía forma de llegar al botón que
+    limpia el storage. Es el mismo storage de los dos casos de arriba, así que
+    el remedio tiene que ser el mismo.
+    """
+    assert needs_clean(OFFLINE_DIR, KRAFT_DIRS) is True
+
+
+def test_un_log_dir_offline_de_otro_directorio_no_pide_la_limpieza():
+    """La excepción nombra un dir, y tiene que ser el configurado."""
+    otro = OFFLINE_DIR.replace(r"C:\tmp\kraft-combined-logs", r"C:\otro\logs")
+
+    assert needs_clean(otro, KRAFT_DIRS) is False
+
+
+def test_otra_kafka_storage_exception_no_pide_la_limpieza():
+    """Sin el "already offline" no sabemos que el dir está muerto."""
+    otro = OFFLINE_DIR.replace("is already offline due to", "no se pudo leer por")
+
+    assert needs_clean(otro, KRAFT_DIRS) is False
+
+
+def test_el_boton_aparece_con_un_log_dir_offline(tmp_path):
+    log = tmp_path / "kafka-server.log"
+    log.write_text(OFFLINE_DIR, encoding="utf-8")
+
+    assert fix_for(str(log), KRAFT_DIRS) == FIX_CLEAN_STORAGE
 
 
 def test_un_npe_que_no_es_del_storage_no_pide_la_limpieza():
