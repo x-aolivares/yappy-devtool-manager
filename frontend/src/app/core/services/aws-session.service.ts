@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { Api } from '../../api-gen/api';
 import { awsSessionLoginPoll, awsSessionLoginStart, awsSessionStatus } from '../../api-gen/functions';
 import {
@@ -10,6 +10,8 @@ import {
 export interface AwsSessionPrompt {
   message?: string | null;
   profile?: string | null;
+  /** `true` cuando el usuario pidió renovar una sesión todavía activa. */
+  renew?: boolean | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -17,6 +19,12 @@ export class AwsSessionService {
   private readonly api = inject(Api);
 
   readonly status = signal<AwsSessionStatusResponse | null>(null);
+  /**
+   * Cuándo llegó la respuesta. El contador no compara `expires_at` con el reloj
+   * del navegador —que puede estar corrido— sino que descuenta desde acá los
+   * segundos que informó el backend.
+   */
+  readonly statusFetchedAt = signal<number | null>(null);
   readonly statusLoading = signal(false);
   readonly prompt = signal<AwsSessionPrompt | null>(null);
   readonly login = signal<AwsSessionLoginStartResponse | null>(null);
@@ -24,14 +32,32 @@ export class AwsSessionService {
   readonly loginBusy = signal(false);
   readonly loginError = signal<string | null>(null);
 
+  /** Lo mueve el reloj del `App`; el servicio no arma un segundo intervalo. */
+  private readonly now = signal(Date.now());
+
+  readonly remainingSeconds = computed(() => {
+    const status = this.status();
+    const fetchedAt = this.statusFetchedAt();
+    if (!status?.active || fetchedAt === null || status.expires_in_seconds == null) return null;
+    const elapsed = Math.max(0, (this.now() - fetchedAt) / 1000);
+    return Math.max(0, Math.round(status.expires_in_seconds - elapsed));
+  });
+
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private dismissed = false;
+
+  /** Un tick del reloj compartido: recalcula el contador sin pedir estado. */
+  tick(): void {
+    this.now.set(Date.now());
+  }
 
   async refreshStatus(): Promise<AwsSessionStatusResponse | null> {
     this.statusLoading.set(true);
     try {
       const status = await this.api.invoke(awsSessionStatus, {});
       this.status.set(status);
+      this.statusFetchedAt.set(Date.now());
+      this.tick();
       return status;
     } catch {
       return null;
@@ -47,10 +73,12 @@ export class AwsSessionService {
     this.login.set(null);
     this.loginState.set(null);
     this.loginError.set(null);
-    this.prompt.set(prompt);
+    // Un 401 viene de una sesión que ya no sirve: nunca es una renovación.
+    this.prompt.set({ ...prompt, renew: false });
   }
 
   dismissPrompt(): void {
+    const wasWaiting = this.loginBusy() && this.loginState()?.status !== 'authorized';
     this.prompt.set(null);
     this.login.set(null);
     this.loginState.set(null);
@@ -59,6 +87,10 @@ export class AwsSessionService {
     this.stopPolling();
     // Cancelar es una decisión del usuario: no insistir hasta la próxima acción AWS.
     this.dismissed = true;
+    // El device flow del backend sigue hasta expirar; al cerrar mientras se
+    // esperaba autorización, se consulta el estado para no dejar el sidebar
+    // con un dato viejo hasta el próximo tick.
+    if (wasWaiting) void this.refreshStatus();
   }
 
   /** Permite que una nueva falla AWS vuelva a mostrar el modal. */
@@ -87,7 +119,11 @@ export class AwsSessionService {
       const login = await this.api.invoke(awsSessionLoginStart, {});
       this.login.set(login);
       if (!this.prompt()) {
-        this.prompt.set({ profile: login.profile, message: null });
+        this.prompt.set({
+          profile: login.profile,
+          message: null,
+          renew: !!this.status()?.active,
+        });
       }
       this.openVerification(login);
       this.startPolling(login.login_id);
@@ -121,16 +157,20 @@ export class AwsSessionService {
       if (state.status === 'authorized') {
         this.stopPolling();
         this.loginBusy.set(false);
+        // No copiar el `expires_in_seconds` anterior: era el de la sesión
+        // vencida y el contador arrancaría ya vencido. Se muestra el dato
+        // mínimo del poll y enseguida se pide el estado real al backend.
         this.status.set({
           active: state.active,
           profile: state.profile,
           expires_at: state.expires_at ?? null,
           sso_session: this.status()?.sso_session ?? null,
           start_url: this.status()?.start_url ?? null,
-          expires_in_seconds: this.status()?.expires_in_seconds ?? null,
+          expires_in_seconds: null,
           message: state.message ?? null,
         });
-        void this.refreshStatus();
+        this.statusFetchedAt.set(null);
+        await this.refreshStatus();
         return;
       }
       if (state.status === 'expired' || state.status === 'error') {

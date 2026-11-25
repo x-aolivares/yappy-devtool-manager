@@ -40,17 +40,20 @@
     <section class="aws-session-status" aria-label="Estado de sesión AWS">
       <h2 class="aws-session-status__title">Sesión AWS</h2>
       <div class="aws-session-status__row">
-        <span class="aws-session-status__dot" [class.aws-session-status__dot--ok]="awsSession.status()?.active" [class.aws-session-status__dot--warn]="!awsSession.status()?.active"></span>
+        <span
+          class="aws-session-status__dot"
+          [class.aws-session-status__dot--ok]="awsStatusTone() === 'ok'"
+          [class.aws-session-status__dot--warn]="awsStatusTone() === 'warn'"
+          [class.aws-session-status__dot--danger]="awsStatusTone() === 'danger'"
+        ></span>
         <span>{{ awsStatusLabel() }}</span>
       </div>
       @if (awsStatusMeta(); as meta) {
         <p class="aws-session-status__meta">{{ meta }}</p>
       }
-      @if (!awsSession.status()?.active) {
-        <button type="button" class="secondary aws-session-status__action" (click)="startAwsLogin()">Iniciar sesión AWS</button>
-      } @else {
-        <button type="button" class="secondary aws-session-status__action" (click)="startAwsLogin()">Renovar sesión</button>
-      }
+      <button type="button" class="secondary aws-session-status__action" (click)="startAwsLogin()">
+        {{ awsActionLabel() }}
+      </button>
     </section>
 
     <button
@@ -70,9 +73,9 @@
 
   <app-notice-modal
     [open]="awsPromptOpen()"
-    title="Sesión de AWS no autenticada"
+    [title]="awsPromptTitle()"
     tone="default"
-    confirmLabel="Iniciar sesión AWS"
+    [confirmLabel]="awsPromptConfirmLabel()"
     (confirmed)="startAwsLogin()"
     (closed)="dismissAwsPrompt()"
   >

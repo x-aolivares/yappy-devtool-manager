@@ -1,8 +1,11 @@
-import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { signal, type WritableSignal } from '@angular/core';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter, type Route } from '@angular/router';
 import { App } from './app';
 import { routes } from './app.routes';
+import { AwsSessionService } from './core/services/aws-session.service';
+import type { AwsSessionPrompt } from './core/services/aws-session.service';
+import type { AwsSessionStatusResponse } from './api-gen/models';
 import { ThemeService } from './core/services/theme.service';
 
 describe('App', () => {
@@ -148,5 +151,164 @@ describe('App', () => {
     for (const href of hrefs) {
       expect(full.has(href!)).toBe(true);
     }
+  });
+});
+
+describe('App — sesión AWS en el sidebar', () => {
+  type SessionStatus = 'pending' | 'authorized' | 'expired' | 'error';
+  type FakeAwsSession = {
+    status: WritableSignal<AwsSessionStatusResponse | null>;
+    prompt: WritableSignal<AwsSessionPrompt | null>;
+    remainingSeconds: WritableSignal<number | null>;
+    loginBusy: WritableSignal<boolean>;
+    loginState: WritableSignal<{ status: SessionStatus } | null>;
+    login: WritableSignal<unknown>;
+    loginError: WritableSignal<string | null>;
+    statusFetchedAt: WritableSignal<number | null>;
+    refreshStatus: () => Promise<null>;
+    tick: () => void;
+    startLogin: () => Promise<void>;
+    dismissPrompt: () => void;
+  };
+  let status: WritableSignal<AwsSessionStatusResponse | null>;
+  let prompt: WritableSignal<AwsSessionPrompt | null>;
+  let remaining: WritableSignal<number | null>;
+  let loginBusy: WritableSignal<boolean>;
+  let loginState: WritableSignal<{ status: SessionStatus } | null>;
+  let fake: FakeAwsSession;
+  let fixture: ComponentFixture<App>;
+
+  beforeEach(async () => {
+    status = signal<AwsSessionStatusResponse | null>(null);
+    prompt = signal<AwsSessionPrompt | null>(null);
+    remaining = signal<number | null>(null);
+    loginBusy = signal(false);
+    loginState = signal<{ status: SessionStatus } | null>(null);
+
+    fake = {
+      status,
+      prompt,
+      remainingSeconds: remaining,
+      loginBusy,
+      loginState,
+      login: signal<unknown>(null),
+      loginError: signal<string | null>(null),
+      statusFetchedAt: signal<number | null>(null),
+      refreshStatus: async () => null,
+      tick: () => {},
+      startLogin: async () => {
+        if (loginBusy()) return;
+        loginBusy.set(true);
+        prompt.set({ profile: status()?.profile ?? null, message: null, renew: !!status()?.active });
+      },
+      dismissPrompt: () => {
+        prompt.set(null);
+        loginBusy.set(false);
+        loginState.set(null);
+      },
+    };
+
+    const isDark = signal(false);
+    await TestBed.configureTestingModule({
+      imports: [App],
+      providers: [
+        provideRouter([]),
+        { provide: ThemeService, useValue: { isDark, toggle: () => isDark.update((d) => !d) } },
+        { provide: AwsSessionService, useValue: fake },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+  });
+
+  function label(): string | undefined {
+    return (fixture.nativeElement as HTMLElement)
+      .querySelector('.aws-session-status__row span:last-child')
+      ?.textContent?.trim();
+  }
+
+  function meta(): string | undefined {
+    return (fixture.nativeElement as HTMLElement)
+      .querySelector('.aws-session-status__meta')
+      ?.textContent?.trim();
+  }
+
+  it('muestra Activa mientras sobra tiempo y pasa a Por vencer con 15 min o menos', () => {
+    status.set({
+      active: true,
+      profile: 'base-profile',
+      expires_at: '2026-11-25T16:00:00Z',
+      expires_in_seconds: 1200,
+    });
+    remaining.set(1200);
+    fixture.detectChanges();
+
+    expect(label()).toBe('Activa');
+    expect(meta()).toContain('en ~20 min');
+    const dot = (fixture.nativeElement as HTMLElement).querySelector('.aws-session-status__dot')!;
+    expect(dot.classList.contains('aws-session-status__dot--ok')).toBe(true);
+
+    remaining.set(800);
+    fixture.detectChanges();
+
+    expect(label()).toBe('Por vencer');
+    expect(meta()).toContain('en ~14 min');
+    expect(dot.classList.contains('aws-session-status__dot--warn')).toBe(true);
+  });
+
+  it('cae a Sin autenticar al llegar a cero y muestra el mensaje del backend', () => {
+    status.set({
+      active: false,
+      profile: 'base-profile',
+      expires_in_seconds: 0,
+      message: 'La sesión de AWS venció o no está activa.',
+    });
+    remaining.set(0);
+    fixture.detectChanges();
+
+    expect(label()).toBe('Sin autenticar');
+    expect(meta()).toContain('La sesión de AWS venció');
+    const dot = (fixture.nativeElement as HTMLElement).querySelector('.aws-session-status__dot')!;
+    expect(dot.classList.contains('aws-session-status__dot--danger')).toBe(true);
+  });
+
+  it('el modal dice Renovar cuando la sesión está activa y Iniciar cuando no', () => {
+    status.set({ active: true, profile: 'base-profile', expires_in_seconds: 3600 });
+    remaining.set(3600);
+    prompt.set({ renew: true, profile: 'base-profile' });
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.querySelector('.notice-modal h2')?.textContent?.trim()).toBe('Renovar sesión AWS');
+    expect(compiled.querySelector('.notice-modal__confirm')?.textContent?.trim()).toBe('Renovar');
+    expect(compiled.querySelector('.aws-session-status__action')?.textContent?.trim()).toBe('Renovar sesión');
+
+    prompt.set({ renew: false });
+    fixture.detectChanges();
+
+    expect(compiled.querySelector('.notice-modal h2')?.textContent?.trim()).toBe('Sesión de AWS no autenticada');
+    expect(compiled.querySelector('.notice-modal__confirm')?.textContent?.trim()).toBe('Iniciar sesión AWS');
+  });
+
+  it('el botón dice que espera autorización mientras hay un login en curso', () => {
+    status.set({ active: true, profile: 'base-profile', expires_in_seconds: 3600 });
+    loginBusy.set(true);
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('.aws-session-status__action')?.textContent?.trim()).toBe(
+      'Esperando autorización…',
+    );
+  });
+
+  it('al volver la pestaña refresca el estado en vez de usar el timer suspendido', () => {
+    const refresh = vi.spyOn(fake, 'refreshStatus');
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    refresh.mockClear();
+
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+    visibility.mockRestore();
   });
 });

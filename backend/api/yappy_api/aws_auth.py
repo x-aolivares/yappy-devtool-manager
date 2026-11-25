@@ -108,7 +108,10 @@ def cache_status(cache_path, *, profile: str, sso_session: str | None = None, st
 
     expires_at = _parse_expires_at(data.get("expiresAt") or data.get("expires_at"))
     now = datetime.now(timezone.utc)
-    expires_in = int((expires_at - now).total_seconds()) if expires_at else None
+    # El front descuenta este número desde que recibió la respuesta; mandar un
+    # negativo lo obligaría a adivinar cuánto hace que venció. Acá sólo importa
+    # que ya venció, así que se informa 0.
+    expires_in = max(0, int((expires_at - now).total_seconds())) if expires_at else None
     active = bool(data.get("accessToken")) and expires_in is not None and expires_in > 0
     return {
         "active": active,

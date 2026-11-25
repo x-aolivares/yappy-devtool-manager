@@ -239,6 +239,10 @@ main {
   color: var(--sys-text);
 }
 
+/* Tres estados, no dos: verde mientras sobra tiempo, ámbar cuando faltan
+   15 minutos o menos, rojo cuando ya venció. El gris queda para "comprobando",
+   que todavía no es un estado de la sesión. Los colores son tokens para que
+   claro y oscuro resuelvan solos. */
 .aws-session-status__dot {
   width: 0.5rem;
   height: 0.5rem;
@@ -253,6 +257,10 @@ main {
 
 .aws-session-status__dot--warn {
   background: var(--sys-warning);
+}
+
+.aws-session-status__dot--danger {
+  background: var(--sys-danger);
 }
 
 .aws-session-status__meta {
