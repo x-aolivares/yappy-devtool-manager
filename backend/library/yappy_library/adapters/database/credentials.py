@@ -11,6 +11,11 @@ import botocore.session
 
 from yappy_library.adapters.aws_errors import AwsSessionExpiredError, is_aws_session_error
 from yappy_library.adapters.file_io import file_lock, write_atomic
+from yappy_library.adapters.processes import (
+    ToolUnavailable,
+    _aws_cmd,
+    _resolved_aws_cli_mode,
+)
 from yappy_library.config import Config, aws_port_of
 from yappy_library.adapters.logging import die, success, warn
 from yappy_library.paths import project_config_dir
@@ -42,30 +47,15 @@ def resolve_db_user(cfg: Config, local: dict[str, str] | None = None) -> str:
 
 
 def generate_token(cfg: Config) -> str:
-    """Generate an RDS IAM auth token, falling back to the AWS CLI."""
-    try:
-        bc_session = botocore.session.Session(profile=cfg.profile)
-        rds = bc_session.create_client("rds", region_name=cfg.require("AWS_REGION"))
-        token = rds.generate_db_auth_token(
-            DBHostname=cfg.require("AWS_HOST"),
-            Port=aws_port_of(cfg),
-            DBUsername=resolve_db_user(cfg),
-            Region=cfg.require("AWS_REGION"),
-        )
-        if token:
-            return token
-    except Exception as exc:
-        if is_aws_session_error(exc):
-            raise AwsSessionExpiredError(
-                "La sesión de AWS no está activa o venció. Iniciá sesión con `yappy login aws` y volvé a intentar.",
-                profile=cfg.profile,
-            ) from exc
-        warn(f"botocore token failed, trying fallback: {exc}")
+    """Generate an RDS IAM auth token with the configured AWS CLI.
 
-    cmd = [
-        sys.executable,
-        "-m",
-        "awscli",
+    ``BASE_AWS_CLI=native`` (the default) runs the AWS CLI installed on the
+    machine; ``emulator`` keeps the old ``python -m awscli`` invocation.
+    botocore is only the fallback for a machine where the CLI cannot run at
+    all — it is no longer the primary path, because the whole point of the
+    setting is that the app actually uses the CLI the developer chose.
+    """
+    args = [
         "rds",
         "generate-db-auth-token",
         "--hostname",
@@ -79,16 +69,45 @@ def generate_token(cfg: Config) -> str:
         "--profile",
         cfg.profile,
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip() or "error desconocido"
-        if is_aws_session_error(RuntimeError(detail)):
-            raise AwsSessionExpiredError(
-                "La sesión de AWS no está activa o venció. Iniciá sesión con `yappy login aws` y volvé a intentar.",
-                profile=cfg.profile,
-            )
-        die(f"Failed to generate DB token: {detail}")
-    return result.stdout.strip()
+    session_message = (
+        "La sesión de AWS no está activa o venció. "
+        "Iniciá sesión con `yappy login aws` y volvé a intentar."
+    )
+
+    try:
+        cmd = [*_aws_cmd(_resolved_aws_cli_mode(cfg)), *args]
+    except ToolUnavailable as exc:
+        warn(f"AWS CLI no disponible, se usa botocore: {exc.reason}")
+    else:
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        except OSError as exc:
+            warn(f"No se pudo ejecutar la CLI de AWS, se usa botocore: {exc}")
+        else:
+            token = result.stdout.strip()
+            if result.returncode == 0 and token:
+                return token
+            detail = result.stderr.strip() or token or "error desconocido"
+            if is_aws_session_error(RuntimeError(detail)):
+                raise AwsSessionExpiredError(session_message, profile=cfg.profile)
+            warn(f"AWS CLI token failed, trying botocore: {detail}")
+
+    try:
+        bc_session = botocore.session.Session(profile=cfg.profile)
+        rds = bc_session.create_client("rds", region_name=cfg.require("AWS_REGION"))
+        token = rds.generate_db_auth_token(
+            DBHostname=cfg.require("AWS_HOST"),
+            Port=aws_port_of(cfg),
+            DBUsername=resolve_db_user(cfg),
+            Region=cfg.require("AWS_REGION"),
+        )
+        if token:
+            return token
+    except Exception as exc:
+        if is_aws_session_error(exc):
+            raise AwsSessionExpiredError(session_message, profile=cfg.profile) from exc
+        die(f"Failed to generate DB token: {exc}")
+    die("Failed to generate DB token: ni la CLI de AWS ni botocore devolvieron un token")
 
 
 def _clipboard(text: str) -> None:

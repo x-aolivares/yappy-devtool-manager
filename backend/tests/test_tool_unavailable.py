@@ -72,7 +72,9 @@ _REPO = Path(__file__).resolve().parents[2]
 #: literal rather than read back from the module, so editing the string shows up
 #: here as a failure somebody has to think about instead of as a test that
 #: agrees with whatever the code now says.
-AWS_CLI_MESSAGE = "AWS CLI not found. Install with: pip install awscli"
+AWS_CLI_MESSAGE = (
+    "AWS CLI not found. Install AWS CLI v2 or set BASE_AWS_CLI=emulator"
+)
 
 
 # --- fixtures -----------------------------------------------------------------

@@ -14,6 +14,12 @@ from pathlib import Path
 from typing import Callable
 
 from yappy_library.adapters import process_identity, process_tracker
+from yappy_library.config import (
+    AWS_CLI_EMULATOR,
+    AWS_CLI_NATIVE,
+    Config,
+    aws_cli_mode,
+)
 from yappy_library.adapters.logging import (
     command as log_command,
     die,
@@ -378,9 +384,49 @@ def open_url(url: str) -> None:
         webbrowser.open(url)
 
 
+def _aws_cli_command_for_mode(mode: str) -> list[str]:
+    """The literal invocation for one mode, without probing the binary."""
+    if mode == AWS_CLI_EMULATOR:
+        return [sys.executable, "-m", "awscli"]
+    return ["aws"]
+
+
+def _resolved_aws_cli_mode(cfg: Config | None = None) -> str:
+    """The configured mode, with an invalid value reported and defaulted.
+
+    A bad ``BASE_AWS_CLI`` must not take down a web request with a
+    ``ValueError``; it is reported once and the app runs native, which is the
+    documented default.
+    """
+    try:
+        return aws_cli_mode(cfg or Config())
+    except ValueError as exc:
+        warn(f"{exc} Se usa 'native'.")
+        return AWS_CLI_NATIVE
+
+
+def aws_cli_command(cfg: Config | None = None) -> list[str]:
+    """The AWS CLI invocation selected by ``BASE_AWS_CLI`` in the base profile.
+
+    ``native`` (the default) uses the AWS CLI installed on the machine;
+    ``emulator`` keeps the old ``python -m awscli`` path for machines that
+    depend on it.
+    """
+    return _aws_cli_command_for_mode(_resolved_aws_cli_mode(cfg))
+
+
 @functools.lru_cache(maxsize=None)
-def _aws_cmd() -> list[str]:
-    """Return a working aws invocation: binary or python -m awscli.
+def _aws_cmd(mode: str | None = None) -> list[str]:
+    """Return a working AWS CLI invocation for ``mode``.
+
+    The configured CLI is tried first; the other one is a compatibility
+    fallback, announced with a warning so a machine that asked for ``native``
+    but silently ran ``python -m awscli`` does not go unnoticed.
+
+    The cache key is the *mode*, not a ``Config`` object: the web builds a new
+    Config per request, and caching by instance would grow forever. Callers
+    without a Config pass nothing and get the base profile resolved once;
+    callers that have one pass :func:`_resolved_aws_cli_mode(cfg)`.
 
     Raises :class:`ToolUnavailable` when neither works. It used to ``die()``
     here, and ``die()`` from this function was the single most reachable silent
@@ -388,22 +434,29 @@ def _aws_cmd() -> list[str]:
     it. The terminal still ends up in exactly the same place — see the
     ``_YappyTyper`` handler in ``cli/yappy_cli/cli.py``.
     """
-    try:
-        r = subprocess.run(["aws", "--version"], capture_output=True, timeout=10)
+    if mode is None:
+        mode = _resolved_aws_cli_mode()
+    preferred = _aws_cli_command_for_mode(mode)
+    other = (
+        _aws_cli_command_for_mode(AWS_CLI_EMULATOR)
+        if preferred == ["aws"]
+        else _aws_cli_command_for_mode(AWS_CLI_NATIVE)
+    )
+    for cmd in (preferred, other):
+        try:
+            r = subprocess.run([*cmd, "--version"], capture_output=True, timeout=10)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
         if r.returncode == 0:
-            return ["aws"]
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-    try:
-        r = subprocess.run(
-            [sys.executable, "-m", "awscli", "--version"],
-            capture_output=True, timeout=10,
-        )
-        if r.returncode == 0:
-            return [sys.executable, "-m", "awscli"]
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-    raise ToolUnavailable("AWS CLI not found. Install with: pip install awscli")
+            if cmd is not preferred:
+                warn(
+                    "La CLI de AWS configurada no está disponible; "
+                    f"se usa {' '.join(cmd)} en su lugar."
+                )
+            return cmd
+    raise ToolUnavailable(
+        "AWS CLI not found. Install AWS CLI v2 or set BASE_AWS_CLI=emulator"
+    )
 
 
 def _expected_identity(entry: dict | None) -> dict:

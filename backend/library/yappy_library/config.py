@@ -72,6 +72,29 @@ DEFAULT_MYSQL_PORT = "3306"
 #: El puerto de Aurora que reenvía el túnel SSM.
 DEFAULT_AWS_PORT = "53360"
 
+#: CLI de AWS que usa la app. `native` es la instalada en la máquina (AWS CLI
+#: v2); `emulator` es el `awscli` de Python, que era el único camino antes de
+#: esta clave. El default es `native`: no hace falta escribir la variable para
+#: usar la CLI instalada.
+AWS_CLI_NATIVE = "native"
+AWS_CLI_EMULATOR = "emulator"
+AWS_CLI_MODES = (AWS_CLI_NATIVE, AWS_CLI_EMULATOR)
+DEFAULT_AWS_CLI = AWS_CLI_NATIVE
+
+
+def aws_cli_mode(cfg) -> str:
+    """Modo de AWS CLI elegido en el base profile.
+
+    La clave vive en `env.base` —no en cada ambiente— porque es una decisión de
+    la máquina, no del entorno remoto: la misma instalación de AWS CLI vale para
+    dev, qa y uat. Un valor ausente o vacío vale `native`, así que una config
+    anterior a esta clave sigue funcionando sin cambios.
+    """
+    raw = (cfg.get("BASE_AWS_CLI") or DEFAULT_AWS_CLI).strip().lower()
+    if raw not in AWS_CLI_MODES:
+        raise ValueError(f"BASE_AWS_CLI inválido: {raw!r}. Usá 'native' o 'emulator'.")
+    return raw
+
 
 def aws_port_of(cfg) -> int:
     """El puerto de Aurora que reenvía el túnel SSM, para una config.

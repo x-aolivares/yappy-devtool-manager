@@ -200,6 +200,14 @@ def test_el_token_no_exige_aws_user_si_hay_db_user(monkeypatch):
         def create_client(self, *args, **kwargs):
             return _Client()
 
+    # La CLI elegida se prueba en test_aws_cli_mode; acá la forzamos ausente
+    # para que el test siga cubriendo sólo la resolución del usuario de la base.
+    from yappy_library.adapters.processes import ToolUnavailable
+
+    def _sin_cli(cfg):
+        raise ToolUnavailable("AWS CLI not found")
+
+    monkeypatch.setattr(credentials, "_aws_cmd", _sin_cli)
     monkeypatch.setattr(credentials.botocore.session, "Session", lambda *a, **k: _Session())
 
     class _Cfg2:
