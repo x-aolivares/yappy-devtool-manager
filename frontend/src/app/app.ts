@@ -114,8 +114,10 @@ export class App {
   readonly awsSessionExpiryNote = computed(() => {
     if (!this.awsSession.prompt()?.renew) return null;
     const expiresAt = this.awsSession.status()?.expires_at;
-    if (!expiresAt) return 'Volver a autorizar no extiende el vencimiento de la sesión SSO.';
-    return `La sesión SSO vence a las ${this.formatHour(expiresAt)}; volver a autorizar no cambia esa hora.`;
+    if (!expiresAt) {
+      return 'Volver a autorizar no extiende el vencimiento de la sesión SSO. Para cambiarlo, cerrá sesión en el portal de AWS en el navegador antes de autorizar.';
+    }
+    return `La sesión SSO vence a las ${this.formatHour(expiresAt)}; volver a autorizar no cambia esa hora. Para extenderla, cerrá sesión en el portal de AWS en el navegador (o usá una ventana privada) antes de autorizar.`;
   });
 
   readonly awsActionLabel = computed(() => {
