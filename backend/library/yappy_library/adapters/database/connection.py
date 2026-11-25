@@ -23,6 +23,7 @@ from typing import Iterator
 import pymysql
 from dotenv import dotenv_values
 
+from yappy_library.adapters.aws_errors import AwsSessionExpiredError
 from yappy_library.adapters.database.credentials import generate_token, resolve_db_user
 from yappy_library.adapters.processes import BaseCommand, ToolUnavailable, tunnel_log_path
 from yappy_library.adapters.sockets import recv_exactly
@@ -224,7 +225,10 @@ def connect(cfg: Config) -> Iterator[pymysql.connections.Connection]:
 
     try:
         token = generate_token(cfg)
-    except SystemExit as exc:        raise SyncError(f"No se pudo generar el token de autenticación de RDS: {exc}") from exc
+    except AwsSessionExpiredError:
+        raise
+    except SystemExit as exc:
+        raise SyncError(f"No se pudo generar el token de autenticación de RDS: {exc}") from exc
 
     base = BaseCommand()
     local_port = cfg.db_port

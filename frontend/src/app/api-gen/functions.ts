@@ -95,3 +95,9 @@ export type { KafkaAgentCleanTopics$Params as KafkaAgentCleanTopics$Params } fro
 export { kafkaAgentCleanTopics as kafkaAgentCleanTopics } from './fn/kafka-agent/kafka-agent-clean-topics';
 export type { KafkaAgentRunTests$Params as KafkaAgentRunTests$Params } from './fn/kafka-agent/kafka-agent-run-tests';
 export { kafkaAgentRunTests as kafkaAgentRunTests } from './fn/kafka-agent/kafka-agent-run-tests';
+export type { AwsSessionStatus$Params as AwsSessionStatus$Params } from './fn/aws/aws-session-status';
+export { awsSessionStatus as awsSessionStatus } from './fn/aws/aws-session-status';
+export type { AwsSessionLoginStart$Params as AwsSessionLoginStart$Params } from './fn/aws/aws-session-login-start';
+export { awsSessionLoginStart as awsSessionLoginStart } from './fn/aws/aws-session-login-start';
+export type { AwsSessionLoginPoll$Params as AwsSessionLoginPoll$Params } from './fn/aws/aws-session-login-poll';
+export { awsSessionLoginPoll as awsSessionLoginPoll } from './fn/aws/aws-session-login-poll';

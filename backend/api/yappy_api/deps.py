@@ -6,10 +6,13 @@ from contextlib import contextmanager
 
 from fastapi import HTTPException
 
+from yappy_library.adapters.aws_errors import AwsSessionExpiredError
 from yappy_library.adapters.database.connection import SyncError
 from yappy_library.application.database.sync.migrate import MigrationError
 from yappy_library.application.database.sync.query import QueryError
 from yappy_library.config import Config
+
+from .aws_auth import aws_session_http_exception, is_aws_session_error
 
 
 def env_config(env: str) -> Config:
@@ -49,11 +52,17 @@ def db_errors():
         yield
     except HTTPException:
         raise
+    except AwsSessionExpiredError as exc:
+        raise aws_session_http_exception(getattr(exc, "profile", None)) from exc
     except SyncError as exc:
+        if is_aws_session_error(exc):
+            raise aws_session_http_exception() from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except QueryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except MigrationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
+        if is_aws_session_error(exc):
+            raise aws_session_http_exception() from exc
         raise HTTPException(status_code=500, detail=f"Error de base de datos: {exc}") from exc

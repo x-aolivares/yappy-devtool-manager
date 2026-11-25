@@ -210,3 +210,63 @@ main {
    cerca: se resuelve la última en cascada, y por eso la segunda capa servía
    sólo para pisar a la primera. Si mañana el shell necesita otro ajuste, se
    cambia la regla de arriba en su lugar. */
+
+.aws-session-status {
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--sys-radius-md);
+  padding: 0.75rem;
+  background: var(--sys-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.aws-session-status__title {
+  margin: 0;
+  font-size: var(--text-xxs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sys-text-secondary);
+}
+
+.aws-session-status__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--sys-text);
+}
+
+.aws-session-status__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--sys-text-secondary);
+  flex: 0 0 0.5rem;
+}
+
+.aws-session-status__dot--ok {
+  background: var(--sys-success);
+}
+
+.aws-session-status__dot--warn {
+  background: var(--sys-warning);
+}
+
+.aws-session-status__meta {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--sys-text-secondary);
+  line-height: 1.4;
+  white-space: pre-line;
+}
+
+.aws-session-status__action {
+  margin-top: 0.25rem;
+  width: 100%;
+  min-height: 2rem;
+  padding: 0 0.625rem;
+  font-size: var(--text-xs);
+}

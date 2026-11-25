@@ -37,6 +37,22 @@
       }
     </nav>
 
+    <section class="aws-session-status" aria-label="Estado de sesión AWS">
+      <h2 class="aws-session-status__title">Sesión AWS</h2>
+      <div class="aws-session-status__row">
+        <span class="aws-session-status__dot" [class.aws-session-status__dot--ok]="awsSession.status()?.active" [class.aws-session-status__dot--warn]="!awsSession.status()?.active"></span>
+        <span>{{ awsStatusLabel() }}</span>
+      </div>
+      @if (awsStatusMeta(); as meta) {
+        <p class="aws-session-status__meta">{{ meta }}</p>
+      }
+      @if (!awsSession.status()?.active) {
+        <button type="button" class="secondary aws-session-status__action" (click)="startAwsLogin()">Iniciar sesión AWS</button>
+      } @else {
+        <button type="button" class="secondary aws-session-status__action" (click)="startAwsLogin()">Renovar sesión</button>
+      }
+    </section>
+
     <button
       type="button"
       class="theme-toggle"
@@ -51,4 +67,31 @@
   <main>
     <router-outlet />
   </main>
+
+  <app-notice-modal
+    [open]="awsPromptOpen()"
+    title="Sesión de AWS no autenticada"
+    tone="default"
+    confirmLabel="Iniciar sesión AWS"
+    (confirmed)="startAwsLogin()"
+    (closed)="dismissAwsPrompt()"
+  >
+    @if (awsSession.loginError(); as loginError) {
+      <p class="hint-error">{{ loginError }}</p>
+    }
+  </app-notice-modal>
+
+  <app-notice-modal
+    [open]="awsAuthenticatedOpen()"
+    title="Sesión de AWS autenticada"
+    tone="aviso"
+    confirmLabel="Continuar"
+    (closed)="closeAwsAuthenticated()"
+  >
+    @if (awsSession.status(); as status) {
+      <div class="callout ok">
+        Sesión activa para <strong>{{ status.profile }}</strong>@if (awsAuthenticatedMeta(); as meta) {<span>. {{ meta }}</span>}
+      </div>
+    }
+  </app-notice-modal>
 </div>

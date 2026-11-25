@@ -2173,6 +2173,90 @@
           }
         }
       }
+    },
+    "/api/aws/session/status": {
+      "get": {
+        "tags": [
+          "aws"
+        ],
+        "summary": "Aws Session Status",
+        "operationId": "aws_session_status",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AwsSessionStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/aws/session/login/start": {
+      "post": {
+        "tags": [
+          "aws"
+        ],
+        "summary": "Aws Session Login Start",
+        "operationId": "aws_session_login_start",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AwsSessionLoginStartResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/aws/session/login/{login_id}": {
+      "get": {
+        "tags": [
+          "aws"
+        ],
+        "summary": "Aws Session Login Poll",
+        "operationId": "aws_session_login_poll",
+        "parameters": [
+          {
+            "name": "login_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Login Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AwsSessionLoginPollResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2244,6 +2328,173 @@
           "new_value"
         ],
         "title": "ApplyParamsRequest"
+      },
+      "AwsSessionLoginPollResponse": {
+        "properties": {
+          "login_id": {
+            "type": "string",
+            "title": "Login Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "authorized",
+              "expired",
+              "error"
+            ],
+            "title": "Status"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          },
+          "profile": {
+            "type": "string",
+            "title": "Profile"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "login_id",
+          "status",
+          "active",
+          "profile"
+        ],
+        "title": "AwsSessionLoginPollResponse"
+      },
+      "AwsSessionLoginStartResponse": {
+        "properties": {
+          "login_id": {
+            "type": "string",
+            "title": "Login Id"
+          },
+          "verification_uri": {
+            "type": "string",
+            "title": "Verification Uri"
+          },
+          "verification_uri_complete": {
+            "type": "string",
+            "title": "Verification Uri Complete"
+          },
+          "user_code": {
+            "type": "string",
+            "title": "User Code"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          },
+          "profile": {
+            "type": "string",
+            "title": "Profile"
+          }
+        },
+        "type": "object",
+        "required": [
+          "login_id",
+          "verification_uri",
+          "verification_uri_complete",
+          "user_code",
+          "expires_in",
+          "profile"
+        ],
+        "title": "AwsSessionLoginStartResponse"
+      },
+      "AwsSessionStatusResponse": {
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          },
+          "profile": {
+            "type": "string",
+            "title": "Profile"
+          },
+          "sso_session": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sso Session"
+          },
+          "start_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Url"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "expires_in_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Seconds"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "active",
+          "profile"
+        ],
+        "title": "AwsSessionStatusResponse"
       },
       "Body_params_read": {
         "properties": {

@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, HTTPException
 
 from yappy_library.application.database.sync import params as p
+from ..aws_auth import aws_session_http_exception, is_aws_session_error
 from ..deps import env_config
 from ..schemas import (
     ApplyParamsRequest,
@@ -31,6 +32,8 @@ def _aws_error(exc: Exception, prefix: str) -> HTTPException:
     A local environment is not a failure of AWS, so its message goes through
     untouched instead of being buried under an "Error de AWS" prefix.
     """
+    if is_aws_session_error(exc):
+        return aws_session_http_exception()
     if isinstance(exc, p.LocalEnvHasNoAws):
         return HTTPException(status_code=400, detail=str(exc))
     return HTTPException(status_code=400, detail=f"{prefix}: {exc}")

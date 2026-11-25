@@ -2,7 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { EnvironmentInfo, MigrationResponse, QueryResponse } from '../../api-gen/models';
 import { EnvironmentService } from '../../core/services/environment.service';
 import { DbService } from '../../core/services/db.service';
-import { toApiError } from '../../core/services/api-error';
+import { isAwsSessionExpiredError, toApiError } from '../../core/services/api-error';
 import { CancelSlot, isCancellation } from '../../core/cancel';
 import { EnvControls } from '../../components/env-controls/env-controls';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
@@ -221,6 +221,7 @@ export class SqlPage {
           // Cortar la espera no es un fallo: el usuario lo pidió y no hay nada
           // que relatar. Ver `core/cancel`.
           if (isCancellation(err)) return;
+          if (isAwsSessionExpiredError(err)) return;
           this.fail(toApiError(err).message);
         },
       );
@@ -270,6 +271,7 @@ export class SqlPage {
           if (!this.op.finish(run)) return;
           this.busy.set(false);
           if (isCancellation(err)) return;
+          if (isAwsSessionExpiredError(err)) return;
           this.fail(toApiError(err).message, dryRun ? 'No se pudo simular' : 'No se pudo migrar');
         },
       );

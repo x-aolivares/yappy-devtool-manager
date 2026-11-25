@@ -9,6 +9,7 @@ from pathlib import Path
 
 import botocore.session
 
+from yappy_library.adapters.aws_errors import AwsSessionExpiredError, is_aws_session_error
 from yappy_library.adapters.file_io import file_lock, write_atomic
 from yappy_library.config import Config, aws_port_of
 from yappy_library.adapters.logging import die, success, warn
@@ -54,6 +55,11 @@ def generate_token(cfg: Config) -> str:
         if token:
             return token
     except Exception as exc:
+        if is_aws_session_error(exc):
+            raise AwsSessionExpiredError(
+                "La sesión de AWS no está activa o venció. Iniciá sesión con `yappy login aws` y volvé a intentar.",
+                profile=cfg.profile,
+            ) from exc
         warn(f"botocore token failed, trying fallback: {exc}")
 
     cmd = [
@@ -75,7 +81,13 @@ def generate_token(cfg: Config) -> str:
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
-        die(f"Failed to generate DB token: {result.stderr.strip()}")
+        detail = result.stderr.strip() or result.stdout.strip() or "error desconocido"
+        if is_aws_session_error(RuntimeError(detail)):
+            raise AwsSessionExpiredError(
+                "La sesión de AWS no está activa o venció. Iniciá sesión con `yappy login aws` y volvé a intentar.",
+                profile=cfg.profile,
+            )
+        die(f"Failed to generate DB token: {detail}")
     return result.stdout.strip()
 
 

@@ -13,9 +13,11 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 
+from yappy_library.adapters.aws_errors import AwsSessionExpiredError
 from yappy_library.paths import project_root
 
-from .routes import db, deployments, envs, kafka_agent, params, sessions, workflow
+from .aws_auth import aws_session_http_exception, is_aws_session_error
+from .routes import aws, db, deployments, envs, kafka_agent, params, sessions, workflow
 
 #: Los assets compilados por Angular.
 #:
@@ -95,6 +97,12 @@ def _create_app() -> FastAPI:
     app.include_router(deployments.router)
     app.include_router(workflow.router)
     app.include_router(kafka_agent.router)
+    app.include_router(aws.router)
+
+    @app.exception_handler(AwsSessionExpiredError)
+    async def _aws_session_error(request: Request, exc: AwsSessionExpiredError) -> JSONResponse:
+        http_exc = aws_session_http_exception(getattr(exc, "profile", None))
+        return JSONResponse(status_code=http_exc.status_code, content={"detail": http_exc.detail})
 
     @app.exception_handler(sqlite3.Error)
     async def _sqlite_error(request: Request, exc: sqlite3.Error) -> JSONResponse:

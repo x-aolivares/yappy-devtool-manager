@@ -486,6 +486,10 @@ h2 {
   padding: 1rem;
   overflow-y: auto;
 
+  &:empty {
+    display: none;
+  }
+
   /* `pre-line` y no sólo el colapso por defecto: los textos de confirmación
      llegan como un único string con `\n` adentro —los arms de `migrate-data` y
      `schema-sync` los arman con `\n\n` entre la pregunta y el aviso— y en HTML
@@ -2416,6 +2420,12 @@ button.danger-tinted {
     color: var(--err);
     background: var(--err-bg);
     border-color: var(--sys-danger-border);
+  }
+
+  &.ok {
+    color: var(--sys-success-text);
+    background: var(--sys-success-bg);
+    border-color: var(--sys-success-border);
   }
 
   strong {

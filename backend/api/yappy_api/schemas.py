@@ -750,3 +750,31 @@ class KafkaAgentSmokeResponse(BaseModel):
     messages: int
     checks: list[KafkaAgentSmokeCheck]
     total_ms: float
+
+
+class AwsSessionStatusResponse(BaseModel):
+    active: bool
+    profile: str
+    sso_session: str | None = None
+    start_url: str | None = None
+    expires_at: str | None = None
+    expires_in_seconds: int | None = None
+    message: str | None = None
+
+
+class AwsSessionLoginStartResponse(BaseModel):
+    login_id: str
+    verification_uri: str
+    verification_uri_complete: str
+    user_code: str
+    expires_in: int
+    profile: str
+
+
+class AwsSessionLoginPollResponse(BaseModel):
+    login_id: str
+    status: Literal["pending", "authorized", "expired", "error"]
+    active: bool
+    profile: str
+    expires_at: str | None = None
+    message: str | None = None

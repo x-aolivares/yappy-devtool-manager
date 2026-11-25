@@ -6,6 +6,7 @@ import {
 } from '@angular/common/http';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { abortInterceptor } from './core/cancel';
+import { awsSessionInterceptor } from './core/aws-session.interceptor';
 import { routes } from './app.routes';
 
 export const appConfig: ApplicationConfig = {
@@ -15,6 +16,6 @@ export const appConfig: ApplicationConfig = {
     // `withInterceptors` es lo que hace que el `AbortSignal` que mandan las
     // páginas corte la petición: sin él la señal viaja en el contexto y no la
     // mira nadie. Ver `core/cancel`.
-    provideHttpClient(withFetch(), withInterceptors([abortInterceptor]))
+    provideHttpClient(withFetch(), withInterceptors([abortInterceptor, awsSessionInterceptor]))
   ]
 };
