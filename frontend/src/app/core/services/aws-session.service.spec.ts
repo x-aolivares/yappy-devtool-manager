@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { Api } from '../../api-gen/api';
 import {
@@ -17,6 +18,7 @@ describe('AwsSessionService', () => {
   let status: AwsSessionStatusResponse;
   let statusAfterLogin: AwsSessionStatusResponse | null;
   let poll: AwsSessionLoginPollResponse;
+  let pollError: Error | null;
   let statusCalls: number;
   let service: AwsSessionService | undefined;
   let open: typeof window.open;
@@ -33,6 +35,7 @@ describe('AwsSessionService', () => {
   beforeEach(async () => {
     statusCalls = 0;
     statusAfterLogin = null;
+    pollError = null;
     status = {
       active: true,
       profile: 'base-profile',
@@ -56,7 +59,10 @@ describe('AwsSessionService', () => {
           return statusAfterLogin ?? status;
         }
         if (fn === awsSessionLoginStart) return loginStart;
-        if (fn === awsSessionLoginPoll) return poll;
+        if (fn === awsSessionLoginPoll) {
+          if (pollError) throw pollError;
+          return poll;
+        }
         if (fn === awsSessionLogout) return { ok: true, message: 'Sesión cerrada.' };
         throw new Error('función de API inesperada');
       },
@@ -125,6 +131,21 @@ describe('AwsSessionService', () => {
     expect(svc.prompt()).toBeNull();
     expect(svc.status()?.active).toBe(false);
     expect(svc.logoutError()).toBeNull();
+  });
+
+  it('un 404 en el polling corta el intento en vez de repetirlo cada minuto', async () => {
+    const svc = service!;
+    await svc.refreshStatus();
+    await svc.startLogin();
+
+    pollError = new HttpErrorResponse({ status: 404, error: { detail: 'No se encontró el intento de login.' } });
+    await (svc as unknown as { poll: (id: string) => Promise<void> }).poll('login-1');
+
+    expect(svc.loginBusy()).toBe(false);
+    expect(svc.loginState()?.status).toBe('error');
+    expect(svc.loginError()).toContain('se perdió');
+    // Sin este stop, una pestaña de fondo sigue pegando 404 una vez por minuto.
+    expect((svc as unknown as { pollTimer: unknown }).pollTimer).toBeNull();
   });
 
   it('al autorizar descarta el contador viejo y pide el estado real', async () => {

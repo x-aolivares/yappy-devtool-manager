@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Api } from '../../api-gen/api';
 import {
@@ -204,7 +205,26 @@ export class AwsSessionService {
         this.loginError.set(state.message ?? 'No se pudo completar la autenticación.');
       }
     } catch (err) {
-      // Errores transitorios de polling no cortan el intento; el backend sigue siendo la fuente.
+      // Un 404 no es transitorio: el `_LOGINS` del backend es memoria, así que
+      // después de un reinicio el login_id ya no existe. Seguir consultando
+      // cada 2.5s —o una vez por minuto en una pestaña de fondo— sólo llena
+      // el log de 404 y deja el botón diciendo "esperando" para siempre.
+      if (err instanceof HttpErrorResponse && err.status === 404) {
+        this.stopPolling();
+        this.loginBusy.set(false);
+        this.loginState.set({
+          login_id: loginId,
+          status: 'error',
+          active: false,
+          profile: this.status()?.profile ?? 'base-profile',
+          expires_at: null,
+          message: 'El intento de login se perdió al reiniciar el servidor.',
+        });
+        this.loginError.set('El intento de login se perdió. Volvé a autorizar.');
+        void this.refreshStatus();
+        return;
+      }
+      // El resto son errores transitorios de red: el backend sigue siendo la fuente.
       const message = err instanceof Error ? err.message : String(err);
       this.loginError.set(message);
     }
