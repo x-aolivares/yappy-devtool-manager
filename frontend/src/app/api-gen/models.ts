@@ -4,6 +4,7 @@
 export type { ApplyParamsRequest } from './models/apply-params-request';
 export type { AwsSessionLoginPollResponse } from './models/aws-session-login-poll-response';
 export type { AwsSessionLoginStartResponse } from './models/aws-session-login-start-response';
+export type { AwsSessionLogoutResponse } from './models/aws-session-logout-response';
 export type { AwsSessionStatusResponse } from './models/aws-session-status-response';
 export type { BodyParamsRead } from './models/body-params-read';
 export type { CompileRequest } from './models/compile-request';

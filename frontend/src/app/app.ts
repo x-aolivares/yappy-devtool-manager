@@ -143,6 +143,10 @@ export class App {
     await this.awsSession.startLogin();
   }
 
+  async logoutAws(): Promise<void> {
+    await this.awsSession.logout();
+  }
+
   dismissAwsPrompt(): void {
     this.awsSession.dismissPrompt();
   }

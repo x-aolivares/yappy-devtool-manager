@@ -2195,6 +2195,28 @@
         }
       }
     },
+    "/api/aws/session/logout": {
+      "post": {
+        "tags": [
+          "aws"
+        ],
+        "summary": "Aws Session Logout",
+        "description": "Cerrar la sesión AWS en esta máquina.\n\nEs la única forma de cambiar el vencimiento que muestra el sidebar: el\ndevice flow reautoriza pero hereda la sesión SSO abierta en Identity\nCenter. Acá se limpia el cache local para que el próximo login arranque\nuna sesión nueva. No invalida la cookie del portal en el navegador: si el\nusuario sigue autenticado ahí, AWS puede reutilizar la sesión igual.",
+        "operationId": "aws_session_logout",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AwsSessionLogoutResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/aws/session/login/start": {
       "post": {
         "tags": [
@@ -2422,6 +2444,30 @@
           "profile"
         ],
         "title": "AwsSessionLoginStartResponse"
+      },
+      "AwsSessionLogoutResponse": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "AwsSessionLogoutResponse"
       },
       "AwsSessionStatusResponse": {
         "properties": {

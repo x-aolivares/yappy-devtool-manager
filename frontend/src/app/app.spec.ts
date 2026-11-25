@@ -164,10 +164,12 @@ describe('App — sesión AWS en el sidebar', () => {
     loginState: WritableSignal<{ status: SessionStatus } | null>;
     login: WritableSignal<unknown>;
     loginError: WritableSignal<string | null>;
+    logoutError: WritableSignal<string | null>;
     statusFetchedAt: WritableSignal<number | null>;
     refreshStatus: () => Promise<null>;
     tick: () => void;
     startLogin: () => Promise<void>;
+    logout: () => Promise<void>;
     dismissPrompt: () => void;
   };
   let status: WritableSignal<AwsSessionStatusResponse | null>;
@@ -193,9 +195,11 @@ describe('App — sesión AWS en el sidebar', () => {
       loginState,
       login: signal<unknown>(null),
       loginError: signal<string | null>(null),
+      logoutError: signal<string | null>(null),
       statusFetchedAt: signal<number | null>(null),
       refreshStatus: async () => null,
       tick: () => {},
+      logout: async () => {},
       startLogin: async () => {
         if (loginBusy()) return;
         loginBusy.set(true);
@@ -296,6 +300,16 @@ describe('App — sesión AWS en el sidebar', () => {
 
     expect(compiled.querySelector('.notice-modal h2')?.textContent?.trim()).toBe('Sesión de AWS no autenticada');
     expect(compiled.querySelector('.notice-modal__confirm')?.textContent?.trim()).toBe('Iniciar sesión AWS');
+  });
+
+  it('ofrece cerrar sesión sólo cuando hay una sesión activa', () => {
+    const actions = () => [...(fixture.nativeElement as HTMLElement).querySelectorAll('.aws-session-status__action')];
+    expect(actions().map((b) => b.textContent?.trim())).toEqual(['Iniciar sesión AWS']);
+
+    status.set({ active: true, profile: 'base-profile', expires_in_seconds: 3600 });
+    fixture.detectChanges();
+
+    expect(actions().map((b) => b.textContent?.trim())).toEqual(['Volver a autorizar', 'Cerrar sesión AWS']);
   });
 
   it('el botón dice que espera autorización mientras hay un login en curso', () => {

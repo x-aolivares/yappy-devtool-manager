@@ -3,6 +3,7 @@ import { Api } from '../../api-gen/api';
 import {
   awsSessionLoginPoll,
   awsSessionLoginStart,
+  awsSessionLogout,
   awsSessionStatus,
 } from '../../api-gen/functions';
 import type {
@@ -56,6 +57,7 @@ describe('AwsSessionService', () => {
         }
         if (fn === awsSessionLoginStart) return loginStart;
         if (fn === awsSessionLoginPoll) return poll;
+        if (fn === awsSessionLogout) return { ok: true, message: 'Sesión cerrada.' };
         throw new Error('función de API inesperada');
       },
     };
@@ -110,6 +112,19 @@ describe('AwsSessionService', () => {
     svc.requestReauth({ message: 'venció' });
 
     expect(svc.prompt()?.renew).toBe(false);
+  });
+
+  it('logout limpia la UI y vuelve a consultar el estado', async () => {
+    const svc = service!;
+    await svc.refreshStatus();
+    svc.prompt.set({ renew: true });
+    statusAfterLogin = { active: false, profile: 'base-profile', expires_in_seconds: null, message: 'Sin sesión' };
+
+    await svc.logout();
+
+    expect(svc.prompt()).toBeNull();
+    expect(svc.status()?.active).toBe(false);
+    expect(svc.logoutError()).toBeNull();
   });
 
   it('al autorizar descarta el contador viejo y pide el estado real', async () => {

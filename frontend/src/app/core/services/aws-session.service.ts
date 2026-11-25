@@ -1,6 +1,11 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Api } from '../../api-gen/api';
-import { awsSessionLoginPoll, awsSessionLoginStart, awsSessionStatus } from '../../api-gen/functions';
+import {
+  awsSessionLoginPoll,
+  awsSessionLoginStart,
+  awsSessionLogout,
+  awsSessionStatus,
+} from '../../api-gen/functions';
 import {
   AwsSessionLoginPollResponse,
   AwsSessionLoginStartResponse,
@@ -31,6 +36,7 @@ export class AwsSessionService {
   readonly loginState = signal<AwsSessionLoginPollResponse | null>(null);
   readonly loginBusy = signal(false);
   readonly loginError = signal<string | null>(null);
+  readonly logoutError = signal<string | null>(null);
 
   /** Lo mueve el reloj del `App`; el servicio no arma un segundo intervalo. */
   private readonly now = signal(Date.now());
@@ -91,6 +97,25 @@ export class AwsSessionService {
     // esperaba autorización, se consulta el estado para no dejar el sidebar
     // con un dato viejo hasta el próximo tick.
     if (wasWaiting) void this.refreshStatus();
+  }
+
+  /** Cerrar la sesión en esta máquina y refrescar el indicador. */
+  async logout(): Promise<void> {
+    this.logoutError.set(null);
+    try {
+      const result = await this.api.invoke(awsSessionLogout, {});
+      if (!result.ok && result.message) this.logoutError.set(result.message);
+    } catch (err) {
+      this.logoutError.set(err instanceof Error ? err.message : String(err));
+    } finally {
+      this.stopPolling();
+      this.prompt.set(null);
+      this.login.set(null);
+      this.loginState.set(null);
+      this.loginBusy.set(false);
+      this.dismissed = false;
+      await this.refreshStatus();
+    }
   }
 
   /** Permite que una nueva falla AWS vuelva a mostrar el modal. */

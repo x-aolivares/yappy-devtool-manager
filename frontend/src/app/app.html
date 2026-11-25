@@ -54,6 +54,14 @@
       <button type="button" class="secondary aws-session-status__action" (click)="startAwsLogin()">
         {{ awsActionLabel() }}
       </button>
+      @if (awsSession.status()?.active) {
+        <button type="button" class="secondary aws-session-status__action" (click)="logoutAws()">
+          Cerrar sesión AWS
+        </button>
+      }
+      @if (awsSession.logoutError(); as error) {
+        <p class="muted hint-error">{{ error }}</p>
+      }
     </section>
 
     <button

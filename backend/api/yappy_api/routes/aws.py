@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import json
+import subprocess
 import threading
 import time
 import uuid
@@ -18,9 +20,15 @@ from yappy_library.adapters.aws_sso import (
 )
 from yappy_library.adapters.file_io import write_atomic
 from yappy_library.config import Config
+from yappy_library.adapters.processes import aws_cli_command
 
 from ..aws_auth import cache_status
-from ..schemas import AwsSessionLoginPollResponse, AwsSessionLoginStartResponse, AwsSessionStatusResponse
+from ..schemas import (
+    AwsSessionLoginPollResponse,
+    AwsSessionLoginStartResponse,
+    AwsSessionLogoutResponse,
+    AwsSessionStatusResponse,
+)
 
 router = APIRouter(tags=["aws"])
 
@@ -104,8 +112,6 @@ def _status_for_profile(profile: str) -> dict:
 
 
 def _poll_login(state: _LoginState, client_id: str, client_secret: str, device_code: str, interval: int, deadline: float) -> None:
-    import json
-
     client = _sso_oidc_client(state.sso_region)
     while True:
         with state.lock:
@@ -166,6 +172,61 @@ def _poll_login(state: _LoginState, client_id: str, client_secret: str, device_c
 def aws_session_status():
     profile = _default_profile()
     return _status_for_profile(profile)
+
+
+def _clear_sso_token_caches() -> int:
+    """Borra los caches de token, no el de registro de la CLI.
+
+    `aws sso logout` hace esto mismo; lo repetimos acá para que el botón
+    funcione aunque la CLI configurada no esté disponible en la máquina. El
+    cache de registro (`clientId`/`clientSecret`) se conserva: no es una
+    sesión y borrarlo no cambia nada, igual que en la CLI.
+    """
+    cache_dir = aws_dir() / "sso" / "cache"
+    removed = 0
+    for path in cache_dir.glob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001 - un cache roto no debe tumbar el logout
+            continue
+        if isinstance(data, dict) and "accessToken" in data:
+            path.unlink(missing_ok=True)
+            removed += 1
+    return removed
+
+
+@router.post("/api/aws/session/logout", operation_id="aws_session_logout", response_model=AwsSessionLogoutResponse)
+def aws_session_logout():
+    """Cerrar la sesión AWS en esta máquina.
+
+    Es la única forma de cambiar el vencimiento que muestra el sidebar: el
+    device flow reautoriza pero hereda la sesión SSO abierta en Identity
+    Center. Acá se limpia el cache local para que el próximo login arranque
+    una sesión nueva. No invalida la cookie del portal en el navegador: si el
+    usuario sigue autenticado ahí, AWS puede reutilizar la sesión igual.
+    """
+    profile = _default_profile()
+    cmd = [*aws_cli_command(Config()), "sso", "logout"]
+    detail: str | None = None
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=30)
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or "error desconocido"
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        detail = str(exc)
+
+    _clear_sso_token_caches()
+    status = _status_for_profile(profile)
+    if status["active"]:
+        return {
+            "ok": False,
+            "message": f"No se pudo cerrar la sesión de AWS: {detail or 'el cache sigue activo'}",
+        }
+
+    message = "Sesión de AWS cerrada en esta máquina."
+    if detail:
+        message += f" La CLI avisó: {detail}"
+    return {"ok": True, "message": message}
 
 
 @router.post("/api/aws/session/login/start", operation_id="aws_session_login_start", response_model=AwsSessionLoginStartResponse)

@@ -762,6 +762,11 @@ class AwsSessionStatusResponse(BaseModel):
     message: str | None = None
 
 
+class AwsSessionLogoutResponse(BaseModel):
+    ok: bool
+    message: str | None = None
+
+
 class AwsSessionLoginStartResponse(BaseModel):
     login_id: str
     verification_uri: str
