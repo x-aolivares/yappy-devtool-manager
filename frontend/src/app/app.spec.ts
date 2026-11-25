@@ -245,6 +245,7 @@ describe('App — sesión AWS en el sidebar', () => {
     fixture.detectChanges();
 
     expect(label()).toBe('Activa');
+    expect(meta()).toContain('Sesión SSO vence:');
     expect(meta()).toContain('en ~20 min');
     const dot = (fixture.nativeElement as HTMLElement).querySelector('.aws-session-status__dot')!;
     expect(dot.classList.contains('aws-session-status__dot--ok')).toBe(true);
@@ -273,16 +274,22 @@ describe('App — sesión AWS en el sidebar', () => {
     expect(dot.classList.contains('aws-session-status__dot--danger')).toBe(true);
   });
 
-  it('el modal dice Renovar cuando la sesión está activa y Iniciar cuando no', () => {
-    status.set({ active: true, profile: 'base-profile', expires_in_seconds: 3600 });
+  it('el modal dice Volver a autorizar cuando la sesión está activa y Iniciar cuando no', () => {
+    status.set({
+      active: true,
+      profile: 'base-profile',
+      expires_at: '2026-11-25T21:55:00Z',
+      expires_in_seconds: 3600,
+    });
     remaining.set(3600);
     prompt.set({ renew: true, profile: 'base-profile' });
     fixture.detectChanges();
 
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('.notice-modal h2')?.textContent?.trim()).toBe('Renovar sesión AWS');
-    expect(compiled.querySelector('.notice-modal__confirm')?.textContent?.trim()).toBe('Renovar');
-    expect(compiled.querySelector('.aws-session-status__action')?.textContent?.trim()).toBe('Renovar sesión');
+    expect(compiled.querySelector('.notice-modal h2')?.textContent?.trim()).toBe('Volver a autorizar sesión AWS');
+    expect(compiled.querySelector('.notice-modal__confirm')?.textContent?.trim()).toBe('Volver a autorizar');
+    expect(compiled.querySelector('.aws-session-status__action')?.textContent?.trim()).toBe('Volver a autorizar');
+    expect(compiled.querySelector('.notice-modal__body')?.textContent).toContain('no cambia esa hora');
 
     prompt.set({ renew: false });
     fixture.detectChanges();

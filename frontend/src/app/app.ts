@@ -95,29 +95,46 @@ export class App {
     return status.expires_at ? this.formatExpiry(status.expires_at, this.awsSession.remainingSeconds()) : null;
   });
 
-  /** El modal cambia de contexto: renovar no es lo mismo que autenticarse. */
+  /** El modal cambia de contexto: reautorizar no es lo mismo que autenticarse. */
   readonly awsPromptTitle = computed(() =>
-    this.awsSession.prompt()?.renew ? 'Renovar sesión AWS' : 'Sesión de AWS no autenticada',
+    this.awsSession.prompt()?.renew
+      ? 'Volver a autorizar sesión AWS'
+      : 'Sesión de AWS no autenticada',
   );
 
   readonly awsPromptConfirmLabel = computed(() =>
-    this.awsSession.prompt()?.renew ? 'Renovar' : 'Iniciar sesión AWS',
+    this.awsSession.prompt()?.renew ? 'Volver a autorizar' : 'Iniciar sesión AWS',
   );
+
+  /**
+   * El device flow no reinicia la sesión en Identity Center: AWS emite un
+   * token nuevo que vence con la sesión ya abierta. Decirlo antes de que el
+   * usuario autorice evita que espere un vencimiento nuevo que no va a llegar.
+   */
+  readonly awsSessionExpiryNote = computed(() => {
+    if (!this.awsSession.prompt()?.renew) return null;
+    const expiresAt = this.awsSession.status()?.expires_at;
+    if (!expiresAt) return 'Volver a autorizar no extiende el vencimiento de la sesión SSO.';
+    return `La sesión SSO vence a las ${this.formatHour(expiresAt)}; volver a autorizar no cambia esa hora.`;
+  });
 
   readonly awsActionLabel = computed(() => {
     if (this.awsSession.loginBusy()) return 'Esperando autorización…';
     if (!this.awsSession.status()) return 'Iniciar sesión AWS';
-    return this.awsStatusTone() === 'danger' ? 'Iniciar sesión AWS' : 'Renovar sesión';
+    return this.awsStatusTone() === 'danger' ? 'Iniciar sesión AWS' : 'Volver a autorizar';
   });
 
-  private formatExpiry(expiresAt: string, remainingSeconds: number | null): string {
+  private formatHour(expiresAt: string): string {
     const expires = new Date(expiresAt);
-    const hh = String(expires.getHours()).padStart(2, '0');
-    const mm = String(expires.getMinutes()).padStart(2, '0');
-    if (remainingSeconds === null) return `Vence: ${hh}:${mm}`;
+    return `${String(expires.getHours()).padStart(2, '0')}:${String(expires.getMinutes()).padStart(2, '0')}`;
+  }
+
+  private formatExpiry(expiresAt: string, remainingSeconds: number | null): string {
+    const hour = this.formatHour(expiresAt);
+    if (remainingSeconds === null) return `Sesión SSO vence: ${hour}`;
     // `ceil` para no mostrar "en ~0 min" mientras todavía quedan segundos.
     const mins = Math.max(1, Math.ceil(remainingSeconds / 60));
-    return `Vence: ${hh}:${mm} (en ~${mins} min)`;
+    return `Sesión SSO vence: ${hour} (en ~${mins} min)`;
   }
 
   async startAwsLogin(): Promise<void> {

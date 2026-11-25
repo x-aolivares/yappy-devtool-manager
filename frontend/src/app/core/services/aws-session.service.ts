@@ -10,7 +10,7 @@ import {
 export interface AwsSessionPrompt {
   message?: string | null;
   profile?: string | null;
-  /** `true` cuando el usuario pidió renovar una sesión todavía activa. */
+  /** `true` cuando se pidió volver a autorizar una sesión todavía activa. */
   renew?: boolean | null;
 }
 

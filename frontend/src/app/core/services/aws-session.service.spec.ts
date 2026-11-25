@@ -97,7 +97,7 @@ describe('AwsSessionService', () => {
     expect(service!.remainingSeconds()).toBeNull();
   });
 
-  it('renovar abre el modal en modo renovación; un 401 no', async () => {
+  it('volver a autorizar marca el modal como reautorización; un 401 no', async () => {
     const svc = service!;
     await svc.refreshStatus();
     await svc.startLogin();

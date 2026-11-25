@@ -79,6 +79,9 @@
     (confirmed)="startAwsLogin()"
     (closed)="dismissAwsPrompt()"
   >
+    @if (awsSessionExpiryNote(); as note) {
+      <p class="muted">{{ note }}</p>
+    }
     @if (awsSession.login(); as login) {
       @if (awsSession.loginBusy()) {
         <p class="muted">Esperando autorización en el navegador…</p>
