@@ -76,8 +76,18 @@
     (confirmed)="startAwsLogin()"
     (closed)="dismissAwsPrompt()"
   >
+    @if (awsSession.login(); as login) {
+      @if (awsSession.loginBusy()) {
+        <p class="muted">Esperando autorización en el navegador…</p>
+        <p>
+          <a [href]="login.verification_uri_complete || login.verification_uri" target="_blank" rel="noopener">
+            Abrir página de verificación
+          </a>
+        </p>
+      }
+    }
     @if (awsSession.loginError(); as loginError) {
-      <p class="hint-error">{{ loginError }}</p>
+      <p class="muted hint-error">{{ loginError }}</p>
     }
   </app-notice-modal>
 

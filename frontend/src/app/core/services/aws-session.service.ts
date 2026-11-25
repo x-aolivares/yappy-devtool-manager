@@ -71,7 +71,15 @@ export class AwsSessionService {
   }
 
   async startLogin(): Promise<void> {
-    if (this.loginBusy()) return;
+    if (this.loginBusy()) {
+      // Ya hay un intento en curso: en vez de no hacer nada —un segundo clic
+      // en "Renovar" era un silencio total— se reabre la URL de verificación.
+      // Este `window.open` corre dentro del gesto del click, así que el
+      // navegador no lo bloquea.
+      const current = this.login();
+      if (current) this.openVerification(current);
+      return;
+    }
     this.loginBusy.set(true);
     this.loginError.set(null);
     this.loginState.set(null);
@@ -81,7 +89,7 @@ export class AwsSessionService {
       if (!this.prompt()) {
         this.prompt.set({ profile: login.profile, message: null });
       }
-      window.open(login.verification_uri_complete || login.verification_uri, '_blank', 'noopener,noreferrer');
+      this.openVerification(login);
       this.startPolling(login.login_id);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -91,6 +99,11 @@ export class AwsSessionService {
         this.prompt.set({ message: null });
       }
     }
+  }
+
+  private openVerification(login: AwsSessionLoginStartResponse): void {
+    const url = login.verification_uri_complete || login.verification_uri;
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
   }
 
   private startPolling(loginId: string): void {
