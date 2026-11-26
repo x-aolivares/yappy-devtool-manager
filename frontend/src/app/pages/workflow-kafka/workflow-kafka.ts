@@ -16,20 +16,17 @@ import { Component, computed, viewChild } from '@angular/core';
 
 import type { WorkflowResourceInfo } from '../../api-gen/models';
 import { BusyModal } from '../../components/busy-modal/busy-modal';
-import { KafkaAgentPanel } from '../../components/kafka-agent-panel/kafka-agent-panel';
 import { NoticeModal } from '../../components/notice-modal/notice-modal';
 import { PageHeader } from '../../components/page-header/page-header';
 import { ResourceCards } from '../../components/resource-cards/resource-cards';
 import { WorkflowLogs } from '../../components/workflow-logs/workflow-logs';
 import { WorkflowSummary } from '../../components/workflow-summary/workflow-summary';
-import { toApiError } from '../../core/services/api-error';
 import { WorkflowScope, WorkflowSectionPage } from '../../core/workflow-section-page';
 
 @Component({
   selector: 'app-workflow-kafka-page',
   imports: [
     BusyModal,
-    KafkaAgentPanel,
     NoticeModal,
     PageHeader,
     ResourceCards,
@@ -74,42 +71,4 @@ export class WorkflowKafkaPage extends WorkflowSectionPage {
   }
 
   readonly rows = computed(() => this.sectionRows);
-
-  /** La fila del agente: la que el panel usa para saber si el proceso está arriba. */
-  readonly agentRow = computed<WorkflowResourceInfo | null>(
-    () => this.resources().find((row) => row.key === 'kafka-agent') ?? null,
-  );
-
-  /**
-   * Start y stop reutilizan las acciones de la base: el agente es un recurso del
-   * tracker como cualquier otro y no merece un segundo camino al backend.
-   */
-  protected startAgent(): void {
-    const row = this.agentRow() ?? ({ key: 'kafka-agent' } as WorkflowResourceInfo);
-    void this.startResource(row);
-  }
-
-  protected stopAgent(): void {
-    const row = this.agentRow();
-    if (row) void this.stopOne(row);
-  }
-
-  /**
-   * Reiniciar es parar y levantar, con el `busy` puesto durante los dos pasos.
-   * El pid se guarda antes del stop: el stream todavía no actualizó la fila cuando
-   * llega el momento de levantar de nuevo.
-   */
-  protected async restartAgent(): Promise<void> {
-    const row = this.agentRow();
-    if (!row?.pid) return;
-    this.busy.set(true);
-    try {
-      await this.workflow.stop(row.pid);
-      await this.workflow.startResource(row.key);
-    } catch (err) {
-      this.showError('No se pudo reiniciar el agente', toApiError(err).message);
-    } finally {
-      this.busy.set(false);
-    }
-  }
 }

@@ -17,7 +17,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { WorkflowKafkaPage } from './workflow-kafka';
 import {
-  WorkflowCalls, callsVacios, emiteCaida, emiteEstado, kafkaAgente, kafkaArriba, kafkaBloqueada,
+  WorkflowCalls, callsVacios, emiteCaida, emiteEstado, kafkaArriba, kafkaBloqueada,
   recurso, workflowProviders,
 } from '../../core/workflow-doubles';
 
@@ -326,61 +326,6 @@ describe('WorkflowKafkaPage', () => {
 
       expect(comp.notice()?.title).toBe('No se pudo limpiar');
       expect(comp.notice()?.paragraphs.join(' ')).toContain('Error formateando storage');
-    });
-  });
-
-  // --- el Kafka Agent dentro de la página -----------------------------------
-
-  describe('el panel del Kafka Agent', () => {
-    it('recibe la fila kafka-agent, no otra del grupo', async () => {
-      calls.answer = {
-        ...calls.answer,
-        resources: [kafkaArriba(), kafkaAgente(), recurso({ key: 'kafka-server', group: 'kafka', name: 'Kafka Server' })],
-      };
-      const { comp, el } = await montar();
-
-      expect(comp.agentRow()?.key).toBe('kafka-agent');
-      expect(el.querySelector('app-kafka-agent-panel')).not.toBeNull();
-    });
-
-    it('«Levantar» del panel usa la misma acción que la tarjeta', async () => {
-      calls.answer = { ...calls.answer, resources: [kafkaAgente({ state: 'down', pid: null })] };
-      const { el, fixture } = await montar();
-
-      const panel = el.querySelector('app-kafka-agent-panel')!;
-      [...panel.querySelectorAll<HTMLButtonElement>('button')]
-        .find((b) => b.textContent?.trim() === 'Levantar')!.click();
-      await new Promise((r) => setTimeout(r, 0));
-      fixture.detectChanges();
-
-      expect(calls.startedKeys).toEqual(['kafka-agent']);
-    });
-
-    it('«Parar» del panel para el pid de la fila del agente', async () => {
-      calls.answer = { ...calls.answer, resources: [kafkaAgente()] };
-      const { el, fixture } = await montar();
-
-      const panel = el.querySelector('app-kafka-agent-panel')!;
-      [...panel.querySelectorAll<HTMLButtonElement>('button')]
-        .find((b) => b.textContent?.trim() === 'Parar')!.click();
-      await new Promise((r) => setTimeout(r, 0));
-      fixture.detectChanges();
-
-      expect(calls.stopped).toEqual([{ pid: 31091, allowForeign: false }]);
-    });
-
-    it('«Reiniciar» para y vuelve a levantar con la key del recurso', async () => {
-      calls.answer = { ...calls.answer, resources: [kafkaAgente()] };
-      const { el, fixture } = await montar();
-
-      const panel = el.querySelector('app-kafka-agent-panel')!;
-      [...panel.querySelectorAll<HTMLButtonElement>('button')]
-        .find((b) => b.textContent?.trim() === 'Reiniciar')!.click();
-      await new Promise((r) => setTimeout(r, 0));
-      fixture.detectChanges();
-
-      expect(calls.stopped).toEqual([{ pid: 31091, allowForeign: false }]);
-      expect(calls.startedKeys).toEqual(['kafka-agent']);
     });
   });
 
