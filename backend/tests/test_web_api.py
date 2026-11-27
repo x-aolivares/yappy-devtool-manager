@@ -1161,6 +1161,10 @@ def _two_envs(monkeypatch, envs=("dev", "qa")):
     # Por defecto el destino no referencia a nadie: cada test que necesite FKs
     # entra con la arista que le importa.
     monkeypatch.setattr(obj, "inbound_foreign_keys", lambda conn, schema, name: [])
+    # Ninguna consulta real puede caer en `_FakeConn`: las funciones también
+    # entran por acá salvo que un test las reemplace con su propio mundo.
+    monkeypatch.setattr(obj, "list_functions", lambda conn, schema: [])
+    monkeypatch.setattr(obj, "show_create_function", lambda conn, schema, name: None)
 
 
 # --- Objects: tablas / stored procedures de un schema ------------------------
@@ -1181,6 +1185,15 @@ def test_api_db_objects_lists_tables_and_procedures(monkeypatch):
 
     procedures = api_db_objects(env="dev", schema="yappy", object_type="procedure")
     assert procedures["objects"] == ["sp_calc"]
+
+    monkeypatch.setattr(obj, "list_functions", lambda conn, schema: ["fn_calc"])
+    functions = api_db_objects(env="dev", schema="yappy", object_type="function")
+    assert functions == {
+        "env": "dev",
+        "schema_name": "yappy",
+        "object_type": "function",
+        "objects": ["fn_calc"],
+    }
 
 
 def test_api_db_objects_rejects_unknown_object_type(monkeypatch):
@@ -1270,6 +1283,44 @@ def test_api_compile_procedure_is_replaced_from_the_source(monkeypatch):
     assert payload["code_a"] == "CREATE PROCEDURE `p`() BEGIN SELECT 2; END"
     assert payload["code_b"] == "CREATE PROCEDURE `p`() BEGIN SELECT 1; END"
     # Compiling only generates: nothing reaches the destination yet.
+    assert executed == []
+
+
+def test_api_compile_function_is_replaced_from_the_source(monkeypatch):
+    _two_envs(monkeypatch, ("dev", "local"))
+    body_b = (
+        "CREATE DEFINER=`root`@`localhost` FUNCTION `fn_calc`(x int) RETURNS int\n"
+        "DETERMINISTIC\n"
+        "BEGIN\n"
+        "  RETURN x + 1;\n"
+        "END"
+    )
+    body_a = body_b.replace("x + 1", "x + 2")
+    monkeypatch.setattr(
+        obj, "show_create_function",
+        lambda conn, schema, name: body_b if conn.env == "dev" else body_a,
+    )
+    executed = []
+    monkeypatch.setattr(
+        "yappy_api.routes.db.syncexec.execute_sql",
+        lambda cfg, schema, code: executed.append((cfg._env, schema, code)) or [],
+    )
+
+    payload = api_compile(
+        CompileRequest(
+            env_b="dev", env_a="local", object_type="function",
+            schema_name="s", object_name="fn_calc",
+        )
+    )
+
+    assert payload["status"] == "different"
+    assert payload["script"].startswith("DROP FUNCTION IF EXISTS `s`.`fn_calc`;")
+    assert "CREATE FUNCTION `fn_calc`" in payload["script"]
+    assert "RETURN x + 1;" in payload["script"]
+    assert "DEFINER" not in payload["script"]
+    assert payload["code_a"] == body_a
+    assert payload["code_b"] == body_b
+    assert any("function" in note for note in payload["notes"])
     assert executed == []
 
 
@@ -1533,7 +1584,14 @@ def test_api_compile_object_missing_in_source_reports_none(monkeypatch):
 
 
 def _schema_world(
-    monkeypatch, *, schemas=None, tables=None, procedures=None, links=None, bodies=None
+    monkeypatch,
+    *,
+    schemas=None,
+    tables=None,
+    procedures=None,
+    functions=None,
+    links=None,
+    bodies=None,
 ):
     """``db_objects`` fakeado por ambiente.
 
@@ -1544,6 +1602,7 @@ def _schema_world(
     schemas = schemas if schemas is not None else {"dev": ["yappy"], "local": ["yappy"]}
     tables = tables or {}
     procedures = procedures or {}
+    functions = functions or {}
     links = links or {}
     bodies = bodies or {}
 
@@ -1552,6 +1611,9 @@ def _schema_world(
     monkeypatch.setattr(
         obj, "list_procedures", lambda conn, schema: procedures.get(conn.env, [])
     )
+    monkeypatch.setattr(
+        obj, "list_functions", lambda conn, schema: functions.get(conn.env, [])
+    )
     monkeypatch.setattr(obj, "foreign_key_links", lambda conn: links.get(conn.env, []))
     monkeypatch.setattr(
         obj, "show_create_table", lambda conn, schema, name: bodies.get((conn.env, name))
@@ -1559,6 +1621,11 @@ def _schema_world(
     monkeypatch.setattr(
         obj,
         "show_create_procedure",
+        lambda conn, schema, name: bodies.get((conn.env, name)),
+    )
+    monkeypatch.setattr(
+        obj,
+        "show_create_function",
         lambda conn, schema, name: bodies.get((conn.env, name)),
     )
 
@@ -1664,13 +1731,13 @@ def test_api_compile_schema_rejects_a_request_with_nothing_to_sync(monkeypatch):
         api_compile_schema(
             SchemaCompileRequest(
                 env_b="dev", env_a="local", schema_name="yappy",
-                include_tables=False, include_procedures=False,
+                include_tables=False, include_procedures=False, include_functions=False,
             )
         )
 
     assert exc.value.status_code == 400
     detail = str(exc.value.detail)
-    assert "tablas" in detail or "procedures" in detail
+    assert "tablas" in detail or "procedures" in detail or "functions" in detail
 
 
 def test_api_compile_schema_takes_an_explicit_list_as_the_whole_scope(monkeypatch):
@@ -1691,6 +1758,38 @@ def test_api_compile_schema_takes_an_explicit_list_as_the_whole_scope(monkeypatc
     assert payload["procedures"] == ["sp_calc"]
     # Y lo que no está en la lista no aparece en el script.
     assert "lines" not in payload["script"]
+
+
+def test_api_compile_schema_includes_functions_from_the_source(monkeypatch):
+    world = _two_related_tables()
+    world["functions"] = {"dev": ["fn_calc"]}
+    world["bodies"][("dev", "fn_calc")] = (
+        "CREATE DEFINER=`root`@`localhost` FUNCTION `fn_calc`(x int) RETURNS int\n"
+        "DETERMINISTIC\n"
+        "BEGIN\n"
+        "  RETURN x + 1;\n"
+        "END"
+    )
+    _schema_world(monkeypatch, **world)
+
+    payload = api_compile_schema(
+        SchemaCompileRequest(env_b="dev", env_a="local", schema_name="yappy")
+    )
+
+    assert payload["status"] == "schema_sync"
+    assert payload["functions"] == ["fn_calc"]
+    assert "DROP FUNCTION IF EXISTS `yappy`.`fn_calc`;" in payload["script"]
+    assert "CREATE FUNCTION `fn_calc`" in payload["script"]
+    assert "DEFINER" not in payload["script"]
+
+    only_tables = api_compile_schema(
+        SchemaCompileRequest(
+            env_b="dev", env_a="local", schema_name="yappy",
+            tables=["orders"], procedures=[], functions=[],
+        )
+    )
+    assert only_tables["functions"] == []
+    assert "DROP FUNCTION" not in only_tables["script"]
 
 
 def test_api_compile_schema_rejects_an_explicit_list_with_nothing_in_it(monkeypatch):
@@ -2013,20 +2112,31 @@ def test_api_migrate_defaults_the_schema_for_unqualified_tables(monkeypatch):
 PEDIDOS = [{"COLUMN_NAME": "fecha", "DATA_TYPE": "datetime"}]
 
 
-def _table_migrate_world(monkeypatch, *, date_columns=None):
+def _table_migrate_world(monkeypatch, *, date_columns=None, functions=None, bodies=None):
     """El origen que ``/api/migrate/tables`` necesita para validar el plan.
 
     Igual que ``_schema_world``: ``_FakeConn`` no tiene ``cursor()``, así que
-    ``list_schemas``, ``list_tables`` y ``date_columns`` entran por acá.
+    ``list_schemas``, ``list_tables``, ``date_columns`` y las funciones entran
+    por acá.
     """
     _two_envs(monkeypatch, ("dev", "local"))  # dev = origen, local = destino
     columns = date_columns or {}
+    functions = functions or {}
+    bodies = bodies or {}
     monkeypatch.setattr(obj, "list_schemas", lambda conn: ["yappy"])
     monkeypatch.setattr(obj, "list_tables", lambda conn, schema: ["pedidos", "lineas"])
     monkeypatch.setattr(
         obj,
         "date_columns",
         lambda conn, schema, table: columns.get(f"{schema}.{table}", []),
+    )
+    monkeypatch.setattr(
+        obj, "list_functions", lambda conn, schema: functions.get(conn.env, [])
+    )
+    monkeypatch.setattr(
+        obj,
+        "show_create_function",
+        lambda conn, schema, name: bodies.get((conn.env, name)),
     )
 
 
@@ -2189,6 +2299,91 @@ def test_api_migrate_tables_explains_a_foreign_key_rejection(monkeypatch):
     notes = " ".join(payload["notes"])
     assert "1452" in notes
     assert "ampliando el rango" in notes
+
+
+def test_api_migrate_tables_installs_functions_alongside_the_rows(monkeypatch):
+    """Las funciones no tienen filas: se leen del origen y se instalan en destino."""
+    body = "CREATE DEFINER=`root`@`localhost` FUNCTION `fn_calc`() RETURNS int RETURN 1"
+    _table_migrate_world(
+        monkeypatch,
+        date_columns={"yappy.pedidos": PEDIDOS},
+        functions={"dev": ["fn_calc"]},
+        bodies={("dev", "fn_calc"): body},
+    )
+    executed = []
+    monkeypatch.setattr(
+        "yappy_api.routes.db.dbtablemig.syncexec.execute_sql",
+        lambda cfg, schema, code: executed.append((cfg._env, schema, code)) or [],
+    )
+    monkeypatch.setattr(
+        "yappy_api.routes.db.dbmig.migrate",
+        lambda cfg_b, cfg_a, plan, dry_run=False: [],
+    )
+
+    payload = api_migrate_tables(
+        _two_selection_request(dry_run=False, confirm=True, functions=["fn_calc"])
+    )
+
+    assert executed == [
+        (
+            "local",
+            "yappy",
+            "DROP FUNCTION IF EXISTS `yappy`.`fn_calc`;\n"
+            "CREATE FUNCTION `fn_calc`() RETURNS int RETURN 1",
+        )
+    ]
+    assert payload["functions"] == [
+        {
+            "name": "fn_calc",
+            "target_schema": "yappy",
+            "installed": True,
+            "ok": True,
+            "error": None,
+        }
+    ]
+    assert payload["ok_count"] == 1
+    assert payload["err_count"] == 0
+    assert any("stored function" in note for note in payload["notes"])
+
+
+def test_api_migrate_tables_dry_run_only_validates_the_functions(monkeypatch):
+    body = "CREATE FUNCTION `fn_calc`() RETURNS int RETURN 1"
+    _table_migrate_world(
+        monkeypatch, functions={"dev": ["fn_calc"]}, bodies={("dev", "fn_calc"): body}
+    )
+    executed = []
+    monkeypatch.setattr(
+        "yappy_api.routes.db.dbtablemig.syncexec.execute_sql",
+        lambda cfg, schema, code: executed.append((cfg, schema, code)) or [],
+    )
+
+    payload = api_migrate_tables(
+        _two_selection_request(tables=[], functions=["fn_calc"], dry_run=True)
+    )
+
+    assert executed == []
+    assert payload["tables"] == []
+    assert payload["functions"][0]["installed"] is False
+    assert payload["functions"][0]["ok"] is True
+    assert payload["ok_count"] == 1
+
+
+def test_api_migrate_tables_rejects_an_unknown_function(monkeypatch):
+    _table_migrate_world(monkeypatch, functions={"dev": ["fn_calc"]})
+    executed = []
+    monkeypatch.setattr(
+        "yappy_api.routes.db.dbtablemig.syncexec.execute_sql",
+        lambda cfg, schema, code: executed.append((cfg, schema, code)) or [],
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        api_migrate_tables(
+            _two_selection_request(tables=[], functions=["fn_que_no_esta"], dry_run=True)
+        )
+
+    assert exc.value.status_code == 400
+    assert "fn_que_no_esta" in str(exc.value.detail)
+    assert executed == []
 
 
 def test_api_db_date_columns_returns_the_windowable_columns(monkeypatch):

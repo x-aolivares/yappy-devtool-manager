@@ -36,9 +36,10 @@ def _strip_definer(sql: str) -> str:
     # Trailing whitespace per line, and blank-line runs, without joining lines.
     text = "\n".join(line.rstrip() for line in text.splitlines())
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    # Removing DEFINER leaves "CREATE   PROCEDURE"; only the header is squeezed,
-    # so the alignment inside the parameter list survives.
-    return re.sub(r"(?i)^(CREATE)\s+PROCEDURE\b", r"\1 PROCEDURE", text, count=1)
+    # Removing DEFINER leaves "CREATE   PROCEDURE" / "CREATE   FUNCTION"; only
+    # the header is squeezed, so the alignment inside the parameter list and the
+    # RETURNS clause survives.
+    return re.sub(r"(?i)^(CREATE)\s+(PROCEDURE|FUNCTION)\b", r"\1 \2", text, count=1)
 
 
 def create_table_script(show_create_b: str) -> str:
@@ -87,6 +88,11 @@ def create_procedure_script(show_create_b: str) -> str:
     return _strip_definer(show_create_b)
 
 
+def create_function_script(show_create_b: str) -> str:
+    """DDL to create, in A, a function that only exists in B (no DEFINER)."""
+    return _strip_definer(show_create_b)
+
+
 def drop_table_script(schema: str, name: str) -> str:
     """DDL to drop from A a table that only exists in A (matching B)."""
     return f"DROP TABLE {obj.quote_ident(schema)}.{obj.quote_ident(name)};"
@@ -95,6 +101,11 @@ def drop_table_script(schema: str, name: str) -> str:
 def drop_procedure_script(schema: str, name: str) -> str:
     """DDL to drop from A a procedure that only exists in A (matching B)."""
     return f"DROP PROCEDURE {obj.quote_ident(schema)}.{obj.quote_ident(name)};"
+
+
+def drop_function_script(schema: str, name: str) -> str:
+    """DDL to drop from A a function that only exists in A (matching B)."""
+    return f"DROP FUNCTION {obj.quote_ident(schema)}.{obj.quote_ident(name)};"
 
 
 def replace_procedure_script(show_create_b: str, schema: str, name: str) -> str:
@@ -109,6 +120,19 @@ def replace_procedure_script(show_create_b: str, schema: str, name: str) -> str:
     body = _strip_definer(show_create_b)
     target = f"{obj.quote_ident(schema)}.{obj.quote_ident(name)}"
     return f"DROP PROCEDURE IF EXISTS {target};\n{body}"
+
+
+def replace_function_script(show_create_b: str, schema: str, name: str) -> str:
+    """DDL to replace, in A, a function whose body differs from B.
+
+    Same shape as :func:`replace_procedure_script`, for the same reason: one
+    script that works whether or not the destination already has the function.
+    ``DROP`` + ``CREATE`` is the idiom both kinds share here, and
+    ``_strip_definer`` leaves the header as ``CREATE FUNCTION``.
+    """
+    body = _strip_definer(show_create_b)
+    target = f"{obj.quote_ident(schema)}.{obj.quote_ident(name)}"
+    return f"DROP FUNCTION IF EXISTS {target};\n{body}"
 
 
 def _render_default(row: dict) -> str:

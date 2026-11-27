@@ -8,12 +8,15 @@ import { TableSelectionRequest } from '../models/table-selection-request';
  *
  * The bulk sibling of ``MigrationRequest``: same engine, same response model, and
  * the source of each ``SELECT`` is this list instead of a user-written query.
+ * ``functions`` are stored functions of the same source schema; their definition
+ * is read from the origin and installed in the destination alongside the rows.
  */
 export interface TableMigrateRequest {
   confirm?: boolean;
   dry_run?: boolean;
   env_a: string;
   env_b: string;
+  functions?: Array<string>;
   schema_name: string;
   tables: Array<TableSelectionRequest>;
 }

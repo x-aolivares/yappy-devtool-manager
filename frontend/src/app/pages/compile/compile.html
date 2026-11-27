@@ -111,6 +111,17 @@
             />
             Stored procedure
           </label>
+          <label [style.opacity]="schema() ? 1 : 0.5">
+            <input
+              type="radio"
+              name="object-type"
+              value="function"
+              [disabled]="!schema()"
+              [checked]="objectType() === 'function'"
+              (change)="objectType.set('function')"
+            />
+            Stored function
+          </label>
         </div>
       </div>
     </div>

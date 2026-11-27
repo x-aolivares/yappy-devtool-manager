@@ -17,6 +17,7 @@ from yappy_library.adapters.database.connection import SyncError
 from yappy_library.application.database.sync import db_objects as obj
 from yappy_library.application.database.sync import migrate as dbmig
 from yappy_library.application.database.sync import table_migrate as tm
+from yappy_library.application.database.sync.exec import StatementResult
 from yappy_library.application.database.sync.migrate import (
     QueryPlan,
     SelectPlan,
@@ -42,15 +43,20 @@ class _Conn:
 B = _Conn("dev")  # origen
 
 
-def _patch(monkeypatch, *, tables=(), date_columns=None):
-    """Every ``db_objects`` call ``build_plan`` makes."""
+def _patch(monkeypatch, *, tables=(), date_columns=None, functions=(), bodies=None):
+    """Every ``db_objects`` call the module makes."""
     columns = date_columns or {}
+    bodies = bodies or {}
     monkeypatch.setattr(obj, "list_schemas", lambda conn: [SCHEMA])
     monkeypatch.setattr(obj, "list_tables", lambda conn, schema: list(tables))
     monkeypatch.setattr(
         obj,
         "date_columns",
         lambda conn, schema, table: columns.get(f"{schema}.{table}", []),
+    )
+    monkeypatch.setattr(obj, "list_functions", lambda conn, schema: list(functions))
+    monkeypatch.setattr(
+        obj, "show_create_function", lambda conn, schema, name: bodies.get(name)
     )
 
 
@@ -466,3 +472,107 @@ def test_an_inverted_window_is_refused_instead_of_migrating_nothing(monkeypatch)
     detail = str(exc.value)
     assert "al revés" in detail
     assert "2026-02-01" in detail and "2026-01-01" in detail
+
+
+# --- stored functions installed alongside the rows ---------------------------
+
+
+FN_BODY = (
+    "CREATE DEFINER=`root`@`localhost` FUNCTION `fn_calc`(x int) RETURNS int\n"
+    "DETERMINISTIC\n"
+    "BEGIN\n"
+    "  RETURN x + 1;\n"
+    "END"
+)
+
+
+def test_install_functions_reads_the_source_and_replays_drop_create(monkeypatch):
+    _patch(monkeypatch, functions=["fn_calc"], bodies={"fn_calc": FN_BODY})
+    executed = []
+    monkeypatch.setattr(
+        "yappy_library.application.database.sync.table_migrate.syncexec.execute_sql",
+        lambda cfg, schema, code: executed.append((cfg, schema, code)) or [],
+    )
+
+    results, notes = tm.install_functions(B, "cfg-a", SCHEMA, ["fn_calc"])
+
+    assert executed == [
+        (
+            "cfg-a",
+            SCHEMA,
+            "DROP FUNCTION IF EXISTS `ventas`.`fn_calc`;\n"
+            "CREATE FUNCTION `fn_calc`(x int) RETURNS int\n"
+            "DETERMINISTIC\n"
+            "BEGIN\n"
+            "  RETURN x + 1;\n"
+            "END",
+        )
+    ]
+    assert [r.to_dict() for r in results] == [
+        {
+            "name": "fn_calc",
+            "target_schema": SCHEMA,
+            "installed": True,
+            "ok": True,
+            "error": None,
+        }
+    ]
+    assert any("DROP + CREATE" in note for note in notes)
+    assert all("DEFINER" not in statement[2] for statement in executed)
+
+
+def test_install_functions_dry_run_validates_without_writing(monkeypatch):
+    _patch(monkeypatch, functions=["fn_calc"], bodies={"fn_calc": FN_BODY})
+    executed = []
+    monkeypatch.setattr(
+        "yappy_library.application.database.sync.table_migrate.syncexec.execute_sql",
+        lambda cfg, schema, code: executed.append((cfg, schema, code)) or [],
+    )
+
+    results, notes = tm.install_functions(B, "cfg-a", SCHEMA, ["fn_calc"], dry_run=True)
+
+    assert executed == []
+    assert results[0].installed is False
+    assert results[0].ok is True
+    assert "Se instalarían" in notes[0]
+
+
+def test_install_functions_rejects_an_unknown_name_before_writing(monkeypatch):
+    _patch(monkeypatch, functions=["fn_a"], bodies={"fn_a": FN_BODY})
+    executed = []
+    monkeypatch.setattr(
+        "yappy_library.application.database.sync.table_migrate.syncexec.execute_sql",
+        lambda cfg, schema, code: executed.append((cfg, schema, code)) or [],
+    )
+
+    with pytest.raises(SyncError) as exc:
+        tm.install_functions(B, "cfg-a", SCHEMA, ["fn_que_no_esta"])
+
+    assert "fn_que_no_esta" in str(exc.value)
+    assert "stored function en ventas" in str(exc.value)
+    assert executed == []
+
+
+def test_install_functions_reports_a_bad_statement_without_stopping_the_others(monkeypatch):
+    bodies = {
+        "fn_a": "CREATE FUNCTION `fn_a`() RETURNS int RETURN 1",
+        "fn_b": "CREATE FUNCTION `fn_b`() RETURNS int RETURN 2",
+    }
+    _patch(monkeypatch, functions=["fn_a", "fn_b"], bodies=bodies)
+
+    def fake_execute(cfg, schema, code):
+        if "fn_b" in code:
+            return [StatementResult(index=1, sql=code, ok=False, error="boom")]
+        return []
+
+    monkeypatch.setattr(
+        "yappy_library.application.database.sync.table_migrate.syncexec.execute_sql",
+        fake_execute,
+    )
+
+    results, _ = tm.install_functions(B, "cfg-a", SCHEMA, ["fn_a", "fn_b"])
+
+    assert [r.name for r in results] == ["fn_a", "fn_b"]
+    assert results[0].ok is True and results[0].installed is True
+    assert results[1].ok is False and results[1].installed is False
+    assert results[1].error == "boom"

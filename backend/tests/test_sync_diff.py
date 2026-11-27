@@ -23,6 +23,12 @@ def test_normalize_ddl_strips_current_user_definer():
     assert obj.normalize_ddl(a) == obj.normalize_ddl(b)
 
 
+def test_normalize_ddl_treats_a_function_definer_as_irrelevant():
+    a = "CREATE DEFINER=`u`@`h` FUNCTION f() RETURNS int RETURN 1"
+    b = "create function f() returns int return 1"
+    assert obj.normalize_ddl(a) == obj.normalize_ddl(b)
+
+
 @pytest.fixture
 def col():
     def _col(
@@ -223,6 +229,9 @@ class _SchemaCursor:
     def fetchall(self):
         return self._rows
 
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
     def __enter__(self):
         return self
 
@@ -274,3 +283,24 @@ def test_list_procedures_returns_procedures_of_the_schema():
     assert params == ("yappy",)
     for system in ("information_schema", "mysql", "performance_schema", "sys"):
         assert f"'{system}'" in sql
+
+
+def test_list_functions_returns_functions_of_the_schema():
+    conn = _SchemaConn([("fn_calc",)])
+    assert obj.list_functions(conn, "yappy") == ["fn_calc"]
+    sql, params = conn._cursor.executed, conn._cursor.params
+    assert "INFORMATION_SCHEMA.ROUTINES" in sql
+    assert "ROUTINE_TYPE = 'FUNCTION'" in sql
+    assert "ORDER BY ROUTINE_NAME" in sql
+    assert params == ("yappy",)
+    for system in ("information_schema", "mysql", "performance_schema", "sys"):
+        assert f"'{system}'" in sql
+
+
+def test_show_create_function_returns_mysqls_third_column():
+    create = "CREATE FUNCTION `fn_calc`() RETURNS int RETURN 1"
+    conn = _SchemaConn([("fn_calc", "yappy", create)])
+    assert obj.show_create_function(conn, "yappy", "fn_calc") == create
+    sql = conn._cursor.executed
+    assert sql.startswith("SHOW CREATE FUNCTION")
+    assert "`yappy`.`fn_calc`" in sql

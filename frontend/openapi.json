@@ -117,7 +117,7 @@
           "db"
         ],
         "summary": "Api Db Objects",
-        "description": "List the tables or stored procedures of one schema, to feed the object picker.\n\nThe schema comes from :func:`api_db_schemas`, so it is already free of system\nschemas; the connection cost is the same one that listing schemas paid.",
+        "description": "List the tables, procedures or functions of one schema, for the picker.\n\nThe schema comes from :func:`api_db_schemas`, so it is already free of system\nschemas; the connection cost is the same one that listing schemas paid.",
         "operationId": "list_db_objects",
         "parameters": [
           {
@@ -239,7 +239,7 @@
           "db"
         ],
         "summary": "Api Execute Sql",
-        "description": "Run a SQL/DDL script against an environment.\n\nThis is the only write path: ``/api/compile`` merely generates. ``code`` is\nwhatever the user is looking at, so it may be a generated script, an edited\nversion of it, or free-form SQL pasted from anywhere.\n\n``object_type`` labels the run and is echoed back; nothing branches on it,\nbecause the splitter runs whatever text it is given. Besides ``table`` and\n``procedure`` it accepts ``script``: the Compile page sends it when the SQL\ncomes from the user instead of from an object of a source environment, and in\nthat case there is no single object to name — claiming ``table`` would just\nbe a lie in the response.",
+        "description": "Run a SQL/DDL script against an environment.\n\nThis is the only write path: ``/api/compile`` merely generates. ``code`` is\nwhatever the user is looking at, so it may be a generated script, an edited\nversion of it, or free-form SQL pasted from anywhere.\n\n``object_type`` labels the run and is echoed back; nothing branches on it,\nbecause the splitter runs whatever text it is given. Besides ``table``,\n``procedure`` and ``function`` it accepts ``script``: the Compile page sends\nit when the SQL comes from the user instead of from an object of a source\nenvironment, and in that case there is no single object to name — claiming\n``table`` would just be a lie in the response.",
         "operationId": "execute_sql",
         "requestBody": {
           "content": {
@@ -281,7 +281,7 @@
           "db"
         ],
         "summary": "Api Compile",
-        "description": "Generate the script that would take an object from source into destination.\n\nNothing is written here: both environments are opened read-only to look at\nthem and the script comes back in the response. The caller decides whether to\nsend it to ``/api/execute/sql``, possibly after editing it.\n\nBoth object types are a **replace**, not a merge: the source is the truth and\nthe script makes the destination look exactly like it. MySQL has no\n``CREATE OR REPLACE`` for procedures nor for tables, so both are\n``DROP ... IF EXISTS`` + ``CREATE``. One script, the same whether or not the\nobject is already in the destination — that is the whole point, since a script\nthat depended on what it was going to find is a script that ends in ``1050``\nor ``1305`` halfway through.\n\nFor a table that means ``DROP TABLE`` takes the destination's rows with it.\nThere is no non-destructive path left in the UI: whoever wants to keep them\nwrites the missing ``ALTER``s by hand and runs only those.\n\n``status`` says what is going to happen in the destination:\n``replace_in_a`` (exists there and is about to be dropped),\n``missing_in_a`` (does not exist; the ``DROP`` has nothing to do),\n``different`` (a procedure whose body is regenerated) or ``none`` (the object\nis not in the source, so there is nothing to compile).\n\n``code_b`` (source) and ``code_a`` (destination) come back for every branch so\nthe caller can show what each side has today.",
+        "description": "Generate the script that would take an object from source into destination.\n\nNothing is written here: both environments are opened read-only to look at\nthem and the script comes back in the response. The caller decides whether to\nsend it to ``/api/execute/sql``, possibly after editing it.\n\nAll three object types are a **replace**, not a merge: the source is the\ntruth and the script makes the destination look exactly like it. Tables and\nprocedures are ``DROP ... IF EXISTS`` + ``CREATE``; functions use the same\nshape for one script that works whether or not the object is already in the\ndestination — a script that depended on what it was going to find is a script\nthat ends in ``1050`` or ``1305`` halfway through.\n\nFor a table that means ``DROP TABLE`` takes the destination's rows with it.\nThere is no non-destructive path left in the UI: whoever wants to keep them\nwrites the missing ``ALTER``s by hand and runs only those.\n\n``status`` says what is going to happen in the destination:\n``replace_in_a`` (exists there and is about to be dropped),\n``missing_in_a`` (does not exist; the ``DROP`` has nothing to do),\n``different`` (a procedure whose body is regenerated) or ``none`` (the object\nis not in the source, so there is nothing to compile).\n\n``code_b`` (source) and ``code_a`` (destination) come back for every branch so\nthe caller can show what each side has today.",
         "operationId": "compile_db_object",
         "requestBody": {
           "content": {
@@ -323,7 +323,7 @@
           "db"
         ],
         "summary": "Api Compile Schema",
-        "description": "Generate ONE script that replaces a whole schema's objects with the origin's.\n\n``/api/compile`` does one table or one procedure; this does the schema, which\nis the case that only makes sense as a single script: the tables reference\neach other, and MySQL rejects a drop of a parent that a child still points at\n(3730) and a create of a child whose parent does not exist yet. The script is\ntherefore ordered twice — drops by the destination's foreign keys, children\nfirst; creates by the origin's, parents first.\n\nWhat it replaces is exactly what the origin has. It does **not** delete what\nonly the destination has: those tables come back in ``left_alone`` and the\nscript never mentions them. A schema sync makes this environment's copy of the\norigin's objects match; it is not \"make the destination a clone\".\n\nNothing is written here, and this route never calls ``/api/execute/sql``'s\n``execute_sql``: both environments are opened to be read and the script comes\nback in the response. Nor is the script a transaction — it runs with\nautocommit, so a statement that fails half way leaves the destination\npartially migrated. ``notes`` always carries that warning along with the rest.\n\n``status`` is ``schema_sync`` for a schema with something to replace and\n``none`` when the origin has no tables and no procedures in it. ``script`` is\nreturned in both cases: it is a harmless no-op (the ``CREATE DATABASE``/\n``USE`` pair), and the caller should not have to special-case it.",
+        "description": "Generate ONE script that replaces a whole schema's objects with the origin's.\n\n``/api/compile`` does one table, procedure or function; this does the schema,\nwhich is the case that only makes sense as a single script: the tables reference\neach other, and MySQL rejects a drop of a parent that a child still points at\n(3730) and a create of a child whose parent does not exist yet. The script is\ntherefore ordered twice — drops by the destination's foreign keys, children\nfirst; creates by the origin's, parents first.\n\nWhat it replaces is exactly what the origin has. It does **not** delete what\nonly the destination has: those tables come back in ``left_alone`` and the\nscript never mentions them. A schema sync makes this environment's copy of the\norigin's objects match; it is not \"make the destination a clone\".\n\nNothing is written here, and this route never calls ``/api/execute/sql``'s\n``execute_sql``: both environments are opened to be read and the script comes\nback in the response. Nor is the script a transaction — it runs with\nautocommit, so a statement that fails half way leaves the destination\npartially migrated. ``notes`` always carries that warning along with the rest.\n\n``status`` is ``schema_sync`` for a schema with something to replace and\n``none`` when the origin has no tables, procedures or functions in it.\n``script`` is\nreturned in both cases: it is a harmless no-op (the ``CREATE DATABASE``/\n``USE`` pair), and the caller should not have to special-case it.",
         "operationId": "compile_db_schema",
         "requestBody": {
           "content": {
@@ -449,7 +449,7 @@
           "db"
         ],
         "summary": "Api Migrate Tables",
-        "description": "Migrate an explicit list of tables of one schema, each with its own window.\n\nThe same engine ``/api/migrate`` uses — :func:`dbmig.migrate` with a plan built\nfrom a list instead of from a query — so ``REPLACE INTO``, the parent-first\nwrite order, the column reconciliation and the per-table failure isolation\nbehave identically. Only the origin of each ``SELECT`` changes, and the\nresponse is the same model, so the frontend renders both migrations with one\ncomponent.\n\nEach entry carries an optional window: ``date_column`` plus inclusive\n``date_from``/``date_to``, a single bound or none both allowed. ``date_column``\nis validated against the source's real DATE/DATETIME/TIMESTAMP columns\n(:func:`dbtablemig.build_plan`) before anything is written, so a typo is a 400\nand never a statement.\n\nThe source is opened twice: once to validate the plan and once to copy. That is\nthe price of :func:`dbmig.migrate` owning its own connections, and paying it\nbeats duplicating the copy loop to save one.\n\n``dry_run`` reads everything and writes nothing, which is the only honest way\nto find out how many rows each table contributes before committing to it.",
+        "description": "Migrate an explicit list of tables of one schema, each with its own window.\n\nThe same engine ``/api/migrate`` uses — :func:`dbmig.migrate` with a plan built\nfrom a list instead of from a query — so ``REPLACE INTO``, the parent-first\nwrite order, the column reconciliation and the per-table failure isolation\nbehave identically. Only the origin of each ``SELECT`` changes, and the\nresponse is the same model, so the frontend renders both migrations with one\ncomponent.\n\n``functions`` are stored functions of that same source schema: their\ndefinition is read from the origin and installed in the destination with\n``DROP FUNCTION IF EXISTS`` + ``CREATE FUNCTION``. A dry run validates them\nand reports what would be installed, but writes nothing.\n\nEach entry carries an optional window: ``date_column`` plus inclusive\n``date_from``/``date_to``, a single bound or none both allowed. ``date_column``\nis validated against the source's real DATE/DATETIME/TIMESTAMP columns\n(:func:`dbtablemig.build_plan`) before anything is written, so a typo is a 400\nand never a statement.\n\nThe source is opened twice: once to validate the plan and once to copy. That is\nthe price of :func:`dbmig.migrate` owning its own connections, and paying it\nbeats duplicating the copy loop to save one.\n\n``dry_run`` reads everything and writes nothing, which is the only honest way\nto find out how many rows each table contributes before committing to it.",
         "operationId": "migrate_db_table_list",
         "requestBody": {
           "content": {
@@ -2961,7 +2961,7 @@
           "object_type"
         ],
         "title": "DbObjectsResponse",
-        "description": "The tables or stored procedures of one schema, to feed the object picker.\n\nNamed ``schema_name`` like every other model of this contract: ``schema``\nwould shadow the deprecated ``BaseModel.schema`` and warn on import."
+        "description": "The tables, stored procedures or functions of one schema, for the picker.\n\nNamed ``schema_name`` like every other model of this contract: ``schema``\nwould shadow the deprecated ``BaseModel.schema`` and warn on import."
       },
       "DeleteResponse": {
         "properties": {
@@ -3767,6 +3767,46 @@
         ],
         "title": "KafkaAgentStatusResponse"
       },
+      "MigrationFunctionInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "target_schema": {
+            "type": "string",
+            "title": "Target Schema"
+          },
+          "installed": {
+            "type": "boolean",
+            "title": "Installed",
+            "default": false
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "target_schema"
+        ],
+        "title": "MigrationFunctionInfo",
+        "description": "One stored function installed (or only simulated) alongside the rows."
+      },
       "MigrationRequest": {
         "properties": {
           "env_b": {
@@ -3825,6 +3865,14 @@
             },
             "type": "array",
             "title": "Tables",
+            "default": []
+          },
+          "functions": {
+            "items": {
+              "$ref": "#/components/schemas/MigrationFunctionInfo"
+            },
+            "type": "array",
+            "title": "Functions",
             "default": []
           },
           "notes": {
@@ -4569,6 +4617,11 @@
             "title": "Include Procedures",
             "default": true
           },
+          "include_functions": {
+            "type": "boolean",
+            "title": "Include Functions",
+            "default": true
+          },
           "tables": {
             "anyOf": [
               {
@@ -4596,6 +4649,20 @@
               }
             ],
             "title": "Procedures"
+          },
+          "functions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Functions"
           }
         },
         "type": "object",
@@ -4605,7 +4672,7 @@
           "schema_name"
         ],
         "title": "SchemaCompileRequest",
-        "description": "Compile a whole schema from one environment into another (origen -> destino).\n\nThe bulk sibling of ``CompileRequest``: one script for every table and stored\nprocedure the origin has in that schema, ordered so MySQL accepts it.\n\nThe scope is one of three shapes, in this order:\n\n1. ``tables``/``procedures`` carry an explicit list, because the browser\n   showed the user a table with a checkbox per object and they chose. An\n   explicit list is the whole scope: the two flags below are ignored, since\n   they would only widen or narrow what the user just picked.\n2. Otherwise the two flags apply, and both default to ``True`` because \"sync\n   this schema\" means the schema. They exist for a client with no table to\n   show, and at least one of them must be on.\n3. An explicit list that is empty is a scope of nothing, which the route\n   rejects — it is different from \"not given\", and reading it as \"everything\"\n   would compile the whole schema the user had just emptied on purpose."
+        "description": "Compile a whole schema from one environment into another (origen -> destino).\n\nThe bulk sibling of ``CompileRequest``: one script for every table, stored\nprocedure and stored function the origin has in that schema, ordered so MySQL\naccepts it.\n\nThe scope is one of three shapes, in this order:\n\n1. ``tables``/``procedures``/``functions`` carry an explicit list, because the\n   browser showed the user a table with a checkbox per object and they chose.\n   An explicit list is the whole scope: the flags below are ignored, since\n   they would only widen or narrow what the user just picked.\n2. Otherwise the three flags apply, and all default to ``True`` because \"sync\n   this schema\" means the schema. They exist for a client with no table to\n   show, and at least one of them must be on.\n3. An explicit list that is empty is a scope of nothing, which the route\n   rejects — it is different from \"not given\", and reading it as \"everything\"\n   would compile the whole schema the user had just emptied on purpose."
       },
       "SchemaCompileResponse": {
         "properties": {
@@ -4643,6 +4710,14 @@
             },
             "type": "array",
             "title": "Procedures",
+            "default": []
+          },
+          "functions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Functions",
             "default": []
           },
           "left_alone": {
@@ -5048,6 +5123,14 @@
             "type": "array",
             "title": "Tables"
           },
+          "functions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Functions",
+            "default": []
+          },
           "dry_run": {
             "type": "boolean",
             "title": "Dry Run",
@@ -5067,7 +5150,7 @@
           "tables"
         ],
         "title": "TableMigrateRequest",
-        "description": "Migrate an explicit list of tables of one schema (origen -> destino).\n\nThe bulk sibling of ``MigrationRequest``: same engine, same response model, and\nthe source of each ``SELECT`` is this list instead of a user-written query."
+        "description": "Migrate an explicit list of tables of one schema (origen -> destino).\n\nThe bulk sibling of ``MigrationRequest``: same engine, same response model, and\nthe source of each ``SELECT`` is this list instead of a user-written query.\n``functions`` are stored functions of the same source schema; their definition\nis read from the origin and installed in the destination alongside the rows."
       },
       "TableSelectionRequest": {
         "properties": {

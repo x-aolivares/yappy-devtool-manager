@@ -32,6 +32,7 @@ export type { KafkaAgentSmokeCheck } from './models/kafka-agent-smoke-check';
 export type { KafkaAgentSmokeRequest } from './models/kafka-agent-smoke-request';
 export type { KafkaAgentSmokeResponse } from './models/kafka-agent-smoke-response';
 export type { KafkaAgentStatusResponse } from './models/kafka-agent-status-response';
+export type { MigrationFunctionInfo } from './models/migration-function-info';
 export type { MigrationRequest } from './models/migration-request';
 export type { MigrationResponse } from './models/migration-response';
 export type { MigrationTableInfo } from './models/migration-table-info';

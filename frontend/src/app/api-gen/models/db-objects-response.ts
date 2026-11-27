@@ -3,7 +3,7 @@
 
 
 /**
- * The tables or stored procedures of one schema, to feed the object picker.
+ * The tables, stored procedures or functions of one schema, for the picker.
  *
  * Named ``schema_name`` like every other model of this contract: ``schema``
  * would shadow the deprecated ``BaseModel.schema`` and warn on import.

@@ -66,6 +66,8 @@ const BASE: Record<string, any> = {
 // El stub es mutable y module-level a propósito: `TestBed` se configura una vez por
 // describe, así que cada test cambia la respuesta desde acá en vez de reconfigurar.
 let tables: string[] = [...TABLES];
+let functions: string[] = [];
+let objectTypeCalls: string[] = [];
 let dateColumnsFor: (env: string, schema: string, table: string) => Promise<DateColumnsResponse> =
   (env, schema, table) => Promise.resolve({ env, schema_name: schema, table_name: table, ...DATE_COLUMNS[table] });
 let migrateResponse: Record<string, any> = BASE;
@@ -82,8 +84,16 @@ function mockProviders() {
       provide: DbService,
       useValue: {
         listSchemas: () => Promise.resolve({ schemas: ['yappy', 'otro'] }),
-        listObjects: (env: string, schema: string) =>
-          Promise.resolve({ env, schema_name: schema, object_type: 'table', objects: [...tables] }),
+        listObjects: (env: string, schema: string, objectType: string) => {
+          objectTypeCalls.push(objectType);
+          const objects = objectType === 'function' ? functions : tables;
+          return Promise.resolve({
+            env,
+            schema_name: schema,
+            object_type: objectType,
+            objects: [...objects],
+          });
+        },
         dateColumns: (env: string, schema: string, table: string) => {
           dateColumnCalls.push({ env, schema, table });
           return dateColumnsFor(env, schema, table);
@@ -99,6 +109,8 @@ function mockProviders() {
 
 async function setup(): Promise<void> {
   tables = [...TABLES];
+  functions = [];
+  objectTypeCalls = [];
   dateColumnsFor = (env, schema, table) =>
     Promise.resolve({
       env,
@@ -913,11 +925,64 @@ describe('MigrateDataPage simular y migrar', () => {
         },
         { table: 'config', date_column: null, date_from: null, date_to: null },
       ],
+      functions: [],
       dry_run: true,
       confirm: false,
     });
     // `orders` quedó sin marcar: no viaja.
     expect(sent[0].tables.map((t) => t.table)).not.toContain('orders');
+  });
+
+  it('lista y manda las stored functions marcadas del mismo esquema', async () => {
+    functions = ['fn_calc'];
+    const { fixture, comp, el } = await ready();
+
+    expect(comp.functionList()).toEqual(['fn_calc']);
+    expect(objectTypeCalls).toContain('function');
+    const casilla = el.querySelector<HTMLInputElement>('#migrate-function-fn_calc');
+    expect(casilla).not.toBeNull();
+
+    casilla!.click();
+    await settle(fixture);
+    comp.simulate();
+    await settle(fixture);
+
+    expect(sent[0].functions).toEqual(['fn_calc']);
+  });
+
+  it('permite migrar sólo functions, sin marcar ninguna tabla', async () => {
+    functions = ['fn_calc'];
+    const { fixture, comp } = await ready();
+
+    comp.toggleFunction('fn_calc', true);
+    await settle(fixture);
+
+    expect(comp.canSubmit()).toBe(true);
+    expect(comp.submitHint()).toBe('');
+
+    comp.simulate();
+    await settle(fixture);
+
+    expect(sent[0].tables).toEqual([]);
+    expect(sent[0].functions).toEqual(['fn_calc']);
+  });
+
+  it('muestra el resultado de las functions instaladas', async () => {
+    migrateResponse = {
+      ...BASE,
+      functions: [
+        { name: 'fn_calc', target_schema: 'yappy', installed: true, ok: true, error: null },
+      ],
+    };
+    const { fixture, comp, el } = await ready();
+    await marcarConRango(comp, fixture);
+
+    comp.simulate();
+    await settle(fixture);
+
+    expect(el.textContent).toContain('Resultado por function');
+    expect(el.textContent).toContain('yappy.fn_calc');
+    expect(el.textContent).toContain('Instalada');
   });
 
   it('permite una sola de las dos fechas', async () => {
@@ -970,7 +1035,7 @@ describe('MigrateDataPage simular y migrar', () => {
 
     expect(comp.selection()).toHaveLength(0);
     expect(comp.canSubmit()).toBe(false);
-    expect(el.textContent).toContain('Marcá al menos una tabla para migrar.');
+    expect(el.textContent).toContain('Marcá al menos una tabla o una stored function para migrar.');
     expect(button(el, 'Simular').disabled).toBe(true);
     expect(button(el, 'Migrar a').disabled).toBe(true);
 

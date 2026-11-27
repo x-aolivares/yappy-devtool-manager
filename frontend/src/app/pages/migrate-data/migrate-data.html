@@ -1,6 +1,7 @@
 <h1>Migrar datos</h1>
 <p class="muted">
-  Copia las filas de las tablas que marques a otro ambiente, con un filtro por fecha por tabla.
+  Copia las filas de las tablas que marques a otro ambiente, con un filtro por fecha por tabla,
+  e instala las stored functions que marques del mismo esquema.
 </p>
 
 <div class="panel">
@@ -39,9 +40,9 @@
     <p class="muted hint-error" style="font-size:0.75rem;">
       No se pudieron leer las tablas de {{ schema() }}: {{ tablesError() }}
     </p>
-  } @else if (schema() && !tableList().length) {
+  } @else if (schema() && !tableList().length && !functionList().length) {
     <p class="muted" style="font-size:0.75rem;">
-      {{ schema() }} no tiene tablas en {{ envB() }}: no hay nada para migrar.
+      {{ schema() }} no tiene tablas ni stored functions en {{ envB() }}: no hay nada para migrar.
     </p>
   }
 </div>
@@ -249,6 +250,43 @@
   </div>
 }
 
+@if (functionsLoading()) {
+  <p class="muted" style="font-size:0.75rem;">
+    <span class="spinner"></span> Cargando las stored functions de {{ schema() }} en
+    {{ envB() }}...
+  </p>
+} @else if (functionsError()) {
+  <p class="muted hint-error" style="font-size:0.75rem;">
+    No se pudieron leer las stored functions de {{ schema() }}: {{ functionsError() }}
+  </p>
+} @else if (functionList().length) {
+  <div class="panel">
+    <div class="section-title section-title--plain">
+      <strong>Stored functions a instalar</strong>
+      <span class="muted" style="font-size:0.75rem;">
+        {{ selectedFunctions().length }} de {{ functionList().length }} marcadas
+      </span>
+    </div>
+    <div class="radio-row">
+      @for (name of functionList(); track name) {
+        <label class="checkbox-row" [for]="'migrate-function-' + name">
+          <input
+            type="checkbox"
+            [id]="'migrate-function-' + name"
+            [checked]="selectedFunctions().includes(name)"
+            (change)="toggleFunction(name, $any($event.target).checked)"
+          />
+          <span>{{ name }}</span>
+        </label>
+      }
+    </div>
+    <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
+      Se leen del origen y se instalan en el destino con DROP + CREATE: si ya existían, se
+      reemplazan. No se copian filas por ellas.
+    </p>
+  </div>
+}
+
 <div class="panel">
   <div class="section-title section-title--plain"><strong>Simular o migrar</strong></div>
   <div class="actions" style="justify-content:space-between; flex-wrap:wrap; gap:0.625rem;">
@@ -311,7 +349,7 @@
         [label]="
           r.err_count
             ? r.ok_count + ' OK, ' + r.err_count + ' error(es)'
-            : r.ok_count + ' tabla(s) OK'
+            : r.ok_count + (r.functions?.length ? ' objeto(s) OK' : ' tabla(s) OK')
         "
       />
       @if (r.dry_run) {
@@ -354,6 +392,28 @@
       </div>
     }
   </div>
+
+  @if (r.functions?.length) {
+    <div class="panel">
+      <div class="section-title">
+        <strong>@if (r.dry_run) {Funciones a instalar} @else {Resultado por function}</strong>
+      </div>
+      @for (f of r.functions!; track f.name) {
+        <div class="stmt-row">
+          <app-badge
+            [status]="f.ok ? 'ok' : 'error'"
+            [label]="f.ok ? (r.dry_run ? 'A instalar' : 'Instalada') : 'Error'"
+          />
+          <div style="flex:1; min-width:0;">
+            <strong>{{ f.target_schema }}.{{ f.name }}</strong>
+            @if (f.error) {
+              <div class="muted stmt-meta"><span style="color:var(--err);">{{ f.error }}</span></div>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  }
 
   @if (r.notes?.length) {
     <div class="panel">

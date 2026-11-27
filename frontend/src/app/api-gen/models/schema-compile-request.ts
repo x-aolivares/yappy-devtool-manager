@@ -5,16 +5,17 @@
 /**
  * Compile a whole schema from one environment into another (origen -> destino).
  *
- * The bulk sibling of ``CompileRequest``: one script for every table and stored
- * procedure the origin has in that schema, ordered so MySQL accepts it.
+ * The bulk sibling of ``CompileRequest``: one script for every table, stored
+ * procedure and stored function the origin has in that schema, ordered so MySQL
+ * accepts it.
  *
  * The scope is one of three shapes, in this order:
  *
- * 1. ``tables``/``procedures`` carry an explicit list, because the browser
- *    showed the user a table with a checkbox per object and they chose. An
- *    explicit list is the whole scope: the two flags below are ignored, since
+ * 1. ``tables``/``procedures``/``functions`` carry an explicit list, because the
+ *    browser showed the user a table with a checkbox per object and they chose.
+ *    An explicit list is the whole scope: the flags below are ignored, since
  *    they would only widen or narrow what the user just picked.
- * 2. Otherwise the two flags apply, and both default to ``True`` because "sync
+ * 2. Otherwise the three flags apply, and all default to ``True`` because "sync
  *    this schema" means the schema. They exist for a client with no table to
  *    show, and at least one of them must be on.
  * 3. An explicit list that is empty is a scope of nothing, which the route
@@ -24,6 +25,8 @@
 export interface SchemaCompileRequest {
   env_a: string;
   env_b: string;
+  functions?: (Array<string> | null);
+  include_functions?: boolean;
   include_procedures?: boolean;
   include_tables?: boolean;
   procedures?: (Array<string> | null);

@@ -137,6 +137,24 @@ describe('CompilePage script generado', () => {
     expect(comp.replaceNotice()).toBeNull();
   });
 
+  it('ofrece la stored function como tercer tipo de objeto', async () => {
+    const { fixture, comp, el } = await generate({ status: 'different', object_type: 'function' });
+    // El selector de esquema se reasienta al cambiar de ambiente; acá hace falta
+    // esperar ese flush para mirar el radio, no para generar el script.
+    comp.schema.set('yappy');
+    fixture.detectChanges();
+
+    const radio = el.querySelector<HTMLInputElement>('input[value="function"]');
+    expect(radio).not.toBeNull();
+    expect(radio?.disabled).toBe(false);
+
+    comp.objectType.set('function');
+    fixture.detectChanges();
+
+    expect(comp.objectTypePlural()).toBe('stored functions');
+    expect(el.textContent).toContain('Stored function');
+  });
+
   it('descarta el contenido sembrado cuando cambia un selector', async () => {
     const { fixture, comp } = await generate({ status: 'replace_in_a' });
     expect(comp.script()).not.toBe('');
@@ -349,6 +367,30 @@ describe('CompilePage origen = script', () => {
     await settle(fixture);
 
     expect(sent[0].object_type).toBe('procedure');
+  });
+
+  it('sigue mandando el tipo function cuando compila una stored function', async () => {
+    const fixture = TestBed.createComponent(CompilePage);
+    const comp = fixture.componentInstance as any;
+    const el = fixture.nativeElement as HTMLElement;
+    comp.envB.set('dev');
+    comp.envA.set('local');
+    comp.objectType.set('function');
+    await settle(fixture);
+    comp.schema.set('yappy');
+    await settle(fixture);
+    comp.objectName.set('fn_calc');
+    comp.generate();
+    await settle(fixture);
+    comp.script.set('DROP FUNCTION IF EXISTS `yappy`.`fn_calc`;\nCREATE FUNCTION `fn_calc`() RETURNS int RETURN 1');
+    await settle(fixture);
+
+    comp.run();
+    await settle(fixture);
+    confirmarEnModal(el);
+    await settle(fixture);
+
+    expect(sent[0].object_type).toBe('function');
   });
 
   it('la confirmación avisa que el DROP se lleva lo que haya en el destino', async () => {

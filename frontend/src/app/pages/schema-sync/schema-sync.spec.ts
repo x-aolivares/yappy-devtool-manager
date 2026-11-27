@@ -36,8 +36,10 @@ let objectCalls: Array<{ env: string; schema: string; type: string }> = [];
 /** Los objetos que el origen tiene, y los que el destino ya tiene. */
 let originTables: string[] = ['lines', 'orders'];
 let originProcedures: string[] = ['sp_calc'];
+let originFunctions: string[] = [];
 let destinationTables: string[] = ['orders'];
 let destinationProcedures: string[] = ['sp_sync'];
+let destinationFunctions: string[] = [];
 /** Falla sólo la lectura del destino, para probar que la lista igual sirve. */
 let destinationFails = false;
 
@@ -60,18 +62,24 @@ function mockProviders() {
           if (esDestino && destinationFails) {
             return Promise.reject(new Error('El destino no responde.'));
           }
-          const objects =
-            objectType === 'table'
-              ? esDestino
-                ? destinationTables
-                : esOtro
-                  ? ['otra']
-                  : originTables
-              : esDestino
-                ? destinationProcedures
-                : esOtro
-                  ? []
-                  : originProcedures;
+          const lists: Record<string, string[]> = {
+            table: esDestino
+              ? destinationTables
+              : esOtro
+                ? ['otra']
+                : originTables,
+            procedure: esDestino
+              ? destinationProcedures
+              : esOtro
+                ? []
+                : originProcedures,
+            function: esDestino
+              ? destinationFunctions
+              : esOtro
+                ? []
+                : originFunctions,
+          };
+          const objects = lists[objectType] ?? [];
           return Promise.resolve({
             env,
             schema_name: schema,
@@ -114,8 +122,10 @@ async function setup(): Promise<void> {
   objectCalls = [];
   originTables = ['lines', 'orders'];
   originProcedures = ['sp_calc'];
+  originFunctions = [];
   destinationTables = ['orders'];
   destinationProcedures = ['sp_sync'];
+  destinationFunctions = [];
   destinationFails = false;
   await TestBed.configureTestingModule({
     imports: [SchemaSyncPage],
@@ -283,7 +293,7 @@ describe('SchemaSyncPage generación', () => {
     expect(comp.scopeSelected()).toBe(false);
     expect(comp.canGenerate()).toBe(false);
     expect(button(el, 'Generar').disabled).toBe(true);
-    expect(el.textContent).toContain('Marcá al menos una tabla o un stored procedure');
+    expect(el.textContent).toContain('Marcá al menos una tabla, stored procedure o stored function');
   });
 
   it('vuelve a habilitar Generar si queda un solo objeto marcado', async () => {
@@ -320,7 +330,7 @@ describe('SchemaSyncPage generación', () => {
 
     expect(comp.objectRows()).toEqual([]);
     expect(comp.canGenerate()).toBe(false);
-    expect(el.textContent).toContain('no tiene tablas ni procedures');
+    expect(el.textContent).toContain('no tiene tablas, procedures ni functions');
   });
 
   it('no genera con origen y destino iguales', async () => {
@@ -382,9 +392,9 @@ describe('SchemaSyncPage la tabla de objetos', () => {
     // título es copy, las filas son la estructura que hace falta.
     const filas = [...el.querySelectorAll('table.filter-table tbody tr')];
     expect(filas.length).toBe(3);
-    expect(el.querySelector('#sync-obj-orders')).not.toBeNull();
-    expect(el.querySelector('#sync-obj-lines')).not.toBeNull();
-    expect(el.querySelector('#sync-obj-sp_calc')).not.toBeNull();
+    expect(el.querySelector('#sync-obj-table-orders')).not.toBeNull();
+    expect(el.querySelector('#sync-obj-table-lines')).not.toBeNull();
+    expect(el.querySelector('#sync-obj-procedure-sp_calc')).not.toBeNull();
     // Tres columnas y ninguna más: `Objeto`, `Tipo` y `Existe en <destino>`. La
     // primera columna sin nombre que había antes duplicaba el nombre del objeto
     // en dos celdas.
@@ -402,9 +412,13 @@ describe('SchemaSyncPage la tabla de objetos', () => {
     // Una fila por objeto, con el nombre en la celda de la casilla. Repetirlo en
     // dos columnas hacía que un nombre largo se leyera dos veces y que el ancho
     // de la tabla fuera el doble de lo necesario.
-    for (const nombre of ['orders', 'lines', 'sp_calc']) {
+    for (const [kind, nombre] of [
+      ['table', 'orders'],
+      ['table', 'lines'],
+      ['procedure', 'sp_calc'],
+    ]) {
       const fila = [...el.querySelectorAll('table.filter-table tbody tr')].find(
-        (f) => f.querySelector('#sync-obj-' + nombre) !== null,
+        (f) => f.querySelector('#sync-obj-' + kind + '-' + nombre) !== null,
       );
       const celdas = fila ? [...fila.querySelectorAll('td')] : [];
       expect(celdas.length).toBe(3);
@@ -416,7 +430,11 @@ describe('SchemaSyncPage la tabla de objetos', () => {
   it('todo arranca marcado y el conteo lo dice', async () => {
     const { fixture, comp, el } = await ready();
 
-    expect(comp.selected()).toEqual({ tables: ['lines', 'orders'], procedures: ['sp_calc'] });
+    expect(comp.selected()).toEqual({
+      tables: ['lines', 'orders'],
+      procedures: ['sp_calc'],
+      functions: [],
+    });
     expect(comp.allSelected()).toBe(true);
     expect(comp.objectsLoading()).toBe(false);
     expect(comp.objectRows().length).toBe(3);
@@ -429,12 +447,12 @@ describe('SchemaSyncPage la tabla de objetos', () => {
     // `orders` está en el destino y `lines` no: esa diferencia es la que dice
     // qué filas se van a perder, y por eso la tabla la muestra.
     const fila = [...el.querySelectorAll('table.filter-table tbody tr')].find(
-      (f) => f.querySelector('#sync-obj-orders') !== null,
+      (f) => f.querySelector('#sync-obj-table-orders') !== null,
     );
     expect(fila?.textContent).toContain('Sí');
 
     const nueva = [...el.querySelectorAll('table.filter-table tbody tr')].find(
-      (f) => f.querySelector('#sync-obj-lines') !== null,
+      (f) => f.querySelector('#sync-obj-table-lines') !== null,
     );
     expect(nueva?.textContent).toContain('No, se crea');
   });
@@ -442,7 +460,7 @@ describe('SchemaSyncPage la tabla de objetos', () => {
   it('desmarcar en la tabla cambia la selección y el botón de todos', async () => {
     const { fixture, comp, el } = await ready();
 
-    (el.querySelector('#sync-obj-orders') as HTMLInputElement).click();
+    (el.querySelector('#sync-obj-table-orders') as HTMLInputElement).click();
     await settle(fixture);
 
     expect(comp.selected().tables).toEqual(['lines']);
@@ -456,25 +474,68 @@ describe('SchemaSyncPage la tabla de objetos', () => {
     const todos = el.querySelector('#schema-sync-all') as HTMLInputElement;
     todos.click();
     await settle(fixture);
-    expect(comp.selected()).toEqual({ tables: [], procedures: [] });
+    expect(comp.selected()).toEqual({ tables: [], procedures: [], functions: [] });
     expect(el.textContent).toContain('0 de 3 marcados');
 
     todos.click();
     await settle(fixture);
-    expect(comp.selected()).toEqual({ tables: ['lines', 'orders'], procedures: ['sp_calc'] });
+    expect(comp.selected()).toEqual({
+      tables: ['lines', 'orders'],
+      procedures: ['sp_calc'],
+      functions: [],
+    });
   });
 
   it('pregunta tablas y procedures del origen, y las dos clases del destino', async () => {
     await ready();
 
     const delOrigen = objectCalls.filter((c) => c.env === 'dev');
-    expect(delOrigen.map((c) => c.type).sort()).toEqual(['procedure', 'table']);
+    expect(delOrigen.map((c) => c.type).sort()).toEqual(['function', 'procedure', 'table']);
 
     // **Las dos del destino.** Preguntar sólo por tablas dejaba a todo procedure
     // marcado "No, se crea" para siempre, aunque ya estuviera compilado: el bug
     // que hacía que un procedure bien compilado pareciera recién a crearse.
     const delDestino = objectCalls.filter((c) => c.env === 'local');
-    expect(delDestino.map((c) => c.type).sort()).toEqual(['procedure', 'table']);
+    expect(delDestino.map((c) => c.type).sort()).toEqual(['function', 'procedure', 'table']);
+  });
+
+  it('incluye las stored functions del origen en la lista y en la request', async () => {
+    originFunctions = ['fn_calc'];
+    destinationFunctions = ['fn_calc'];
+    const { fixture, comp, el } = await ready();
+
+    expect(comp.objectRows().some((r: { kind: string }) => r.kind === 'function')).toBe(true);
+    expect(el.querySelector('#sync-obj-function-fn_calc')).not.toBeNull();
+    const fila = [...el.querySelectorAll('table.filter-table tbody tr')].find(
+      (f) => f.querySelector('#sync-obj-function-fn_calc') !== null,
+    );
+    expect(fila?.textContent).toContain('Sí');
+
+    comp.generate();
+    await settle(fixture);
+
+    expect(compileRequests[0].functions).toEqual(['fn_calc']);
+    expect(compileRequests[0].include_functions).toBe(true);
+  });
+
+  it('una function y un procedure del mismo nombre se desmarcan por separado', async () => {
+    originTables = [];
+    originFunctions = ['sp_sync'];
+    originProcedures = ['sp_sync'];
+    destinationFunctions = [];
+    destinationProcedures = ['sp_sync'];
+
+    const { fixture, comp } = await ready();
+    comp.toggle('sp_sync', false, 'function');
+    await settle(fixture);
+
+    expect(comp.objectRows().find((r: { kind: string }) => r.kind === 'function').selected).toBe(
+      false,
+    );
+    expect(comp.objectRows().find((r: { kind: string }) => r.kind === 'procedure').selected).toBe(
+      true,
+    );
+    expect(comp.selected()).toEqual({ tables: [], procedures: ['sp_sync'], functions: [] });
   });
 
   it('un procedure que ya está en el destino no dice que se crea', async () => {
@@ -482,13 +543,13 @@ describe('SchemaSyncPage la tabla de objetos', () => {
     const { fixture, comp, el } = await ready();
 
     const fila = [...el.querySelectorAll('table.filter-table tbody tr')].find(
-      (f) => f.querySelector('#sync-obj-sp_sync') !== null,
+      (f) => f.querySelector('#sync-obj-procedure-sp_sync') !== null,
     );
     expect(fila?.textContent).toContain('Sí');
 
     // Y el que sí falta, sigue faltando. La columna distingue las dos cosas.
     const otro = [...el.querySelectorAll('table.filter-table tbody tr')].find(
-      (f) => f.querySelector('#sync-obj-sp_calc') !== null,
+      (f) => f.querySelector('#sync-obj-procedure-sp_calc') !== null,
     );
     expect(otro?.textContent).toContain('No, se crea');
   });
@@ -531,7 +592,7 @@ describe('SchemaSyncPage la tabla de objetos', () => {
       false,
     );
     expect(comp.objectRows().find((r: { kind: string }) => r.kind === 'table').selected).toBe(true);
-    expect(comp.selected()).toEqual({ tables: ['sp_sync'], procedures: [] });
+    expect(comp.selected()).toEqual({ tables: ['sp_sync'], procedures: [], functions: [] });
   });
 
   it('si el destino no responde, la lista igual sirve y lo avisa', async () => {
@@ -555,7 +616,7 @@ describe('SchemaSyncPage la tabla de objetos', () => {
     // anterior eran de `yappy` y probablemente ni existen acá: dejarlos sería
     // mandar una lista que el backend va a rechazar.
     expect(objectCalls.some((c) => c.schema === 'otro' && c.env === 'dev')).toBe(true);
-    expect(comp.selected()).toEqual({ tables: ['otra'], procedures: [] });
+    expect(comp.selected()).toEqual({ tables: ['otra'], procedures: [], functions: [] });
     expect(comp.selected().tables).not.toContain('orders');
   });
 
@@ -712,7 +773,7 @@ describe('SchemaSyncPage la tabla de objetos', () => {
     await settle(fixture);
     comp.toggleAll(false);
     await settle(fixture);
-    expect(comp.selected()).toEqual({ tables: [], procedures: [] });
+    expect(comp.selected()).toEqual({ tables: [], procedures: [], functions: [] });
 
     comp.toggleAll(true);
     await settle(fixture);

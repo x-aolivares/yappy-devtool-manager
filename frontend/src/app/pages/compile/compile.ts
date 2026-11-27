@@ -67,7 +67,7 @@ export class CompilePage {
   readonly envA = signal(''); // destino: donde compila, en los dos modos
   readonly schema = signal('');
   readonly objectName = signal('');
-  readonly objectType = signal<'table' | 'procedure'>('table');
+  readonly objectType = signal<'table' | 'procedure' | 'function'>('table');
 
   readonly objects = signal<string[] | null>(null);
   readonly objectsLoading = signal(false);
@@ -104,9 +104,16 @@ export class CompilePage {
   /** `app-env-controls` habla arrays y `envA` es un string: se adapta acá. */
   protected readonly destEnvs = computed(() => (this.envA() ? [this.envA()] : []));
 
-  readonly objectTypePlural = computed(() =>
-    this.objectType() === 'procedure' ? 'stored procedures' : 'tablas',
-  );
+  readonly objectTypePlural = computed(() => {
+    switch (this.objectType()) {
+      case 'procedure':
+        return 'stored procedures';
+      case 'function':
+        return 'stored functions';
+      default:
+        return 'tablas';
+    }
+  });
   readonly objectPlaceholder = computed(() => {
     if (this.objects()?.length) return 'Seleccione un objeto';
     return `Sin ${this.objectTypePlural()} en ${this.schema() || 'el esquema'}`;
@@ -224,7 +231,11 @@ export class CompilePage {
     });
   }
 
-  private loadObjects(env: string, schema: string, objectType: 'table' | 'procedure'): void {
+  private loadObjects(
+    env: string,
+    schema: string,
+    objectType: 'table' | 'procedure' | 'function',
+  ): void {
     if (!env || !schema) {
       this.requestSeq++;
       this.objects.set(null);

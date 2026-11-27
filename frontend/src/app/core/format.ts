@@ -31,7 +31,9 @@ export function awsEnvironments(
 }
 
 export function objectLabel(type: string): string {
-  return type === 'procedure' ? 'stored procedure' : 'tabla';
+  if (type === 'procedure') return 'stored procedure';
+  if (type === 'function') return 'stored function';
+  return 'tabla';
 }
 
 export function formatValue(v: unknown): string {

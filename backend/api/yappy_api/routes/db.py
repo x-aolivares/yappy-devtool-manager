@@ -23,6 +23,7 @@ from ..schemas import (
     DiffResponse,
     ExecuteRequest,
     ExecuteSqlResponse,
+    MigrationFunctionInfo,
     MigrationRequest,
     MigrationResponse,
     QueryRequest,
@@ -47,8 +48,10 @@ def _table_structure(conn, schema: str, name: str):
 def api_db_diff(req: DbDiffRequest):
     if req.env_a == req.env_b:
         raise HTTPException(status_code=400, detail="env_a y env_b deben ser distintos")
-    if req.object_type not in ("table", "procedure"):
-        raise HTTPException(status_code=400, detail="object_type debe ser 'table' o 'procedure'")
+    if req.object_type not in ("table", "procedure", "function"):
+        raise HTTPException(
+            status_code=400, detail="object_type debe ser 'table', 'procedure' o 'function'"
+        )
 
     cfg_a = env_config(req.env_a)
     cfg_b = env_config(req.env_b)
@@ -57,9 +60,13 @@ def api_db_diff(req: DbDiffRequest):
         with connect(cfg_a) as conn_a, connect(cfg_b) as conn_b:
             schema, name = req.schema_name, req.object_name
 
-            if req.object_type == "procedure":
-                code_a = obj.show_create_procedure(conn_a, schema, name)
-                code_b = obj.show_create_procedure(conn_b, schema, name)
+            show_routine = {
+                "procedure": obj.show_create_procedure,
+                "function": obj.show_create_function,
+            }.get(req.object_type)
+            if show_routine is not None:
+                code_a = show_routine(conn_a, schema, name)
+                code_b = show_routine(conn_b, schema, name)
                 col_ops: list = []
                 index_ops: list = []
             else:
@@ -81,11 +88,12 @@ def api_db_diff(req: DbDiffRequest):
                 else:
                     status = "missing_in_b"
                     if req.include_deletes:
-                        script = (
-                            ddl.drop_procedure_script(schema, name)
-                            if req.object_type == "procedure"
-                            else ddl.drop_table_script(schema, name)
-                        )
+                        if req.object_type == "function":
+                            script = ddl.drop_function_script(schema, name)
+                        elif req.object_type == "procedure":
+                            script = ddl.drop_procedure_script(schema, name)
+                        else:
+                            script = ddl.drop_table_script(schema, name)
                         notes = [
                             f"Existe en {req.env_a} (destino) pero no en {req.env_b} (origen) — "
                             "se elimina para que la región destino quede igual a la de origen."
@@ -99,7 +107,9 @@ def api_db_diff(req: DbDiffRequest):
                         ]
             elif code_a is None:
                 status = "missing_in_a"
-                if req.object_type == "procedure":
+                if req.object_type == "function":
+                    script = ddl.create_function_script(code_b)
+                elif req.object_type == "procedure":
                     script = ddl.create_procedure_script(code_b)
                 else:
                     script = ddl.create_table_script(code_b)
@@ -114,7 +124,13 @@ def api_db_diff(req: DbDiffRequest):
                 notes = ["Sin cambios."]
             else:
                 status = "different"
-                if req.object_type == "procedure":
+                if req.object_type == "function":
+                    script = ddl.replace_function_script(code_b, schema, name)
+                    notes = [
+                        "La stored function difiere — se regenera con DROP + CREATE, "
+                        "el mismo esquema que para los procedures."
+                    ]
+                elif req.object_type == "procedure":
                     script = ddl.replace_procedure_script(code_b, schema, name)
                     notes = [
                         "El stored procedure difiere — se regenera con "
@@ -157,19 +173,26 @@ def api_db_schemas(env: str):
 
 @router.get("/api/db/objects", operation_id="list_db_objects", response_model=DbObjectsResponse)
 def api_db_objects(env: str, schema: str, object_type: str):
-    """List the tables or stored procedures of one schema, to feed the object picker.
+    """List the tables, procedures or functions of one schema, for the picker.
 
     The schema comes from :func:`api_db_schemas`, so it is already free of system
     schemas; the connection cost is the same one that listing schemas paid.
     """
-    if object_type not in ("table", "procedure"):
-        raise HTTPException(status_code=400, detail="object_type debe ser 'table' o 'procedure'")
+    if object_type not in ("table", "procedure", "function"):
+        raise HTTPException(
+            status_code=400, detail="object_type debe ser 'table', 'procedure' o 'function'"
+        )
     if not schema.strip():
         raise HTTPException(status_code=400, detail="Completa el schema.")
 
     schema = schema.strip()
     cfg = env_config(env)
-    lister = obj.list_tables if object_type == "table" else obj.list_procedures
+    listers = {
+        "table": obj.list_tables,
+        "procedure": obj.list_procedures,
+        "function": obj.list_functions,
+    }
+    lister = listers[object_type]
     with db_errors():
         with connect(cfg) as conn:
             return {
@@ -222,15 +245,16 @@ def api_execute_sql(req: ExecuteRequest):
     version of it, or free-form SQL pasted from anywhere.
 
     ``object_type`` labels the run and is echoed back; nothing branches on it,
-    because the splitter runs whatever text it is given. Besides ``table`` and
-    ``procedure`` it accepts ``script``: the Compile page sends it when the SQL
-    comes from the user instead of from an object of a source environment, and in
-    that case there is no single object to name — claiming ``table`` would just
-    be a lie in the response.
+    because the splitter runs whatever text it is given. Besides ``table``,
+    ``procedure`` and ``function`` it accepts ``script``: the Compile page sends
+    it when the SQL comes from the user instead of from an object of a source
+    environment, and in that case there is no single object to name — claiming
+    ``table`` would just be a lie in the response.
     """
-    if req.object_type not in ("table", "procedure", "script"):
+    if req.object_type not in ("table", "procedure", "function", "script"):
         raise HTTPException(
-            status_code=400, detail="object_type debe ser 'table', 'procedure' o 'script'"
+            status_code=400,
+            detail="object_type debe ser 'table', 'procedure', 'function' o 'script'",
         )
     if not req.code or not req.code.strip():
         raise HTTPException(status_code=400, detail="El código a ejecutar no puede estar vacío.")
@@ -258,13 +282,12 @@ def api_compile(req: CompileRequest):
     them and the script comes back in the response. The caller decides whether to
     send it to ``/api/execute/sql``, possibly after editing it.
 
-    Both object types are a **replace**, not a merge: the source is the truth and
-    the script makes the destination look exactly like it. MySQL has no
-    ``CREATE OR REPLACE`` for procedures nor for tables, so both are
-    ``DROP ... IF EXISTS`` + ``CREATE``. One script, the same whether or not the
-    object is already in the destination — that is the whole point, since a script
-    that depended on what it was going to find is a script that ends in ``1050``
-    or ``1305`` halfway through.
+    All three object types are a **replace**, not a merge: the source is the
+    truth and the script makes the destination look exactly like it. Tables and
+    procedures are ``DROP ... IF EXISTS`` + ``CREATE``; functions use the same
+    shape for one script that works whether or not the object is already in the
+    destination — a script that depended on what it was going to find is a script
+    that ends in ``1050`` or ``1305`` halfway through.
 
     For a table that means ``DROP TABLE`` takes the destination's rows with it.
     There is no non-destructive path left in the UI: whoever wants to keep them
@@ -281,8 +304,10 @@ def api_compile(req: CompileRequest):
     """
     if req.env_a == req.env_b:
         raise HTTPException(status_code=400, detail="El origen y el destino deben ser distintos")
-    if req.object_type not in ("table", "procedure"):
-        raise HTTPException(status_code=400, detail="object_type debe ser 'table' o 'procedure'")
+    if req.object_type not in ("table", "procedure", "function"):
+        raise HTTPException(
+            status_code=400, detail="object_type debe ser 'table', 'procedure' o 'function'"
+        )
     if not req.schema_name.strip() or not req.object_name.strip():
         raise HTTPException(status_code=400, detail="Completa el schema y el nombre del objeto.")
 
@@ -305,6 +330,19 @@ def api_compile(req: CompileRequest):
                         f"Se recompila {schema}.{name} en {req.env_a} (destino) "
                         f"tomando la definición de {req.env_b} (origen). "
                         "El DROP previo se lleva el procedure anterior, si había uno."
+                    ]
+            elif req.object_type == "function":
+                code_b = obj.show_create_function(conn_b, schema, name)
+                if code_b is None:
+                    status, script = "none", None
+                    notes = [f"La stored function no existe en {req.env_b} (origen)."]
+                else:
+                    code_a = obj.show_create_function(conn_a, schema, name)
+                    status, script = "different", ddl.replace_function_script(code_b, schema, name)
+                    notes = [
+                        f"Se recompila {schema}.{name} en {req.env_a} (destino) "
+                        f"tomando la definición de {req.env_b} (origen). "
+                        "El DROP previo se lleva la function anterior, si había una."
                     ]
             else:
                 code_b = obj.show_create_table(conn_b, schema, name)
@@ -389,8 +427,8 @@ def api_compile(req: CompileRequest):
 def api_compile_schema(req: SchemaCompileRequest):
     """Generate ONE script that replaces a whole schema's objects with the origin's.
 
-    ``/api/compile`` does one table or one procedure; this does the schema, which
-    is the case that only makes sense as a single script: the tables reference
+    ``/api/compile`` does one table, procedure or function; this does the schema,
+    which is the case that only makes sense as a single script: the tables reference
     each other, and MySQL rejects a drop of a parent that a child still points at
     (3730) and a create of a child whose parent does not exist yet. The script is
     therefore ordered twice — drops by the destination's foreign keys, children
@@ -408,7 +446,8 @@ def api_compile_schema(req: SchemaCompileRequest):
     partially migrated. ``notes`` always carries that warning along with the rest.
 
     ``status`` is ``schema_sync`` for a schema with something to replace and
-    ``none`` when the origin has no tables and no procedures in it. ``script`` is
+    ``none`` when the origin has no tables, procedures or functions in it.
+    ``script`` is
     returned in both cases: it is a harmless no-op (the ``CREATE DATABASE``/
     ``USE`` pair), and the caller should not have to special-case it.
     """
@@ -421,16 +460,22 @@ def api_compile_schema(req: SchemaCompileRequest):
     # An explicit list is the user's own selection, so the flags do not apply and
     # only the list has to be non-empty. An empty list is a refusal, not a
     # fallback to "everything": they emptied the table on purpose.
-    if req.tables is not None or req.procedures is not None:
-        if not (req.tables or req.procedures):
+    if req.tables is not None or req.procedures is not None or req.functions is not None:
+        if not (req.tables or req.procedures or req.functions):
             raise HTTPException(
                 status_code=400,
-                detail="Marcá al menos una tabla o un stored procedure para sincronizar.",
+                detail=(
+                    "Marcá al menos una tabla, stored procedure o stored function "
+                    "para sincronizar."
+                ),
             )
-    elif not (req.include_tables or req.include_procedures):
+    elif not (req.include_tables or req.include_procedures or req.include_functions):
         raise HTTPException(
             status_code=400,
-            detail="Marcá al menos tablas o stored procedures para sincronizar el schema.",
+            detail=(
+                "Marcá al menos tablas, stored procedures o stored functions para "
+                "sincronizar el schema."
+            ),
         )
 
     cfg_b = env_config(req.env_b)  # origen
@@ -446,6 +491,8 @@ def api_compile_schema(req: SchemaCompileRequest):
                 req.include_procedures,
                 only_tables=req.tables,
                 only_procedures=req.procedures,
+                include_functions=req.include_functions,
+                only_functions=req.functions,
             )
             script = dbschema.build_script(conn_b, schema_plan)
 
@@ -453,10 +500,15 @@ def api_compile_schema(req: SchemaCompileRequest):
             "env_b": req.env_b,
             "env_a": req.env_a,
             "schema_name": schema,
-            "status": "schema_sync" if (schema_plan.tables or schema_plan.procedures) else "none",
+            "status": (
+                "schema_sync"
+                if (schema_plan.tables or schema_plan.procedures or schema_plan.functions)
+                else "none"
+            ),
             "create_schema": schema_plan.create_schema,
             "tables": schema_plan.tables,
             "procedures": schema_plan.procedures,
+            "functions": schema_plan.functions,
             "left_alone": schema_plan.left_alone,
             "script": script,
             "notes": schema_plan.notes,
@@ -536,6 +588,11 @@ def api_migrate_tables(req: TableMigrateRequest):
     response is the same model, so the frontend renders both migrations with one
     component.
 
+    ``functions`` are stored functions of that same source schema: their
+    definition is read from the origin and installed in the destination with
+    ``DROP FUNCTION IF EXISTS`` + ``CREATE FUNCTION``. A dry run validates them
+    and reports what would be installed, but writes nothing.
+
     Each entry carries an optional window: ``date_column`` plus inclusive
     ``date_from``/``date_to``, a single bound or none both allowed. ``date_column``
     is validated against the source's real DATE/DATETIME/TIMESTAMP columns
@@ -554,8 +611,10 @@ def api_migrate_tables(req: TableMigrateRequest):
     schema = req.schema_name.strip()
     if not schema:
         raise HTTPException(status_code=400, detail="Completa el schema.")
-    if not req.tables:
-        raise HTTPException(status_code=400, detail="Elige al menos una tabla para migrar.")
+    if not req.tables and not req.functions:
+        raise HTTPException(
+            status_code=400, detail="Elige al menos una tabla o una stored function para migrar."
+        )
     if not req.dry_run and not req.confirm:
         raise HTTPException(
             status_code=400, detail="La migración requiere confirmación (confirm=true)."
@@ -574,14 +633,22 @@ def api_migrate_tables(req: TableMigrateRequest):
                     for sel in req.tables
                 ],
             )
-        results = dbmig.migrate(cfg_b, cfg_a, plan, dry_run=req.dry_run)
+            # Las funciones no tienen filas que copiar: se leen del origen y se
+            # instalan en el destino antes de mover nada, con el mismo DROP+CREATE
+            # que usa la sincronización de esquema. En dry_run sólo se validan.
+            function_results, function_notes = dbtablemig.install_functions(
+                conn_b, cfg_a, schema, req.functions, dry_run=req.dry_run
+            )
+        results = dbmig.migrate(cfg_b, cfg_a, plan, dry_run=req.dry_run) if req.tables else []
 
+    functions = [MigrationFunctionInfo(**r.to_dict()) for r in function_results]
     return {
         "env_b": req.env_b,
         "env_a": req.env_a,
         "dry_run": req.dry_run,
         "tables": [r.to_dict() for r in results],
-        "notes": plan.notes + dbtablemig.missing_parent_notes(results),
-        "ok_count": sum(1 for r in results if r.ok),
-        "err_count": sum(1 for r in results if not r.ok),
+        "functions": [f.model_dump() for f in functions],
+        "notes": plan.notes + function_notes + dbtablemig.missing_parent_notes(results),
+        "ok_count": sum(1 for r in results if r.ok) + sum(1 for f in functions if f.ok),
+        "err_count": sum(1 for r in results if not r.ok) + sum(1 for f in functions if not f.ok),
     }

@@ -155,6 +155,17 @@ export class MigrateDataPage {
   readonly filters = signal<Record<string, TableState>>({});
 
   /**
+   * Stored functions of the same source schema. Unlike rows they are not copied:
+   * the backend reads each definition from the origin and installs it in the
+   * destination with DROP + CREATE, alongside the marked tables.
+   */
+  readonly functions = signal<string[] | null>(null);
+  readonly functionList = computed(() => this.functions() ?? []);
+  readonly functionsLoading = signal(false);
+  readonly functionsError = signal<string | null>(null);
+  readonly selectedFunctions = signal<string[]>([]);
+
+  /**
    * The date filter is one decision for the whole migration, not one per table.
    *
    * It used to live in every row, which meant filling the same two fields and
@@ -352,7 +363,7 @@ export class MigrateDataPage {
    */
   readonly canSubmit = computed(() => {
     if (!this.envB() || !this.envA() || this.sameEnv() || !this.schema()) return false;
-    if (!this.selection().length) return false;
+    if (!this.selection().length && !this.selectedFunctions().length) return false;
     // Columna elegida sin ventana: el filtro no acotaría nada y la tabla entera
     // se copiaría. Ver `filterlessTables`.
     if (this.filterlessTables().length) return false;
@@ -367,7 +378,8 @@ export class MigrateDataPage {
     if (!this.envB() || !this.envA()) return 'Elige el ambiente de origen y el de destino.';
     if (this.sameEnv()) return 'El origen y el destino tienen que ser distintos.';
     if (!this.schema()) return 'Elige el esquema del origen.';
-    if (!this.includedTables().length) return 'Marcá al menos una tabla para migrar.';
+    if (!this.includedTables().length && !this.selectedFunctions().length)
+      return 'Marcá al menos una tabla o una stored function para migrar.';
     if (this.includedTables().some((t) => this.filters()[t]?.loading))
       return 'Esperando las columnas de fecha de las tablas marcadas.';
     if (this.includedTables().some((t) => this.filters()[t]?.error))
@@ -412,8 +424,12 @@ export class MigrateDataPage {
       this.tables.set(null);
       this.tablesError.set(null);
       this.filters.set({});
+      this.functions.set(null);
+      this.functionsError.set(null);
+      this.selectedFunctions.set([]);
       this.search.query.set('');
       this.loadTables(env, schema);
+      this.loadFunctions(env, schema);
     });
 
     // Filtrar devuelve a la primera página: con la grilla en la página 5 y un
@@ -431,6 +447,7 @@ export class MigrateDataPage {
       this.envA();
       this.schema();
       this.selection();
+      this.selectedFunctions();
       this.result.set(null);
     });
   }
@@ -456,6 +473,40 @@ export class MigrateDataPage {
         this.tablesError.set(toApiError(err).message);
         this.tablesLoading.set(false);
       },
+    );
+  }
+
+  /** The functions of one (origin, schema), guarded by the same context token. */
+  private loadFunctions(env: string, schema: string): void {
+    const seq = this.contextSeq;
+    if (!env || !schema) {
+      this.functions.set(null);
+      this.functionsLoading.set(false);
+      return;
+    }
+
+    this.functionsLoading.set(true);
+    this.functionsError.set(null);
+    this.dbService.listObjects(env, schema, 'function').then(
+      (res) => {
+        if (seq !== this.contextSeq) return;
+        this.functions.set(res.objects ?? []);
+        this.functionsLoading.set(false);
+      },
+      (err) => {
+        if (seq !== this.contextSeq) return;
+        this.functions.set(null);
+        this.functionsError.set(toApiError(err).message);
+        this.functionsLoading.set(false);
+      },
+    );
+  }
+
+  /** Functions have no date window: marking one is all there is to select it. */
+  toggleFunction(name: string, checked: boolean): void {
+    const current = this.selectedFunctions();
+    this.selectedFunctions.set(
+      checked ? [...new Set([...current, name])] : current.filter((n) => n !== name),
     );
   }
 
@@ -585,21 +636,34 @@ export class MigrateDataPage {
    */
   migrate(): void {
     const tables = this.includedTables().length;
+    const functions = this.selectedFunctions().length;
     const destino = this.envA() || 'el destino';
     // El aviso va como párrafo aparte, no pegado con `\n\n`: el cuerpo del modal es
     // HTML, así que los saltos de línea los decide el marcado. Ver `styles.scss`,
     // `.notice-modal__body p`.
-    const aviso =
-      `Esto escribe filas en ${destino}: cada fila que ya está en el destino y coincide ` +
-      'en la primary key se reemplaza por la del origen. No borra las filas del destino que ' +
-      'quedan fuera de la ventana, no crea las tablas que falten allá, y no corre en una ' +
-      'transacción: si una tabla falla, las que venan antes ya quedaron copiadas.';
+    const avisos: string[] = [];
+    if (tables) {
+      avisos.push(
+        `Esto escribe filas en ${destino}: cada fila que ya está en el destino y coincide ` +
+          'en la primary key se reemplaza por la del origen. No borra las filas del destino que ' +
+          'quedan fuera de la ventana, no crea las tablas que falten allá, y no corre en una ' +
+          'transacción: si una tabla falla, las que vengan antes ya quedaron copiadas.',
+      );
+    }
+    if (functions) {
+      avisos.push(
+        `Esto instala ${functions} stored function(s) en ${destino} con DROP + CREATE: ` +
+          'si ya existían, se reemplazan con la definición del origen. Es un reemplazo, ' +
+          'no una fusión, y no se deshace si algo falla después.',
+      );
+    }
 
     this.pendingRun.set({
       titulo:
-        `¿Migrar ${tables} tabla(s) de ${this.schema() || '…'} de ` +
-        `${this.envB() || 'el origen'} a ${destino}?`,
-      parrafos: [aviso],
+        `¿Migrar ${tables} tabla(s)` +
+        (functions ? ` y ${functions} function(s)` : '') +
+        ` de ${this.schema() || '…'} de ${this.envB() || 'el origen'} a ${destino}?`,
+      parrafos: avisos,
     });
   }
 
@@ -641,8 +705,8 @@ export class MigrateDataPage {
       this.error.set('Elige el esquema del origen.');
       return;
     }
-    if (!this.selection().length) {
-      this.error.set('Marcá al menos una tabla para migrar.');
+    if (!this.selection().length && !this.selectedFunctions().length) {
+      this.error.set('Marcá al menos una tabla o una stored function para migrar.');
       return;
     }
     // El resto de lo que puede faltar es una tabla marcada cuyas columnas de fecha
@@ -654,12 +718,13 @@ export class MigrateDataPage {
       return;
     }
 
+    const counted =
+      `${this.selection().length} tabla(s)` +
+      (this.selectedFunctions().length ? ` y ${this.selectedFunctions().length} function(s)` : '');
     this.busy.set(true);
     this.error.set(null);
     this.busyText.set(
-      dryRun
-        ? `Simulando ${this.selection().length} tabla(s) de ${schema} de ${envB} a ${envA}...`
-        : `Migrando ${this.selection().length} tabla(s) de ${schema} de ${envB} a ${envA}...`,
+      `${dryRun ? 'Simulando' : 'Migrando'} ${counted} de ${schema} de ${envB} a ${envA}...`,
     );
     this.busyWrites.set(!dryRun);
 
@@ -671,6 +736,7 @@ export class MigrateDataPage {
           env_a: envA,
           schema_name: schema,
           tables: this.selection(),
+          functions: this.selectedFunctions(),
           dry_run: dryRun,
           confirm: !dryRun,
         },

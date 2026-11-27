@@ -57,7 +57,7 @@ export class DbService {
     return this.api.invoke(listDbSchemas, { env });
   }
 
-  /** The tables ("table") or stored procedures ("procedure") of one schema. */
+  /** Tables ("table"), stored procedures ("procedure") or functions ("function"). */
   listObjects(env: string, schema: string, objectType: string): Promise<DbObjectsResponse> {
     return this.api.invoke(listDbObjects, { env, schema, object_type: objectType });
   }

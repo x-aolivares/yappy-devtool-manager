@@ -6,11 +6,15 @@ the big ones only the rows of January". No join, no alias, no three-valued logic
 to reason about — one predicate per table, which is what makes it worth being its
 own plan shape instead of asking the user to write the ``SELECT`` by hand.
 
-It only *builds* a plan. The copy loop, the ``REPLACE INTO``, the parent-first
-write order and the per-table failure isolation live in :func:`migrate.migrate` and
-are not reimplemented here. This module's whole job is to answer "what is the query
-for this table" and to refuse, before a single row is written, the requests that
-would produce a migration nobody wants.
+It builds the table plan and installs the stored functions the caller picked from
+the same source schema. Functions hold no rows, so they are not copied by
+:func:`migrate.migrate`: their ``SHOW CREATE FUNCTION`` is read from the origin
+and replayed in the destination with the same DROP + CREATE shape the schema sync
+uses. The copy loop, the ``REPLACE INTO``, the parent-first write order and the
+per-table failure isolation live in :func:`migrate.migrate` and are not
+reimplemented here. This module's whole job is to answer "what is the query for
+this table", install those routines, and refuse — before a single row is written —
+the requests that would produce a migration nobody wants.
 
 Three decisions carry the module.
 
@@ -64,6 +68,8 @@ from datetime import date, timedelta
 from yappy_library.adapters.database.connection import SyncError
 
 from . import db_objects as obj
+from . import ddl
+from . import exec as syncexec
 from .migrate import TableMigrationResult, TableTarget
 
 _ONE_DAY = timedelta(days=1)
@@ -329,3 +335,98 @@ def missing_parent_notes(results: list[TableMigrationResult]) -> list[str]:
             "completo (sin filtro de fecha) en la misma corrida."
         )
     return notes
+
+
+# --- stored functions ---------------------------------------------------------
+
+
+@dataclass
+class FunctionInstallResult:
+    """What happened to one function of the migration."""
+
+    name: str
+    target_schema: str
+    installed: bool = False
+    ok: bool = True
+    error: str | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "target_schema": self.target_schema,
+            "installed": self.installed,
+            "ok": self.ok,
+            "error": self.error,
+        }
+
+
+def install_functions(
+    conn_b,
+    cfg_a,
+    schema: str,
+    names: list[str],
+    *,
+    dry_run: bool = False,
+) -> tuple[list[FunctionInstallResult], list[str]]:
+    """Read each named function from the source and replay it in the destination.
+
+    ``conn_b`` is the already-open source. ``cfg_a`` is the destination config:
+    :func:`syncexec.execute_sql` opens its own connection, the same way
+    :func:`migrate.migrate` does for the rows.
+
+    Every name is checked against the source before anything is written. A name
+    the origin does not have is a client out of date, and deserves a 400 while the
+    destination is still untouched — the same rule :func:`build_plan` applies to
+    tables. Each function is installed independently: one that fails does not
+    undo the ones before it, and its error travels in the response.
+    """
+    available = obj.list_functions(conn_b, schema)
+    requested = [(name or "").strip() for name in names]
+    unknown = [name for name in requested if name and name not in available]
+    if any(not name for name in requested):
+        raise SyncError("Hay una function sin nombre en la lista de migración.")
+    if unknown:
+        exists = sorted(available)
+        detail = ", ".join(exists) if exists else "no tiene ninguna"
+        raise SyncError(
+            f"{', '.join(unknown)} no {'existe' if len(unknown) == 1 else 'existen'} como "
+            f"stored function en {schema} del origen. Vuelve a cargar la lista: {detail}."
+        )
+
+    results: list[FunctionInstallResult] = []
+    seen: set[str] = set()
+    for name in requested:
+        if name in seen:
+            continue
+        seen.add(name)
+        code = obj.show_create_function(conn_b, schema, name)
+        if code is None:
+            raise SyncError(
+                f"La stored function {schema}.{name} ya no existe en el origen. "
+                "Vuelve a cargar la lista."
+            )
+        script = ddl.replace_function_script(code, schema, name)
+        errors: list[str] = []
+        if not dry_run:
+            for statement in syncexec.execute_sql(cfg_a, schema, script):
+                if not statement.ok:
+                    errors.append(statement.error or f"falló: {statement.sql}")
+        results.append(
+            FunctionInstallResult(
+                name=name,
+                target_schema=schema,
+                installed=not dry_run and not errors,
+                ok=not errors,
+                error="; ".join(errors) or None,
+            )
+        )
+
+    notes: list[str] = []
+    if results:
+        verb = "Se instalarían" if dry_run else "Se instalan"
+        notes.append(
+            f"{verb} {len(results)} stored function(s) de '{schema}' en el destino con "
+            "DROP + CREATE, tomando la definición del origen (sin DEFINER). Si una "
+            "function ya existía allá, se reemplaza."
+        )
+    return results, notes

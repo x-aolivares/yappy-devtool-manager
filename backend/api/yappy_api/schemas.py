@@ -16,7 +16,7 @@ class DbDiffRequest(BaseModel):
     env_a: str
     env_b: str
     schema_name: str
-    object_type: str  # "table" | "procedure"
+    object_type: str  # "table" | "procedure" | "function"
     object_name: str
     include_deletes: bool = False
 
@@ -81,7 +81,7 @@ class CreateMultiParamsRequest(BaseModel):
 
 class ExecuteRequest(BaseModel):
     env: str
-    object_type: str  # "table" | "procedure" | "script" (SQL libre, sin objeto único)
+    object_type: str  # "table" | "procedure" | "function" | "script" (SQL libre)
     schema_name: str = ""
     code: str
 
@@ -91,7 +91,7 @@ class CompileRequest(BaseModel):
 
     env_b: str  # origen
     env_a: str  # destino
-    object_type: str  # "table" | "procedure"
+    object_type: str  # "table" | "procedure" | "function"
     schema_name: str
     object_name: str
 
@@ -115,16 +115,17 @@ class CompileResponse(BaseModel):
 class SchemaCompileRequest(BaseModel):
     """Compile a whole schema from one environment into another (origen -> destino).
 
-    The bulk sibling of ``CompileRequest``: one script for every table and stored
-    procedure the origin has in that schema, ordered so MySQL accepts it.
+    The bulk sibling of ``CompileRequest``: one script for every table, stored
+    procedure and stored function the origin has in that schema, ordered so MySQL
+    accepts it.
 
     The scope is one of three shapes, in this order:
 
-    1. ``tables``/``procedures`` carry an explicit list, because the browser
-       showed the user a table with a checkbox per object and they chose. An
-       explicit list is the whole scope: the two flags below are ignored, since
+    1. ``tables``/``procedures``/``functions`` carry an explicit list, because the
+       browser showed the user a table with a checkbox per object and they chose.
+       An explicit list is the whole scope: the flags below are ignored, since
        they would only widen or narrow what the user just picked.
-    2. Otherwise the two flags apply, and both default to ``True`` because "sync
+    2. Otherwise the three flags apply, and all default to ``True`` because "sync
        this schema" means the schema. They exist for a client with no table to
        show, and at least one of them must be on.
     3. An explicit list that is empty is a scope of nothing, which the route
@@ -137,10 +138,12 @@ class SchemaCompileRequest(BaseModel):
     schema_name: str
     include_tables: bool = True
     include_procedures: bool = True
+    include_functions: bool = True
     #: The objects the user marked, when the request comes from the schema-sync
     #: page. Empty means "not given": fall back to the flags.
     tables: list[str] | None = None
     procedures: list[str] | None = None
+    functions: list[str] | None = None
 
 
 class SchemaCompileResponse(BaseModel):
@@ -159,6 +162,7 @@ class SchemaCompileResponse(BaseModel):
     create_schema: bool
     tables: list[str] = []
     procedures: list[str] = []
+    functions: list[str] = []
     left_alone: list[str] = []
     script: str
     notes: list[str] = []
@@ -211,11 +215,23 @@ class MigrationTableInfo(BaseModel):
     error: str | None = None
 
 
+class MigrationFunctionInfo(BaseModel):
+    """One stored function installed (or only simulated) alongside the rows."""
+
+    name: str
+    target_schema: str
+    #: False on a dry run: nothing was written, so nothing was installed.
+    installed: bool = False
+    ok: bool = True
+    error: str | None = None
+
+
 class MigrationResponse(BaseModel):
     env_b: str
     env_a: str
     dry_run: bool
     tables: list[MigrationTableInfo] = []
+    functions: list[MigrationFunctionInfo] = []
     notes: list[str] = []
     ok_count: int = 0
     err_count: int = 0
@@ -241,12 +257,15 @@ class TableMigrateRequest(BaseModel):
 
     The bulk sibling of ``MigrationRequest``: same engine, same response model, and
     the source of each ``SELECT`` is this list instead of a user-written query.
+    ``functions`` are stored functions of the same source schema; their definition
+    is read from the origin and installed in the destination alongside the rows.
     """
 
     env_b: str  # origen: de dónde se lee
     env_a: str  # destino: a dónde se escribe
     schema_name: str
     tables: list[TableSelectionRequest]
+    functions: list[str] = []
     dry_run: bool = False
     confirm: bool = False
 
@@ -345,7 +364,7 @@ class SchemasResponse(BaseModel):
 
 
 class DbObjectsResponse(BaseModel):
-    """The tables or stored procedures of one schema, to feed the object picker.
+    """The tables, stored procedures or functions of one schema, for the picker.
 
     Named ``schema_name`` like every other model of this contract: ``schema``
     would shadow the deprecated ``BaseModel.schema`` and warn on import.

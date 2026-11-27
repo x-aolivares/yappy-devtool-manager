@@ -34,22 +34,29 @@ def _patch(
     schemas=None,
     tables=None,
     procedures=None,
+    functions=None,
     links=None,
     create_table=None,
     create_procedure=None,
+    create_function=None,
 ):
     """Every ``db_objects`` call the module makes, keyed by environment."""
     schemas = schemas or {}
     tables = tables or {}
     procedures = procedures or {}
+    functions = functions or {}
     links = links or {}
     create_table = create_table or {}
     create_procedure = create_procedure or {}
+    create_function = create_function or {}
 
     monkeypatch.setattr(obj, "list_schemas", lambda conn: schemas.get(conn.env, []))
     monkeypatch.setattr(obj, "list_tables", lambda conn, schema: tables.get(conn.env, []))
     monkeypatch.setattr(
         obj, "list_procedures", lambda conn, schema: procedures.get(conn.env, [])
+    )
+    monkeypatch.setattr(
+        obj, "list_functions", lambda conn, schema: functions.get(conn.env, [])
     )
     monkeypatch.setattr(obj, "foreign_key_links", lambda conn: links.get(conn.env, []))
     monkeypatch.setattr(
@@ -59,6 +66,11 @@ def _patch(
         obj,
         "show_create_procedure",
         lambda conn, schema, name: create_procedure.get((conn.env, name)),
+    )
+    monkeypatch.setattr(
+        obj,
+        "show_create_function",
+        lambda conn, schema, name: create_function.get((conn.env, name)),
     )
 
 
@@ -714,3 +726,79 @@ def test_the_script_splits_into_exactly_one_statement_per_object(monkeypatch):
     # And each one really is one of ours, not a fragment.
     assert any(s.startswith("CREATE TABLE `customers`") for s in statements)
     assert any(s.startswith("CREATE PROCEDURE `sp_b`()") for s in statements)
+
+
+# --- functions: the third object kind ----------------------------------------
+
+
+def test_plan_includes_functions_by_default_and_notes_them(monkeypatch):
+    _full_world(monkeypatch, functions={B.env: ["fn_calc"]})
+
+    plan = ss.plan(B, A, SCHEMA, True, True)
+
+    assert plan.functions == ["fn_calc"]
+    assert any("function" in note for note in plan.notes)
+    assert ss.plan(B, A, SCHEMA, True, True, include_functions=False).functions == []
+
+
+def test_an_explicit_function_list_wins_over_the_flag_and_is_validated(monkeypatch):
+    _full_world(monkeypatch, functions={B.env: ["fn_a", "fn_b"]})
+
+    plan = ss.plan(B, A, SCHEMA, True, True, include_functions=False, only_functions=["fn_b"])
+
+    # La lista explícita es la elección del usuario: el flag no la ensancha ni la
+    # achica, igual que pasa con tablas y procedures.
+    assert plan.functions == ["fn_b"]
+
+    with pytest.raises(SyncError) as exc:
+        ss.plan(B, A, SCHEMA, True, True, only_functions=["fn_que_no_esta"])
+    assert "fn_que_no_esta" in str(exc.value)
+    assert "stored function" in str(exc.value)
+
+
+def test_script_puts_functions_after_the_other_objects_with_the_definer_stripped(monkeypatch):
+    body = (
+        "CREATE DEFINER=`root`@`localhost` FUNCTION `fn_calc`(x int) RETURNS int\n"
+        "DETERMINISTIC\n"
+        "BEGIN\n"
+        "  RETURN x + 1;\n"
+        "END"
+    )
+    _full_world(
+        monkeypatch,
+        tables={B.env: ["orders"], A.env: ["orders"]},
+        procedures={B.env: ["sp_calc"]},
+        functions={B.env: ["fn_calc"]},
+        create_table={(B.env, "orders"): "CREATE TABLE `orders` (`id` int NOT NULL)"},
+        create_procedure={
+            (B.env, "sp_calc"): "CREATE PROCEDURE `sp_calc`() BEGIN SELECT 1; END"
+        },
+        create_function={(B.env, "fn_calc"): body},
+    )
+
+    script = ss.build_script(B, ss.plan(B, A, SCHEMA, True, True))
+    statements = split_statements(script)
+
+    assert script.index("-- Tablas:") < script.index("-- Procedimientos:")
+    assert script.index("-- Procedimientos:") < script.index("-- Funciones:")
+    assert "DROP FUNCTION IF EXISTS `yappy`.`fn_calc`;" in script
+    assert "CREATE FUNCTION `fn_calc`(x int) RETURNS int" in script
+    assert "RETURN x + 1;" in script
+    assert "DEFINER" not in script
+    # USE + drop/create de tabla + drop/create de procedure + drop/create de
+    # function: si el cuerpo se pegara con el siguiente, serían menos.
+    assert len(statements) == 7
+    assert any(s.startswith("CREATE FUNCTION `fn_calc`") for s in statements)
+
+
+def test_excluding_functions_drops_only_that_section(monkeypatch):
+    _full_world(
+        monkeypatch,
+        functions={B.env: ["fn_calc"]},
+        create_function={(B.env, "fn_calc"): "CREATE FUNCTION `fn_calc`() RETURNS int RETURN 1"},
+    )
+
+    script = ss.build_script(B, ss.plan(B, A, SCHEMA, True, True, include_functions=False))
+
+    assert "-- Funciones:" not in script
+    assert "DROP FUNCTION" not in script

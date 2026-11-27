@@ -18,7 +18,7 @@ import { paginate } from '../../core/paginate';
 /** One object of the origin schema, as the picker table renders it. */
 interface SyncObject {
   readonly name: string;
-  readonly kind: 'table' | 'procedure';
+  readonly kind: 'table' | 'procedure' | 'function';
   readonly selected: boolean;
   /** Whether the destination already has it: the script replaces it and its rows. */
   readonly inDestination: boolean;
@@ -27,9 +27,9 @@ interface SyncObject {
 /**
  * What the destination has, per kind.
  *
- * Indexado por clase y no como un set plano porque son dos consultas distintas:
- * un procedure y una tabla nunca se confunden, y `SHOW PROCEDURE STATUS` /
- * `information_schema.ROUTINES` no devuelven las tablas. Mezclarlas en un solo
+ * Indexado por clase y no como un set plano porque son tres consultas distintas:
+ * un procedure, una function y una tabla nunca se confunden, y
+ * `information_schema.ROUTINES` no devuelve las tablas. Mezclarlos en un solo
  * set haría que un procedure que existe en el destino se reportara como tabla.
  */
 type DestinationIndex = Record<SyncObject['kind'], Set<string>>;
@@ -38,8 +38,8 @@ type DestinationIndex = Record<SyncObject['kind'], Set<string>>;
  * Sincronizar schema: un solo script para todo un esquema, del ambiente de origen
  * al de destino.
  *
- * Es el hermano de volumen de *Compilar*: `/api/compile` mueve una tabla o un
- * stored procedure, `/api/compile/schema` mueve el esquema entero. El caso sólo
+ * Es el hermano de volumen de *Compilar*: `/api/compile` mueve una tabla, procedure o
+ * function, `/api/compile/schema` mueve el esquema entero. El caso sólo
  * tiene sentido como un script único porque las tablas se referencian entre sí:
  * MySQL rechaza que se borre un padre al que una hija todavía apunta (3730), así
  * que el backend ordena los `DROP` hijos primero y los `CREATE` padres primero.
@@ -60,8 +60,8 @@ type DestinationIndex = Record<SyncObject['kind'], Set<string>>;
  * vean antes de correrlo. Sincronizar deja la copia del origen igual; no convierte
  * al destino en un clon.
  *
- * **Qué se sincroniza se ve antes de generar el script.** El alcance son las dos
- * casillas de "tablas" y "stored procedures", que sólo podían decir *todo o nada*
+ * **Qué se sincroniza se ve antes de generar el script.** El alcance son las tres
+ * casillas de "tablas", "procedures" y "functions", que sólo podían decir *todo o nada*
  * de cada clase. La pregunta real es "estas nueve, no esas cuatro", y sin una tabla
  * a la vista no hay forma de contestarla —ni de saber qué filas se van a perder.
  * Ahora cada objeto es una fila con su casilla y con la columna de si el destino ya
@@ -69,8 +69,8 @@ type DestinationIndex = Record<SyncObject['kind'], Set<string>>;
  *
  * La columna "Existe en" se relee **después** de correr el script, porque un
  * objeto recién creado sigue diciendo "No, se crea" si nadie vuelve a preguntarle
- * al destino. Y lo pregunta por clase: una tabla y un procedure pueden llamarse
- * igual en MySQL, así que preguntar sólo por las tablas hacía que *todo* procedure
+ * al destino. Y lo pregunta por clase: una tabla y un routine pueden llamarse
+ * igual en MySQL, así que preguntar sólo por las tablas hacía que *todo* routine
  * pareciera recién a crearse.
  */
 @Component({
@@ -123,9 +123,10 @@ export class SchemaSyncPage {
    */
   readonly destinationError = signal<string | null>(null);
   /** Marked objects, as `name` per kind — the shape `/api/compile/schema` takes. */
-  readonly selected = signal<{ tables: string[]; procedures: string[] }>({
+  readonly selected = signal<{ tables: string[]; procedures: string[]; functions: string[] }>({
     tables: [],
     procedures: [],
+    functions: [],
   });
 
   /** The script the user runs, generated or written by hand. */
@@ -174,7 +175,7 @@ export class SchemaSyncPage {
    */
   readonly search = searchable(
     () => this.objectRows(),
-    (row) => [row.name, row.kind === 'table' ? 'tabla' : 'procedure'],
+    (row) => [row.name, row.kind === 'table' ? 'tabla' : row.kind],
   );
 
   /**
@@ -193,7 +194,10 @@ export class SchemaSyncPage {
 
   /** Cuántos están marcados, en total. Es lo que se compara con la lista completa. */
   readonly selectedCount = computed(
-    () => this.selected().tables.length + this.selected().procedures.length,
+    () =>
+      this.selected().tables.length +
+      this.selected().procedures.length +
+      this.selected().functions.length,
   );
 
   readonly allSelected = computed(
@@ -228,8 +232,10 @@ export class SchemaSyncPage {
     if (!this.schema()) return 'Elige el esquema del origen.';
     if (this.objectsLoading()) return 'Esperando los objetos del esquema de origen.';
     if (this.objectsError()) return 'No se pudieron leer los objetos del esquema de origen.';
-    if (!this.objectRows().length) return 'El origen no tiene tablas ni procedures en ese esquema.';
-    if (!this.scopeSelected()) return 'Marcá al menos una tabla o un stored procedure.';
+    if (!this.objectRows().length)
+      return 'El origen no tiene tablas, procedures ni functions en ese esquema.';
+    if (!this.scopeSelected())
+      return 'Marcá al menos una tabla, stored procedure o stored function.';
     return '';
   });
 
@@ -246,9 +252,11 @@ export class SchemaSyncPage {
   readonly scopeLabel = computed(() => {
     const t = this.selected().tables.length;
     const p = this.selected().procedures.length;
+    const f = this.selected().functions.length;
     const partes: string[] = [];
     if (t) partes.push(`${t} tabla${t === 1 ? '' : 's'}`);
     if (p) partes.push(`${p} procedure${p === 1 ? '' : 's'}`);
+    if (f) partes.push(`${f} function${f === 1 ? '' : 's'}`);
     return partes.length > 1 ? partes.join(' y ') : (partes[0] ?? 'los objetos marcados');
   });
 
@@ -269,7 +277,7 @@ export class SchemaSyncPage {
       this.objects.set(null);
       this.objectsError.set(null);
       this.destinationError.set(null);
-      this.selected.set({ tables: [], procedures: [] });
+      this.selected.set({ tables: [], procedures: [], functions: [] });
       // Registrada como tarea pendiente: la página está leyendo y su tabla de
       // objetos todavía no es la que va a quedar. Sin esto, un `whenStable()`
       // puede cerrarse en el medio de la cadena y dejar la tabla sin pintar.
@@ -335,14 +343,16 @@ export class SchemaSyncPage {
     Promise.all([
       this.dbService.listObjects(env, schema, 'table'),
       this.dbService.listObjects(env, schema, 'procedure'),
+      this.dbService.listObjects(env, schema, 'function'),
       destino,
     ]).then(
-      ([tablas, procedures, delDestino]) => {
+      ([tablas, procedures, functions, delDestino]) => {
         if (seq !== this.objectsSeq) return;
 
         const origen: Array<{ name: string; kind: SyncObject['kind'] }> = [
           ...(tablas.objects ?? []).map((name) => ({ name, kind: 'table' as const })),
           ...(procedures.objects ?? []).map((name) => ({ name, kind: 'procedure' as const })),
+          ...(functions.objects ?? []).map((name) => ({ name, kind: 'function' as const })),
         ];
 
         this.objects.set(
@@ -369,10 +379,10 @@ export class SchemaSyncPage {
   /**
    * What the destination has, per kind, or `null` when that read failed.
    *
-   * **Las dos clases, siempre.** Preguntar sólo por tablas y dejar los procedures
-   * como "no existe" los hacía mentir: un procedure ya compilado en el destino
-   * salía "No, se crea" para siempre, y el `DROP PROCEDURE IF EXISTS` del
-   * siguiente script lo reemplazaba sin que nadie lo supiera.
+   * **Las tres clases, siempre.** Preguntar sólo por tablas y dejar los routines
+   * como "no existe" los hacía mentir: un procedure o una function ya compilados
+   * salían "No, se crea" para siempre, y el `DROP ... IF EXISTS` del
+   * siguiente script los reemplazaba sin que nadie lo supiera.
    *
    * A failure here must not sink the whole list: which objects exist in the origin
    * is the part the user needs to choose, and it arrives on its own. So the error
@@ -385,10 +395,12 @@ export class SchemaSyncPage {
     return Promise.all([
       this.dbService.listObjects(envA, schema, 'table'),
       this.dbService.listObjects(envA, schema, 'procedure'),
+      this.dbService.listObjects(envA, schema, 'function'),
     ]).then(
-      ([tablas, procedures]) => ({
+      ([tablas, procedures, functions]) => ({
         table: new Set(tablas.objects ?? []),
         procedure: new Set(procedures.objects ?? []),
+        function: new Set(functions.objects ?? []),
       }),
       (err) => {
         this.destinationError.set(toApiError(err).message);
@@ -430,6 +442,7 @@ export class SchemaSyncPage {
     this.selected.set({
       tables: origen.filter((o) => o.kind === 'table').map((o) => o.name),
       procedures: origen.filter((o) => o.kind === 'procedure').map((o) => o.name),
+      functions: origen.filter((o) => o.kind === 'function').map((o) => o.name),
     });
   }
 
@@ -450,6 +463,7 @@ export class SchemaSyncPage {
     this.selected.set({
       tables: checked ? rows.filter((r) => r.kind === 'table').map((r) => r.name) : [],
       procedures: checked ? rows.filter((r) => r.kind === 'procedure').map((r) => r.name) : [],
+      functions: checked ? rows.filter((r) => r.kind === 'function').map((r) => r.name) : [],
     });
   }
 
@@ -468,7 +482,8 @@ export class SchemaSyncPage {
     const matches = (r: SyncObject) => r.name === row.name && r.kind === row.kind;
     this.objects.set(rows.map((r) => (matches(r) ? { ...r, selected } : r)));
 
-    const bucket = row.kind === 'table' ? 'tables' : 'procedures';
+    const bucket =
+      row.kind === 'table' ? 'tables' : row.kind === 'procedure' ? 'procedures' : 'functions';
     const names = new Set(this.selected()[bucket]);
     if (selected) names.add(row.name);
     else names.delete(row.name);
@@ -493,7 +508,9 @@ export class SchemaSyncPage {
       return;
     }
     if (!this.scopeSelected()) {
-      this.error.set('Marcá al menos una tabla o un stored procedure para sincronizar.');
+      this.error.set(
+        'Marcá al menos una tabla, stored procedure o stored function para sincronizar.',
+      );
       return;
     }
 
@@ -501,7 +518,9 @@ export class SchemaSyncPage {
     this.error.set(null);
     this.executed.set(null);
     const selected = this.selected();
-    const counted = `${selected.tables.length} tabla(s) y ${selected.procedures.length} procedure(s)`;
+    const counted =
+      `${selected.tables.length} tabla(s), ${selected.procedures.length} procedure(s) ` +
+      `y ${selected.functions.length} function(s)`;
     this.busyText.set(`Generando el script de ${counted} de ${schema}, de ${envB} a ${envA}...`);
     this.busyWrites.set(false);
 
@@ -514,11 +533,13 @@ export class SchemaSyncPage {
           schema_name: schema,
           include_tables: selected.tables.length > 0,
           include_procedures: selected.procedures.length > 0,
+          include_functions: selected.functions.length > 0,
           // La lista explícita es lo que se compiló: sin ella el backend usaría los
-          // flags y se llevaría el esquema entero. Las dos cosas viajan, y el
+          // flags y se llevaría el esquema entero. Las tres cosas viajan, y el
           // backend le da prioridad a la lista.
           tables: selected.tables,
           procedures: selected.procedures,
+          functions: selected.functions,
         },
         run,
       )

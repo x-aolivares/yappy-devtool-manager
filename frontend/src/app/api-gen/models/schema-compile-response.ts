@@ -14,6 +14,7 @@ export interface SchemaCompileResponse {
   create_schema: boolean;
   env_a: string;
   env_b: string;
+  functions?: Array<string>;
   left_alone?: Array<string>;
   notes?: Array<string>;
   procedures?: Array<string>;

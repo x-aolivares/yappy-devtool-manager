@@ -1,4 +1,4 @@
-"""MySQL/Aurora introspection helpers (tables and stored procedures)."""
+"""MySQL/Aurora introspection helpers (tables, stored procedures and functions)."""
 
 from __future__ import annotations
 
@@ -57,6 +57,14 @@ WHERE ROUTINE_SCHEMA = %s AND ROUTINE_TYPE = 'PROCEDURE'
 ORDER BY ROUTINE_NAME
 """
 
+_FUNCTIONS_SQL = """
+SELECT ROUTINE_NAME
+FROM INFORMATION_SCHEMA.ROUTINES
+WHERE ROUTINE_SCHEMA = %s AND ROUTINE_TYPE = 'FUNCTION'
+  AND ROUTINE_SCHEMA NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
+ORDER BY ROUTINE_NAME
+"""
+
 
 def quote_ident(name: str) -> str:
     return "`" + name.replace("`", "``") + "`"
@@ -94,6 +102,21 @@ def show_create_procedure(conn, schema: str, name: str) -> str | None:
         try:
             cur.execute(
                 f"SHOW CREATE PROCEDURE {quote_ident(schema)}.{quote_ident(name)}"
+            )
+            row = cur.fetchone()
+        except pymysql.err.MySQLError:
+            return None
+    if not row:
+        return None
+    return row[2] if len(row) > 2 else row[0]
+
+
+def show_create_function(conn, schema: str, name: str) -> str | None:
+    """Return the SHOW CREATE FUNCTION statement, or None if it does not exist."""
+    with conn.cursor() as cur:
+        try:
+            cur.execute(
+                f"SHOW CREATE FUNCTION {quote_ident(schema)}.{quote_ident(name)}"
             )
             row = cur.fetchone()
         except pymysql.err.MySQLError:
@@ -160,11 +183,19 @@ def list_tables(conn, schema: str) -> list[str]:
 def list_procedures(conn, schema: str) -> list[str]:
     """Return the stored procedures of one schema, alphabetically.
 
-    Functions are left out on purpose: ``list_tables`` and this are the two kinds
-    ``SHOW CREATE`` and the compile flow understand.
+    Functions are a separate kind (:func:`list_functions`): ``SHOW CREATE
+    FUNCTION`` and ``DROP FUNCTION`` are different statements, so mixing the two
+    into one list would generate DDL aimed at the wrong object.
     """
     with conn.cursor() as cur:
         cur.execute(_PROCEDURES_SQL, (schema,))
+        return [row[0] for row in cur.fetchall()]
+
+
+def list_functions(conn, schema: str) -> list[str]:
+    """Return the stored functions of one schema, alphabetically."""
+    with conn.cursor() as cur:
+        cur.execute(_FUNCTIONS_SQL, (schema,))
         return [row[0] for row in cur.fetchall()]
 
 

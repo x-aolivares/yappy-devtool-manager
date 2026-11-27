@@ -57,3 +57,36 @@ def test_replace_table_script_escapes_backticks():
 
 def test_replace_table_script_does_not_double_the_trailing_semicolon():
     assert not ddl.replace_table_script("CREATE TABLE `t` (`id` INT);", "s", "t").endswith(";;")
+
+
+def test_drop_function_script():
+    assert ddl.drop_function_script("yappy", "calc") == "DROP FUNCTION `yappy`.`calc`;"
+
+
+def test_drop_function_script_escapes_backticks():
+    assert ddl.drop_function_script("ya`ppy", "ca`lc") == (
+        "DROP FUNCTION `ya``ppy`.`ca``lc`;"
+    )
+
+
+def test_create_function_script_strips_the_definer_and_keeps_the_body():
+    create = (
+        "CREATE DEFINER=`root`@`localhost` FUNCTION `calc`(x int) RETURNS int\n"
+        "DETERMINISTIC\n"
+        "BEGIN\n"
+        "  RETURN x + 1;\n"
+        "END"
+    )
+    script = ddl.create_function_script(create)
+    assert script.startswith("CREATE FUNCTION `calc`(x int) RETURNS int")
+    assert "DEFINER" not in script
+    assert "RETURN x + 1;" in script
+    assert "DETERMINISTIC\nBEGIN" in script
+
+
+def test_replace_function_script_drops_if_exists_then_creates():
+    create = "CREATE DEFINER=`u`@`h` FUNCTION `calc`() RETURNS int RETURN 1"
+    assert ddl.replace_function_script(create, "yappy", "calc") == (
+        "DROP FUNCTION IF EXISTS `yappy`.`calc`;\n"
+        "CREATE FUNCTION `calc`() RETURNS int RETURN 1"
+    )

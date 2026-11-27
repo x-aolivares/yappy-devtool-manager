@@ -1,7 +1,7 @@
 """Assemble ONE script that takes a whole schema from the source (B) into the
 destination (A) — the bulk sibling of the single-object compile.
 
-``/api/compile`` covers one table or one procedure at a time, and it is the right
+``/api/compile`` covers one table, procedure or function at a time, and it is the right
 tool for a table whose destination definition drifted. It is the wrong tool for
 "this schema has to look like it does over there": a schema holds dozens of
 objects, they reference each other, and a script per object is a script per
@@ -64,8 +64,8 @@ from . import ddl
 class SchemaPlan:
     """What the script will do, before a single character of it is written.
 
-    ``tables``/``procedures`` are the objects in scope, alphabetical. The two
-    orders are permutations of ``tables``: the script's tables section is
+    ``tables``/``procedures``/``functions`` are the objects in scope, alphabetical.
+    The two orders are permutations of ``tables``: the script's tables section is
     *all* the drops in ``drop_order`` followed by *all* the creates in
     ``create_order``, so the two directions cannot be satisfied one table at a
     time.
@@ -77,6 +77,7 @@ class SchemaPlan:
     create_schema: bool
     tables: list[str] = field(default_factory=list)
     procedures: list[str] = field(default_factory=list)
+    functions: list[str] = field(default_factory=list)
     drop_order: list[str] = field(default_factory=list)
     create_order: list[str] = field(default_factory=list)
     #: Base tables the destination has and the source does not. Reported, never
@@ -234,6 +235,8 @@ def plan(
     include_procedures: bool,
     only_tables: list[str] | None = None,
     only_procedures: list[str] | None = None,
+    include_functions: bool = True,
+    only_functions: list[str] | None = None,
 ) -> SchemaPlan:
     """Decide what the script will contain, reading both open connections.
 
@@ -250,12 +253,12 @@ def plan(
     with 3730 in the middle of the drops, so it is better to answer with an
     error while nothing has been applied.
 
-    ``only_tables``/``only_procedures`` narrow the scope to what the caller
-    picked. They are validated against the origin's real object list rather than
-    trusted, for the same reason the table-list migration validates its
-    ``date_column``: a name the origin does not have is a client that is out of
-    date, and it has to say so while nothing has been applied instead of producing
-    a script with a silent gap in it.
+    ``only_tables``/``only_procedures``/``only_functions`` narrow the scope to
+    what the caller picked. They are validated against the origin's real object
+    list rather than trusted, for the same reason the table-list migration
+    validates its ``date_column``: a name the origin does not have is a client
+    that is out of date, and it has to say so while nothing has been applied
+    instead of producing a script with a silent gap in it.
     """
     if schema not in obj.list_schemas(conn_b):
         raise SyncError(
@@ -267,9 +270,11 @@ def plan(
 
     available_tables = obj.list_tables(conn_b, schema)
     available_procedures = obj.list_procedures(conn_b, schema)
+    available_functions = obj.list_functions(conn_b, schema)
 
     tables = _in_scope(available_tables, only_tables, "tabla", schema)
     procedures = _in_scope(available_procedures, only_procedures, "stored procedure", schema)
+    functions = _in_scope(available_functions, only_functions, "stored function", schema)
 
     # The flags only apply when no explicit list arrived: a list is the user's
     # own choice, and widening it because `include_tables` happens to be true
@@ -278,6 +283,8 @@ def plan(
         tables = []
     if only_procedures is None and not include_procedures:
         procedures = []
+    if only_functions is None and not include_functions:
+        functions = []
 
     # Everything the destination has that is not in scope stays exactly as it is.
     # Only meaningful when tables are in scope at all: on a procedures-only run
@@ -309,6 +316,7 @@ def plan(
         create_schema=create_schema,
         tables=tables,
         procedures=procedures,
+        functions=functions,
         drop_order=drop_order,
         create_order=create_order,
         left_alone=left_alone,
@@ -317,6 +325,7 @@ def plan(
             create_schema=create_schema,
             tables=tables,
             procedures=procedures,
+            functions=functions,
             left_alone=left_alone,
             cross_schema=cross_schema,
         ),
@@ -329,6 +338,7 @@ def _notes(
     create_schema: bool,
     tables: list[str],
     procedures: list[str],
+    functions: list[str],
     left_alone: list[str],
     cross_schema: list[str],
 ) -> list[str]:
@@ -359,15 +369,21 @@ def _notes(
             "definición del origen (sin DEFINER: se crea con el usuario que corre el "
             "script)."
         )
+    if functions:
+        notes.append(
+            f"Se reemplazan {len(functions)} stored function(s) de '{schema}' con la "
+            "definición del origen (sin DEFINER: se crea con el usuario que corre el "
+            "script)."
+        )
     if left_alone:
         notes.append(
             f"El destino tiene {len(left_alone)} tabla(s) que el origen no tiene "
             f"({', '.join(left_alone)}): no se tocan y quedan como están."
         )
-    if not tables and not procedures:
+    if not tables and not procedures and not functions:
         notes.append(
-            f"El origen no tiene tablas ni stored procedures en '{schema}': "
-            "el script no reemplaza nada."
+            f"El origen no tiene tablas, stored procedures ni stored functions en "
+            f"'{schema}': el script no reemplaza nada."
         )
     if cross_schema:
         notes.append(
@@ -445,13 +461,30 @@ def _procedure_ddl(conn_b, schema: str, procedure: str) -> str:
     return _terminate(ddl.replace_procedure_script(code, schema, procedure))
 
 
+def _function_ddl(conn_b, schema: str, function: str) -> str:
+    """``DROP FUNCTION IF EXISTS`` + ``CREATE FUNCTION``, DEFINER stripped.
+
+    The function counterpart of :func:`_procedure_ddl`, reusing
+    :func:`ddl.replace_function_script` for the same reason: one place owns how a
+    routine is rebuilt, and the ``;`` keeps two consecutive bodies from being
+    parsed as one statement.
+    """
+    code = obj.show_create_function(conn_b, schema, function)
+    if code is None:
+        raise SyncError(
+            f"La stored function {schema}.{function} ya no existe en el origen. "
+            "Vuelve a compilar el schema."
+        )
+    return _terminate(ddl.replace_function_script(code, schema, function))
+
+
 def build_script(conn_b, plan: SchemaPlan) -> str:
     """Render the whole schema as one SQL script, read from the source.
 
     Shape: comment header, ``CREATE DATABASE`` only when the destination lacks
     the schema, then ``USE``, then the tables section (every ``DROP TABLE IF
     EXISTS`` in ``drop_order``, then every ``CREATE TABLE`` in ``create_order``),
-    then the procedures section.
+    then the procedures section and the functions section.
 
     ``USE`` is inside the script on purpose. ``execute_sql`` issues its own
     ``USE <schema>`` *before* the first statement, so a destination that does not
@@ -461,9 +494,9 @@ def build_script(conn_b, plan: SchemaPlan) -> str:
     session — the very mechanism ``execute_sql`` already relies on — and every
     statement below can stay exactly as ``SHOW CREATE`` emitted it.
 
-    The procedures section comes after the tables, not because a procedure needs
-    a table to exist (it does not, at compile time) but because structure first:
-    if a ``CREATE TABLE`` fails, the procedures have not been half-updated yet,
+    The routines sections come after the tables, not because a routine needs a
+    table to exist (it does not, at compile time) but because structure first:
+    if a ``CREATE TABLE`` fails, the routines have not been half-updated yet,
     so the destination is a coherent "tables behind, routines as they were"
     instead of routines that point at tables that are not there.
 
@@ -499,5 +532,11 @@ def build_script(conn_b, plan: SchemaPlan) -> str:
         out.append("-- Procedimientos: después de las tablas (estructura antes que comportamiento).")
         for procedure in plan.procedures:
             out.append(_procedure_ddl(conn_b, schema, procedure))
+
+    if plan.functions:
+        out.append("")
+        out.append("-- Funciones: después de las tablas (estructura antes que comportamiento).")
+        for function in plan.functions:
+            out.append(_function_ddl(conn_b, schema, function))
 
     return "\n".join(out) + "\n"

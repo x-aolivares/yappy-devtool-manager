@@ -1,7 +1,7 @@
 <h1>Sincronizar schema</h1>
 <p class="muted">
-  Toma todas las tablas y stored procedures de un esquema del ambiente de origen y arma un solo
-  script para dejar el destino igual.
+  Toma todas las tablas, stored procedures y stored functions de un esquema del ambiente de origen
+  y arma un solo script para dejar el destino igual.
 </p>
 
 <div class="panel">
@@ -87,10 +87,10 @@
             @for (row of page.visible(); track row.kind + '.' + row.name) {
               <tr [class.is-off]="!row.selected">
                 <td>
-                  <label class="checkbox-row" style="margin:0;" [for]="'sync-obj-' + row.name">
+                  <label class="checkbox-row" style="margin:0;" [for]="'sync-obj-' + row.kind + '-' + row.name">
                     <input
                       type="checkbox"
-                      [id]="'sync-obj-' + row.name"
+                      [id]="'sync-obj-' + row.kind + '-' + row.name"
                       [checked]="row.selected"
                       (change)="toggle(row.name, $any($event.target).checked, row.kind)"
                     />
@@ -100,7 +100,7 @@
                 <td>
                   <app-badge
                     [status]="row.kind === 'table' ? 'equal' : 'info'"
-                    [label]="row.kind === 'table' ? 'tabla' : 'procedure'"
+                    [label]="row.kind === 'table' ? 'tabla' : row.kind"
                   />
                 </td>
                 <td>
@@ -172,8 +172,8 @@
     </p>
   } @else {
     <p class="muted" style="margin-top:0.5rem; font-size:0.75rem;">
-      Sólo se van a recrear stored procedures: no se toca ninguna tabla, así que no hay
-      filas que perder.
+      Sólo se van a recrear routines (stored procedures y stored functions): no se toca
+      ninguna tabla, así que no hay filas que perder.
     </p>
   }
 
