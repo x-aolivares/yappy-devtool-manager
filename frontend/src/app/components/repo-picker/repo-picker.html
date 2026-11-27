@@ -29,6 +29,7 @@
       <li
         class="option"
         role="option"
+        [title]="name"
         [id]="`${listId}-${i}`"
         [attr.aria-selected]="i === activeIndex()"
         [class.is-active]="i === activeIndex()"

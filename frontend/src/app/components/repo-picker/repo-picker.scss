@@ -16,19 +16,23 @@
   max-height: 18rem;
   overflow-y: auto;
   margin: 0;
-  padding: 0.25rem;
+  /* Sin padding horizontal: las filas llevan el mismo `0.75rem` del input y el
+     borde de `0.0625rem`, así que el texto de una opción cae exactamente donde
+     cae el texto escrito en el campo. */
+  padding: 0.25rem 0;
   list-style: none;
   background: var(--sys-elevated);
-  border: 0.0625rem solid var(--sys-border);
+  border: 0.0625rem solid var(--border);
   border-radius: var(--sys-radius-md);
   box-shadow: var(--sys-shadow-lg);
   animation: repo-picker-in var(--sys-dur-fast) var(--sys-ease);
 }
 
-/* Cuánto hay y contra qué se está filtrando. Va en versalitas como el resto de
-   las etiquetas de la pantalla, y el input la referencia con `aria-describedby`. */
+/* Cuánto hay y contra qué se está filtrando. Es una etiqueta, así que usa la
+   misma escala que `.field-label`: versalitas, `--text-xxs` y `--muted`. El
+   input la referencia con `aria-describedby`. */
 .status {
-  padding: 0.375rem 0.625rem 0.25rem;
+  padding: 0.375rem 0.75rem 0.25rem;
   font-size: var(--text-xxs);
   font-weight: 700;
   text-transform: uppercase;
@@ -36,15 +40,19 @@
   color: var(--muted);
 }
 
+/* Las filas son lo mismo que el texto del campo: mismo color, misma
+   tipografía y mismo padding que un `input[type='text']` global. Si el nombre
+   elegido cambiara de fuente o de tamaño al entrar al campo, el dropdown se
+   notaría como un control ajeno a la interfaz. */
 .option {
   display: block;
-  padding: 0.5rem 0.625rem;
+  padding: 0.625rem 0.75rem;
   border-radius: var(--sys-radius-sm);
-  color: var(--sys-text);
-  font-size: var(--text-sm);
+  color: var(--text);
+  font-size: var(--text-md);
   cursor: pointer;
   /* Un nombre largo no estira el dropdown: se corta con puntos y el `title`
-     del `title` completo está en la fila del `option`. */
+     deja ver el completo al pasar el mouse. */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -60,11 +68,13 @@
   background: var(--sys-selected-bg);
 }
 
+/* La fila de \"sin coincidencias\" ocupa el mismo lugar que una opción: misma
+   caja y tipografía, sin el hover porque no se puede elegir. */
 .empty {
   display: block;
-  padding: 0.5rem 0.625rem;
+  padding: 0.625rem 0.75rem;
   color: var(--muted);
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
 }
 
 @keyframes repo-picker-in {
