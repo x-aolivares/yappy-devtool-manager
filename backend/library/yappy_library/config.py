@@ -136,10 +136,14 @@ class Config:
         identifica con una cadena vacía, y hacerlo la volvería distinguible de
         `Config()` — que es exactamente el objeto que hereda la máquina del
         developer.
+
+        Estas copias no se pueden recargar: no hay archivo del que leer; si se
+        intentara, `refresh()` reemplazaría sus valores por los de `env.base`.
         """
         cfg = cls.__new__(cls)
         cfg._env = None
         cfg._values = values
+        cfg._reloadable = False
         return cfg
 
     def __init__(self, env: str | None = None):
@@ -148,17 +152,22 @@ class Config:
         # (`AWS_PROFILE` a secas) vale `None` en el dotenv, y eso es lo que
         # `get` distingue de "no está".
         self._values: dict[str, str | None] = {}
+        self._reloadable = True
+        self._load_files()
 
+    def _load_files(self) -> None:
+        """Leer los archivos en `_values`, reemplazando lo que hubiera antes."""
         config_dir = self._get_config_dir()
+        self._values.clear()
         self._load_file(config_dir / "env.base")
-        if env:
-            env_file = config_dir / f"env.{env}"
+        if self._env:
+            env_file = config_dir / f"env.{self._env}"
             if env_file.exists():
                 self._load_file(env_file)
             else:
                 available = self.known_environments()
                 raise ValueError(
-                    f"No config for environment '{env}'. "
+                    f"No config for environment '{self._env}'. "
                     f"Available: {', '.join(available) if available else 'none'}"
                 )
 
@@ -171,6 +180,18 @@ class Config:
         local_env = local_env_root / ".env"
         if local_env.exists():
             self._load_file(local_env)
+
+    def refresh(self) -> None:
+        """Volver a leer los archivos para un lector que guarda la config.
+
+        El stream SSE abre un `Config` al conectarse y lo usa durante toda la
+        conexión. El catálogo de puertos se edita escribiendo `env.base` *después*
+        de eso: sin recargar, el alta no aparece en la tabla hasta que el browser
+        abre otro stream —que era lo que pasaba al cambiar de cluster. Los
+        overrides de `os.environ` no viven en `_values`, así que no se pierden.
+        """
+        if self._reloadable:
+            self._load_files()
 
     @classmethod
     def _get_config_dir(cls) -> Path:

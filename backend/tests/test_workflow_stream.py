@@ -39,6 +39,7 @@ from yappy_api import shutdown
 from yappy_api.routes import workflow as routes_workflow
 from yappy_library.adapters import process_tracker
 from yappy_library.adapters.state_bus import StateBus
+from yappy_library.application.workflow import catalog_write
 from yappy_library.config import Config
 
 
@@ -55,6 +56,10 @@ def bus(monkeypatch):
     """
     local = StateBus()
     monkeypatch.setattr(process_tracker, "state_bus", local)
+    # El alta de un puerto también publica: si el writer sigue hablándole al
+    # singleton, el stream de este test se queda esperando un wake que nunca
+    # llegó —y el test pasaría por timeout, no por el bug que quiere fijar.
+    monkeypatch.setattr(catalog_write, "state_bus", local)
     monkeypatch.setattr(routes_workflow, "state_bus", local)
     monkeypatch.setattr(shutdown, "state_bus", local)
     return local
@@ -170,6 +175,39 @@ def test_el_stream_manda_el_estado_completo_al_conectarse(bus):
         assert body["env"] == "dev" and body["cluster"] == "cap"
         # The same shape as GET /api/workflow/state: one serializer, two transports.
         assert {"resources", "ports", "unattributed", "remote_host"} <= set(body)
+        await _close(frames, pump)
+
+    _run(main())
+
+
+def test_un_puerto_agregado_aparece_en_el_stream_ya_abierto(
+    bus, tmp_path, monkeypatch, suite_config_dir
+):
+    """El alta escribe `env.base`; el stream no puede quedarse con la foto vieja.
+
+    El `Config` del stream se crea al abrir la conexión. El publish del alta
+    despertaba al generador, pero la lectura seguía trayendo el catálogo que el
+    objeto tenía en memoria: el puerto recién aparecía al cambiar de cluster,
+    que abre un stream nuevo y por lo tanto otro `Config`.
+    """
+    directory = tmp_path / "config"
+    directory.mkdir()
+    for name in ("env.base", "env.dev"):
+        (directory / name).write_text(
+            (suite_config_dir / name).read_text(encoding="utf-8"), encoding="utf-8"
+        )
+    monkeypatch.setattr(Config, "_config_dir", directory)
+    cfg = Config.with_env("dev")  # Abierto ANTES del alta, como en la pantalla.
+
+    async def main():
+        frames, sink, pump = await _open(cfg)
+        assert await _until(sink, 1)
+        assert [p["port"] for p in sink[-1]["ports"]] == [8402, 8403]
+
+        catalog_write.add_port(Config(), "cap", 9999, "nuevo")
+
+        assert await _until(sink, 2, timeout=2)
+        assert [p["port"] for p in sink[-1]["ports"]] == [8402, 8403, 9999]
         await _close(frames, pump)
 
     _run(main())

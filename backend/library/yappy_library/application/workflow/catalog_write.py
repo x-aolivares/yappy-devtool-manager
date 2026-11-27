@@ -163,7 +163,10 @@ def _persist(cfg: Config, catalog: dict) -> None:
         except OSError as exc:
             raise CatalogError(f"No se pudo escribir {path}: {exc}") from exc
 
-    # The catalog is part of the state the screen reads, so a rename has to reach it
-    # the same way a verdict does. Without this the new name would only show up on
-    # the watchdog tick, up to five seconds after the developer stopped typing.
+    # The catalog is part of the state the screen reads, so every edit —alta,
+    # rename, baja, reset— has to reach it the same way a verdict does. Without
+    # this the row would only appear on the watchdog tick, and a rename up to
+    # five seconds after the developer stopped typing. El stream vuelve a leer
+    # `env.base` al despertar (`routes.workflow._snapshot`), que es lo que hace
+    # que el cambio escrito acá sea visible en la conexión ya abierta.
     state_bus.publish()

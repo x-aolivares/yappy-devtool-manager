@@ -187,6 +187,18 @@ def _signature(body: dict) -> str:
     return json.dumps({k: v for k, v in body.items() if k != "generated_at"})
 
 
+def _snapshot(cfg: Config, cluster: str):
+    """Leer el estado con la config actualizada, en el threadpool del stream.
+
+    El `Config` del stream se creó al abrir la conexión; el catálogo se edita
+    escribiendo `env.base` después. Sin `refresh()` el alta no aparece en la
+    tabla hasta que el browser abre otro stream — exactamente lo que pasaba al
+    cambiar de cluster.
+    """
+    cfg.refresh()
+    return workflow_service.snapshot(cfg, cluster)
+
+
 async def _stream_frames(cfg: Config, cluster: str):
     """Yield one SSE frame per real change, and nothing per non-change.
 
@@ -217,7 +229,7 @@ async def _stream_frames(cfg: Config, cluster: str):
                 # connections to close" hasta un segundo Ctrl+C. Ver
                 # `yappy_api.shutdown`.
                 return
-            snap = await run_in_threadpool(workflow_service.snapshot, cfg, cluster)
+            snap = await run_in_threadpool(_snapshot, cfg, cluster)
             body = _state_body(snap)
             signature = _signature(body)
             if signature != last:
