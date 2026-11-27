@@ -11,7 +11,19 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { DeploymentsPage } from './deployments';
 import { DeploymentService } from '../../core/services/deployment.service';
 import { EnvironmentService } from '../../core/services/environment.service';
-import type { DeploymentsBranchesResponse } from '../../api-gen/models';
+import type { DeploymentsBranchesResponse, DeploymentReposResponse } from '../../api-gen/models';
+
+/** El catálogo de repos, con uno que sólo se encuentra por el medio del nombre. */
+const CATALOG: DeploymentReposResponse = {
+  workspace: 'bg-ti',
+  repositories: [
+    'yappy-trnxd-backend-payment-aggregator',
+    'yappy-trnxd-backend-refund-service',
+    'yappy-trnxd-frontend-web',
+  ],
+  fetched_at: '2026-11-27T10:00:00',
+  stale: false,
+};
 
 const OK: DeploymentsBranchesResponse = {
   repo: 'yappy-trnxd-backend-payment-aggregator',
@@ -65,6 +77,11 @@ describe('DeploymentsPage', () => {
   let asked: string[];
   let askedEnvs: (string[] | undefined)[];
   let answer: (repo: string) => Promise<DeploymentsBranchesResponse>;
+  /** Si el backend se llamó con `refresh`, que es el botón "Actualizar". */
+  let reposAsked: boolean[];
+  let reposAnswer: () => Promise<DeploymentReposResponse>;
+  /** La copia de `localStorage`, que la página lee antes de tocar el backend. */
+  let cachedCatalog: DeploymentReposResponse | null;
 
   const ENVS = [
     { env: 'dev', region: 'us-west-2', profile: 'base-profile' },
@@ -79,6 +96,9 @@ describe('DeploymentsPage', () => {
     asked = [];
     askedEnvs = [];
     answer = () => Promise.resolve(OK);
+    reposAsked = [];
+    reposAnswer = () => Promise.resolve(CATALOG);
+    cachedCatalog = null;
     await TestBed.configureTestingModule({
       imports: [DeploymentsPage],
       providers: [
@@ -90,6 +110,11 @@ describe('DeploymentsPage', () => {
               askedEnvs.push(envs);
               return answer(repo);
             },
+            repos: (refresh = false) => {
+              reposAsked.push(refresh);
+              return reposAnswer();
+            },
+            cachedRepos: () => cachedCatalog,
           },
         },
         {
@@ -207,15 +232,15 @@ describe('DeploymentsPage', () => {
     const { comp, el, fixture } = await consultar('repo');
 
     // Sin marcar no es "0 de 3": es todos, y el texto tiene que decirlo distinto.
-    expect(el.querySelector('.hint')!.textContent).toContain('todos');
+    expect(el.querySelector('.hint:not(.repos-hint)')!.textContent).toContain('todos');
 
     comp.envs.set(['uat']);
     await settle(fixture);
-    expect(el.querySelector('.hint')!.textContent).toContain('1 de 3');
+    expect(el.querySelector('.hint:not(.repos-hint)')!.textContent).toContain('1 de 3');
 
     comp.envs.set(['uat', 'qa']);
     await settle(fixture);
-    expect(el.querySelector('.hint')!.textContent).toContain('2 de 3');
+    expect(el.querySelector('.hint:not(.repos-hint)')!.textContent).toContain('2 de 3');
   });
 
   it('consulta el repo que se escribió, sin el workspace', async () => {
@@ -462,5 +487,102 @@ describe('DeploymentsPage', () => {
 
     expect(el.querySelector('.tag-chip')).toBeNull();
     expect(el.querySelector('tbody tr')!.textContent).not.toContain('desde');
+  });
+
+  // --- el catálogo de repositorios -------------------------------------------
+  //
+  // El input no es un campo de texto más: ofrece los repos del workspace y
+  // decide cuándo volver a preguntarlos. Estos tests fijan las dos partes —lo
+  // que se muestra mientras se escribe, y que un fallo del catálogo no rompa
+  // el campo—, que es lo que se perdió cuando el buscador "no existía".
+
+  /** La pantalla abierta, sin consultar: para mirar el input de repositorio. */
+  async function abrir(): Promise<{
+    comp: any;
+    el: HTMLElement;
+    fixture: ComponentFixture<DeploymentsPage>;
+  }> {
+    const fixture = TestBed.createComponent(DeploymentsPage);
+    await settle(fixture);
+    return { comp: fixture.componentInstance as any, el: fixture.nativeElement as HTMLElement, fixture };
+  }
+
+  /** Lo que el `datalist` está ofreciendo ahora. */
+  function opciones(el: HTMLElement): string[] {
+    return [...el.querySelectorAll('#deployments-repos option')].map((o) => o.getAttribute('value')!);
+  }
+
+  describe('el catálogo de repositorios', () => {
+    it('ofrece los repos del workspace mientras se escribe', async () => {
+      const { el } = await abrir();
+
+      expect(opciones(el)).toEqual(CATALOG.repositories);
+      expect(el.querySelector('.repos-hint')!.textContent).toContain('3 repositorios');
+    });
+
+    it('filtra por el texto escrito, y no sólo por el principio del nombre', async () => {
+      // "refund" no empieza ningún nombre: está en el medio de uno. Buscar sólo
+      // por prefijo no encontraría el repo que el que escribe está buscando.
+      const { comp, fixture, el } = await abrir();
+      comp.repo.set('refund');
+      await settle(fixture);
+
+      expect(opciones(el)).toEqual(['yappy-trnxd-backend-refund-service']);
+    });
+
+    it('la copia local sirve aunque el backend no conteste', async () => {
+      cachedCatalog = CATALOG;
+      reposAnswer = () => new Promise<DeploymentReposResponse>(() => undefined);
+
+      const { el } = await abrir();
+
+      expect(opciones(el)).toEqual(CATALOG.repositories);
+    });
+
+    it('si el backend falla se queda con la copia local y lo dice', async () => {
+      cachedCatalog = CATALOG;
+      reposAnswer = () => Promise.reject(new Error('backend caído'));
+
+      const { el } = await abrir();
+
+      expect(opciones(el)).toEqual(CATALOG.repositories);
+      expect(el.querySelector('.repos-hint')!.textContent).toContain('no se pudo actualizar');
+      // El aviso del catálogo no puede abrir el modal: taparía el campo que se
+      // está usando para escribir.
+      expect(el.querySelector('app-notice-modal')).toBeNull();
+    });
+
+    it('sin copia ni backend el campo se sigue pudiendo usar a mano', async () => {
+      reposAnswer = () => Promise.reject(new Error('backend caído'));
+
+      const { el } = await abrir();
+
+      expect(opciones(el)).toEqual([]);
+      expect(el.querySelector('.repos-hint')!.textContent).toContain('se escribe a mano');
+      expect(el.querySelector<HTMLInputElement>('#repo')!.disabled).toBe(false);
+    });
+
+    it('el botón "Actualizar" le pide al backend que pregunte de nuevo', async () => {
+      const { el, fixture } = await abrir();
+      const boton = [...el.querySelectorAll('button')].find((b) =>
+        b.textContent!.includes('Actualizar'),
+      )!;
+
+      boton.click();
+      await settle(fixture);
+
+      // La primera llamada es la de abrir la pantalla; la segunda, la del botón
+      // y con `refresh`, que es lo único que muestra un repo creado hoy.
+      expect(reposAsked).toEqual([false, true]);
+    });
+
+    it('una lista que el backend no pudo actualizar se muestra como vieja', async () => {
+      reposAnswer = () => Promise.resolve({ ...CATALOG, stale: true });
+
+      const { el } = await abrir();
+
+      expect(opciones(el)).toEqual(CATALOG.repositories);
+      expect(el.querySelector('.repos-hint')!.textContent).toContain('no se pudo actualizar');
+    });
   });
 });

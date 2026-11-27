@@ -108,16 +108,21 @@ def _create_app() -> FastAPI:
     async def _sqlite_error(request: Request, exc: sqlite3.Error) -> JSONResponse:
         """Los errores de SQLite no son del cliente.
 
-        La base de sesiones es local, y sus fallos —base bloqueada, disco lleno,
-        sistema de archivos de sólo lectura— son del servidor. Antes cada ruta
-        de sesiones capturaba sólo ``ValueError``, así que un
-        ``sqlite3.OperationalError`` salía como un 500 sin cuerpo, y el
-        ``UNIQUE(session_id, name)`` salía como un 500 en vez de como el
+        Las bases locales —sesiones y ahora también el catálogo de
+        repositorios— viven en el disco de la máquina, y sus fallos —base
+        bloqueada, disco lleno, sistema de archivos de sólo lectura— son del
+        servidor. Antes cada ruta de sesiones capturaba sólo ``ValueError``,
+        así que un ``sqlite3.OperationalError`` salía como un 500 sin cuerpo, y
+        el ``UNIQUE(session_id, name)`` salía como un 500 en vez de como el
         conflicto que es.
+
+        El texto es de la base y no de la pantalla que la usa: con dos stores
+        distintos, "Error de sesión" en el catálogo de repositorios mandaría al
+        lugar equivocado.
         """
         if isinstance(exc, sqlite3.IntegrityError):
-            return JSONResponse(status_code=409, content={"detail": f"Error de sesión: {exc}"})
-        return JSONResponse(status_code=503, content={"detail": f"Error de sesión: {exc}"})
+            return JSONResponse(status_code=409, content={"detail": f"Error de la base local: {exc}"})
+        return JSONResponse(status_code=503, content={"detail": f"Error de la base local: {exc}"})
 
     if FRONTEND_DIST.is_dir():
         _serve_spa(app)

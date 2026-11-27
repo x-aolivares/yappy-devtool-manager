@@ -51,6 +51,8 @@ export type { CreateSessionItem$Params as CreateSessionItem$Params } from './fn/
 export { createSessionItem as createSessionItem } from './fn/sessions/create-session-item';
 export type { ListDeploymentBranches$Params as ListDeploymentBranches$Params } from './fn/deployments/list-deployment-branches';
 export { listDeploymentBranches as listDeploymentBranches } from './fn/deployments/list-deployment-branches';
+export type { ListDeploymentRepos$Params as ListDeploymentRepos$Params } from './fn/deployments/list-deployment-repos';
+export { listDeploymentRepos as listDeploymentRepos } from './fn/deployments/list-deployment-repos';
 export type { ListWorkflowClusters$Params as ListWorkflowClusters$Params } from './fn/workflow/list-workflow-clusters';
 export { listWorkflowClusters as listWorkflowClusters } from './fn/workflow/list-workflow-clusters';
 export type { GetWorkflowState$Params as GetWorkflowState$Params } from './fn/workflow/get-workflow-state';

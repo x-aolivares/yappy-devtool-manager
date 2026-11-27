@@ -43,6 +43,37 @@ export class DeploymentsPage {
   readonly result = signal<DeploymentsBranchesResponse | null>(null);
 
   /**
+   * El catálogo de repositorios del workspace, para ofrecer mientras se escribe.
+   *
+   * `null` es "todavía no se supo" — ni cargando ni falló: es el estado inicial
+   * y el de un backend que no contestó sin copia guardada. La lista viene del
+   * backend, que es el que decide si hay que volver a preguntarle a Bitbucket
+   * (TTL de 24 h) o si alcanza con lo guardado.
+   */
+  readonly repos = signal<string[] | null>(null);
+  readonly reposFetchedAt = signal<string | null>(null);
+  /** La lista es la caché vieja: la consulta a Bitbucket falló al actualizar. */
+  readonly reposStale = signal(false);
+  readonly reposError = signal<string | null>(null);
+  readonly reposLoading = signal(false);
+
+  /**
+   * Lo que el `datalist` ofrece mientras se escribe.
+   *
+   * El filtrado es acá y no dejado al navegador: con dos mil nombres adentro
+   * del `datalist` el browser filtra igual, pero el popup no es navegable.
+   * Coincide por substring y no sólo por prefijo, porque "refund" tiene que
+   * encontrar `yappy-trnxd-backend-refund-service` aunque empiece por otro.
+   */
+  readonly suggestions = computed(() => {
+    const all = this.repos();
+    if (!all?.length) return [];
+    const needle = this.repo().trim().toLowerCase();
+    const matches = needle ? all.filter((name) => name.toLowerCase().includes(needle)) : all;
+    return matches.slice(0, 50);
+  });
+
+  /**
    * La consulta en vuelo, para que el botón del modal la corte.
    *
    * La cadena repo → parameters.json → ECS → CircleCI son cuatro saltos y cada
@@ -73,6 +104,65 @@ export class DeploymentsPage {
     this.environmentService.list().then((res) =>
       this.environments.set(awsEnvironments(res.environments)),
     );
+
+    // El catálogo de repositorios va en dos pasos: primero la copia local, que
+    // pinta las sugerencias sin esperar el primer request, y después el
+    // backend, que es el único que sabe si hay que preguntarle a Bitbucket de
+    // nuevo. Si el backend no contesta, la copia se queda y el campo sigue
+    // funcionando a mano.
+    const cached = this.deployments.cachedRepos();
+    if (cached) {
+      this.repos.set(cached.repositories);
+      this.reposFetchedAt.set(cached.fetched_at ?? null);
+      this.reposStale.set(cached.stale ?? false);
+    }
+    void this.loadRepos();
+  }
+
+  /**
+   * Trae (o actualiza) el catálogo y deja el motivo de un fallo a la vista.
+   *
+   * Un fallo acá no es un fallo de la pantalla: sólo son sugerencias. Por eso
+   * va a `reposError` y no a `failure`, que abre el modal y tapa el campo que
+   * se está usando.
+   */
+  async loadRepos(refresh = false): Promise<void> {
+    this.reposLoading.set(true);
+    try {
+      const res = await this.deployments.repos(refresh);
+      this.repos.set(res.repositories);
+      this.reposFetchedAt.set(res.fetched_at ?? null);
+      this.reposStale.set(res.stale ?? false);
+      this.reposError.set(null);
+    } catch (err) {
+      this.reposError.set(toApiError(err).message);
+    } finally {
+      this.reposLoading.set(false);
+    }
+  }
+
+  /** El botón "Actualizar": es lo único que muestra un repo creado hoy. */
+  refreshRepos(): void {
+    void this.loadRepos(true);
+  }
+
+  /**
+   * Qué tan vieja es la lista, en palabras.
+   *
+   * Un ISO crudo en el hint no le dice nada a nadie, y "hace 3 h" es lo que
+   * hace falta para decidir si conviene apretar "Actualizar".
+   */
+  reposAge(): string {
+    const iso = this.reposFetchedAt();
+    const then = iso ? new Date(iso).getTime() : NaN;
+    if (Number.isNaN(then)) return 'sin fecha';
+    const minutes = Math.max(0, Math.round((Date.now() - then) / 60000));
+    if (minutes < 1) return 'recién';
+    if (minutes < 60) return `hace ${minutes} min`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `hace ${hours} h`;
+    const days = Math.round(hours / 24);
+    return `hace ${days} ${days === 1 ? 'día' : 'días'}`;
   }
 
   toggleAll(): void {

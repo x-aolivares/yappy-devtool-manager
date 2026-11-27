@@ -562,6 +562,25 @@ class DeploymentsBranchesResponse(BaseModel):
     environments: list[DeploymentEnvInfo]
 
 
+class DeploymentReposResponse(BaseModel):
+    workspace: str = Field(..., description="Workspace de Bitbucket del que se listó.")
+    repositories: list[str] = Field(
+        ...,
+        description="Nombres de repositorio, sin el workspace, ordenados alfabéticamente. "
+        "Tiene todos los del workspace, no sólo los de ECS/Fargate.",
+    )
+    fetched_at: str | None = Field(
+        None,
+        description="ISO de cuándo se leyó la lista a Bitbucket. `None` sólo cuando "
+        "nunca se pudo leer.",
+    )
+    stale: bool = Field(
+        False,
+        description="Se pidió actualizar y la consulta a Bitbucket falló: la lista es "
+        "la caché vieja, que sirve mejor que un input sin sugerencias.",
+    )
+
+
 # --- Workflow ----------------------------------------------------------------
 # These mirror `application/workflow/models.py` one for one. The API layer holds
 # no rules of its own here: if a field is in both, the library decides what it

@@ -1102,6 +1102,50 @@
         }
       }
     },
+    "/api/deployments/repos": {
+      "get": {
+        "tags": [
+          "deployments"
+        ],
+        "summary": "Api Deployment Repos",
+        "description": "Todos los repos del workspace, para el input de \"Rama desplegada\".\n\nLa lista se guarda en SQLite y se sirve desde ahí mientras tenga menos de\n24 h (`repo_catalog.TTL`), de modo que abrir la pantalla no paga el\nlistado paginado de Bitbucket. `refresh=true` es el botón \"Actualizar\":\nmanda a preguntar igual que si la caché no existiera, que es lo que hace\nvisible un repo creado hace cinco minutos.\n\nSi hay caché y la consulta a Bitbucket falla, se sirve la caché vieja con\n`stale: true`: un input sin sugerencias es peor que una lista un poco\ndesactualizada. Sin caché, el fallo es un 502 con el mensaje de la etapa.",
+        "operationId": "list_deployment_repos",
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Refresh"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentReposResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workflow/clusters": {
       "get": {
         "tags": [
@@ -3094,6 +3138,47 @@
         ],
         "title": "DeploymentEnvInfo",
         "description": "One environment. Every field is optional because the chain can stop at any step."
+      },
+      "DeploymentReposResponse": {
+        "properties": {
+          "workspace": {
+            "type": "string",
+            "title": "Workspace",
+            "description": "Workspace de Bitbucket del que se listó."
+          },
+          "repositories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Repositories",
+            "description": "Nombres de repositorio, sin el workspace, ordenados alfabéticamente. Tiene todos los del workspace, no sólo los de ECS/Fargate."
+          },
+          "fetched_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetched At",
+            "description": "ISO de cuándo se leyó la lista a Bitbucket. `None` sólo cuando nunca se pudo leer."
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale",
+            "description": "Se pidió actualizar y la consulta a Bitbucket falló: la lista es la caché vieja, que sirve mejor que un input sin sugerencias.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace",
+          "repositories"
+        ],
+        "title": "DeploymentReposResponse"
       },
       "DeploymentsBranchesRequest": {
         "properties": {

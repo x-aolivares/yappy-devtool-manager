@@ -12,6 +12,8 @@
       <input
         id="repo"
         type="text"
+        list="deployments-repos"
+        autocomplete="off"
         [value]="repo()"
         (input)="repo.set($any($event.target).value)"
         (keydown.enter)="search()"
@@ -22,6 +24,33 @@
         Consultar
       </button>
     </div>
+    <datalist id="deployments-repos">
+      @for (name of suggestions(); track name) {
+        <option [value]="name"></option>
+      }
+    </datalist>
+    <p class="muted hint repos-hint">
+      @if (repos(); as names) {
+        {{ names.length }} repositorios de Bitbucket · actualizado {{ reposAge() }}
+        @if (reposError()) {
+          · no se pudo actualizar ({{ reposError() }}), se muestra la última lista
+        } @else if (reposStale()) {
+          · no se pudo actualizar, se muestra la última lista
+        }
+        <button
+          type="button"
+          class="linkish"
+          (click)="refreshRepos()"
+          [disabled]="reposLoading()"
+        >
+          {{ reposLoading() ? 'Actualizando…' : 'Actualizar' }}
+        </button>
+      } @else if (reposLoading()) {
+        Cargando repositorios de Bitbucket…
+      } @else if (reposError()) {
+        No se pudieron listar los repositorios ({{ reposError() }}): el nombre se escribe a mano.
+      }
+    </p>
   </div>
 
   <div class="field">

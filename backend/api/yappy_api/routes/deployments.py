@@ -4,10 +4,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from yappy_library.application.deployment import ecs_branch
+from yappy_library.application.deployment import ecs_branch, repos
+from yappy_library.application.deployment.ecs_branch import DeploymentUnresolved
 from yappy_library.config import Config
 
-from ..schemas import DeploymentsBranchesRequest, DeploymentsBranchesResponse
+from .. import repo_catalog
+from ..schemas import (
+    DeploymentReposResponse,
+    DeploymentsBranchesRequest,
+    DeploymentsBranchesResponse,
+)
 
 router = APIRouter(tags=["deployments"])
 
@@ -54,3 +60,55 @@ def api_deployment_branches(request: DeploymentsBranchesRequest):
         # every row would carry the same message. That is a failure of the
         # request, not of one environment.
         raise HTTPException(status_code=502, detail=exc.message) from exc
+
+
+def _repos_response(
+    workspace: str, repositories: list[str], fetched_at: str | None, stale: bool
+) -> DeploymentReposResponse:
+    return DeploymentReposResponse(
+        workspace=workspace,
+        repositories=repositories,
+        fetched_at=fetched_at,
+        stale=stale,
+    )
+
+
+@router.get(
+    "/api/deployments/repos",
+    operation_id="list_deployment_repos",
+    response_model=DeploymentReposResponse,
+)
+def api_deployment_repos(refresh: bool = False):
+    """Todos los repos del workspace, para el input de "Rama desplegada".
+
+    La lista se guarda en SQLite y se sirve desde ahí mientras tenga menos de
+    24 h (`repo_catalog.TTL`), de modo que abrir la pantalla no paga el
+    listado paginado de Bitbucket. `refresh=true` es el botón "Actualizar":
+    manda a preguntar igual que si la caché no existiera, que es lo que hace
+    visible un repo creado hace cinco minutos.
+
+    Si hay caché y la consulta a Bitbucket falla, se sirve la caché vieja con
+    `stale: true`: un input sin sugerencias es peor que una lista un poco
+    desactualizada. Sin caché, el fallo es un 502 con el mensaje de la etapa.
+    """
+    cfg = Config()
+    workspace = ecs_branch.bitbucket_workspace(cfg)
+    cached = repo_catalog.read(workspace)
+    if cached and not refresh and repo_catalog.is_fresh(cached["fetched_at"]):
+        return _repos_response(
+            workspace, cached["repositories"], cached["fetched_at"], stale=False
+        )
+    try:
+        repositories = repos.fetch_repositories(cfg)
+    except DeploymentUnresolved as exc:
+        if not cached:
+            raise HTTPException(status_code=502, detail=exc.message) from exc
+        return _repos_response(
+            workspace, cached["repositories"], cached["fetched_at"], stale=True
+        )
+    return _repos_response(
+        workspace,
+        repositories,
+        repo_catalog.write(workspace, repositories),
+        stale=False,
+    )
