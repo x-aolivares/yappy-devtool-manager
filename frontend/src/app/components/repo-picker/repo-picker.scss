@@ -1,0 +1,83 @@
+/* El campo ocupa la fila entera y el dropdown cuelga de él, no del panel:
+   así el ancho del dropdown es el del input y no el del `field-row` entero. */
+:host {
+  position: relative;
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.listbox {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  max-height: 18rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: var(--sys-elevated);
+  border: 0.0625rem solid var(--sys-border);
+  border-radius: var(--sys-radius-md);
+  box-shadow: var(--sys-shadow-lg);
+  animation: repo-picker-in var(--sys-dur-fast) var(--sys-ease);
+}
+
+/* Cuánto hay y contra qué se está filtrando. Va en versalitas como el resto de
+   las etiquetas de la pantalla, y el input la referencia con `aria-describedby`. */
+.status {
+  padding: 0.375rem 0.625rem 0.25rem;
+  font-size: var(--text-xxs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.option {
+  display: block;
+  padding: 0.5rem 0.625rem;
+  border-radius: var(--sys-radius-sm);
+  color: var(--sys-text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  /* Un nombre largo no estira el dropdown: se corta con puntos y el `title`
+     del `title` completo está en la fila del `option`. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.option:hover {
+  background: var(--sys-hover-bg);
+}
+
+/* La fila que el teclado tiene marcada. Es el mismo azul de selección que el
+   resto de la app, no un color del navegador. */
+.option.is-active {
+  background: var(--sys-selected-bg);
+}
+
+.empty {
+  display: block;
+  padding: 0.5rem 0.625rem;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+@keyframes repo-picker-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.25rem);
+  }
+}
+
+/* Toda animación nueva se anula acá también: el dropdown se puede esquivar
+   mirándolo, pero el `prefers-reduced-motion` no distingue. */
+@media (prefers-reduced-motion: reduce) {
+  .listbox {
+    animation: none;
+  }
+}

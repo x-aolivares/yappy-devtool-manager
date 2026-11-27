@@ -507,16 +507,28 @@ describe('DeploymentsPage', () => {
     return { comp: fixture.componentInstance as any, el: fixture.nativeElement as HTMLElement, fixture };
   }
 
-  /** Lo que el `datalist` está ofreciendo ahora. */
-  function opciones(el: HTMLElement): string[] {
-    return [...el.querySelectorAll('#deployments-repos option')].map((o) => o.getAttribute('value')!);
+  /**
+   * Lo que el dropdown ofrece, con el campo enfocado.
+   *
+   * Las sugerencias sólo se dibujan con el dropdown abierto —que es como se
+   * comporta en el navegador—, así que enfocar es parte del arreglo.
+   */
+  async function opciones(
+    fixture: ComponentFixture<DeploymentsPage>,
+    el: HTMLElement,
+  ): Promise<string[]> {
+    el.querySelector<HTMLInputElement>('#repo')!.dispatchEvent(new Event('focus'));
+    await settle(fixture);
+    return [...el.querySelectorAll('app-repo-picker [role="option"]')].map((o) =>
+      o.textContent!.trim(),
+    );
   }
 
   describe('el catálogo de repositorios', () => {
     it('ofrece los repos del workspace mientras se escribe', async () => {
-      const { el } = await abrir();
+      const { el, fixture } = await abrir();
 
-      expect(opciones(el)).toEqual(CATALOG.repositories);
+      expect(await opciones(fixture, el)).toEqual(CATALOG.repositories);
       expect(el.querySelector('.repos-hint')!.textContent).toContain('3 repositorios');
     });
 
@@ -527,25 +539,25 @@ describe('DeploymentsPage', () => {
       comp.repo.set('refund');
       await settle(fixture);
 
-      expect(opciones(el)).toEqual(['yappy-trnxd-backend-refund-service']);
+      expect(await opciones(fixture, el)).toEqual(['yappy-trnxd-backend-refund-service']);
     });
 
     it('la copia local sirve aunque el backend no conteste', async () => {
       cachedCatalog = CATALOG;
       reposAnswer = () => new Promise<DeploymentReposResponse>(() => undefined);
 
-      const { el } = await abrir();
+      const { el, fixture } = await abrir();
 
-      expect(opciones(el)).toEqual(CATALOG.repositories);
+      expect(await opciones(fixture, el)).toEqual(CATALOG.repositories);
     });
 
     it('si el backend falla se queda con la copia local y lo dice', async () => {
       cachedCatalog = CATALOG;
       reposAnswer = () => Promise.reject(new Error('backend caído'));
 
-      const { el } = await abrir();
+      const { el, fixture } = await abrir();
 
-      expect(opciones(el)).toEqual(CATALOG.repositories);
+      expect(await opciones(fixture, el)).toEqual(CATALOG.repositories);
       expect(el.querySelector('.repos-hint')!.textContent).toContain('no se pudo actualizar');
       // El aviso del catálogo no puede abrir el modal: taparía el campo que se
       // está usando para escribir.
@@ -555,9 +567,9 @@ describe('DeploymentsPage', () => {
     it('sin copia ni backend el campo se sigue pudiendo usar a mano', async () => {
       reposAnswer = () => Promise.reject(new Error('backend caído'));
 
-      const { el } = await abrir();
+      const { el, fixture } = await abrir();
 
-      expect(opciones(el)).toEqual([]);
+      expect(await opciones(fixture, el)).toEqual([]);
       expect(el.querySelector('.repos-hint')!.textContent).toContain('se escribe a mano');
       expect(el.querySelector<HTMLInputElement>('#repo')!.disabled).toBe(false);
     });
@@ -579,9 +591,9 @@ describe('DeploymentsPage', () => {
     it('una lista que el backend no pudo actualizar se muestra como vieja', async () => {
       reposAnswer = () => Promise.resolve({ ...CATALOG, stale: true });
 
-      const { el } = await abrir();
+      const { el, fixture } = await abrir();
 
-      expect(opciones(el)).toEqual(CATALOG.repositories);
+      expect(await opciones(fixture, el)).toEqual(CATALOG.repositories);
       expect(el.querySelector('.repos-hint')!.textContent).toContain('no se pudo actualizar');
     });
   });

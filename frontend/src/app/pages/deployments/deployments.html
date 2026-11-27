@@ -9,26 +9,17 @@
   <div class="field">
     <label class="field-label" for="repo">Repositorio</label>
     <div class="field-row">
-      <input
-        id="repo"
-        type="text"
-        list="deployments-repos"
-        autocomplete="off"
+      <app-repo-picker
         [value]="repo()"
-        (input)="repo.set($any($event.target).value)"
-        (keydown.enter)="search()"
+        (valueChange)="repo.set($event)"
+        [options]="repos() ?? []"
+        (submit)="search()"
         placeholder="yappy-trnxd-backend-payment-aggregator"
-        spellcheck="false"
       />
       <button type="button" [disabled]="busy() || !repo().trim()" (click)="search()">
         Consultar
       </button>
     </div>
-    <datalist id="deployments-repos">
-      @for (name of suggestions(); track name) {
-        <option [value]="name"></option>
-      }
-    </datalist>
     <p class="muted hint repos-hint">
       @if (repos(); as names) {
         {{ names.length }} repositorios de Bitbucket · actualizado {{ reposAge() }}

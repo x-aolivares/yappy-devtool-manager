@@ -11,6 +11,7 @@ import { BusyModal } from '../../components/busy-modal/busy-modal';
 import { CopyButton } from '../../components/copy-button/copy-button';
 import { EnvPicker } from '../../components/env-picker/env-picker';
 import { NoticeModal } from '../../components/notice-modal/notice-modal';
+import { RepoPicker } from '../../components/repo-picker/repo-picker';
 import { copyText } from '../../core/copy';
 
 /**
@@ -26,7 +27,7 @@ import { copyText } from '../../core/copy';
  */
 @Component({
   selector: 'app-deployments-page',
-  imports: [BusyModal, CopyButton, NoticeModal, EnvPicker],
+  imports: [BusyModal, CopyButton, NoticeModal, EnvPicker, RepoPicker],
   templateUrl: './deployments.html',
 })
 export class DeploymentsPage {
@@ -56,22 +57,6 @@ export class DeploymentsPage {
   readonly reposStale = signal(false);
   readonly reposError = signal<string | null>(null);
   readonly reposLoading = signal(false);
-
-  /**
-   * Lo que el `datalist` ofrece mientras se escribe.
-   *
-   * El filtrado es acá y no dejado al navegador: con dos mil nombres adentro
-   * del `datalist` el browser filtra igual, pero el popup no es navegable.
-   * Coincide por substring y no sólo por prefijo, porque "refund" tiene que
-   * encontrar `yappy-trnxd-backend-refund-service` aunque empiece por otro.
-   */
-  readonly suggestions = computed(() => {
-    const all = this.repos();
-    if (!all?.length) return [];
-    const needle = this.repo().trim().toLowerCase();
-    const matches = needle ? all.filter((name) => name.toLowerCase().includes(needle)) : all;
-    return matches.slice(0, 50);
-  });
 
   /**
    * La consulta en vuelo, para que el botón del modal la corte.

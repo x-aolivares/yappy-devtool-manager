@@ -1,0 +1,45 @@
+<input
+  [id]="controlId()"
+  type="text"
+  autocomplete="off"
+  spellcheck="false"
+  role="combobox"
+  aria-autocomplete="list"
+  [attr.aria-expanded]="open()"
+  [attr.aria-controls]="open() ? listId : null"
+  [attr.aria-activedescendant]="activeId()"
+  [attr.aria-describedby]="open() ? statusId : null"
+  [placeholder]="placeholder()"
+  [value]="value()"
+  (input)="onInput($any($event.target).value)"
+  (focus)="open.set(true)"
+  (click)="open.set(true)"
+  (blur)="open.set(false)"
+  (keydown)="onKeydown($event)"
+/>
+
+@if (open()) {
+  <ul class="listbox" [id]="listId" role="listbox" #list>
+    <!-- La línea de estado no es una opción: por eso `presentation` y no
+         `option`, y por eso el input la referencia con `aria-describedby`. -->
+    <li class="status" [id]="statusId" role="presentation">
+      {{ header() }}
+    </li>
+    @for (name of matches(); track name; let i = $index) {
+      <li
+        class="option"
+        role="option"
+        [id]="`${listId}-${i}`"
+        [attr.aria-selected]="i === activeIndex()"
+        [class.is-active]="i === activeIndex()"
+        (mousedown)="onOptionMousedown($event)"
+        (click)="pick(name)"
+        (mouseenter)="activeIndex.set(i)"
+      >
+        {{ name }}
+      </li>
+    } @empty {
+      <li class="empty" role="presentation">Sin coincidencias</li>
+    }
+  </ul>
+}
